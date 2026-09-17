@@ -99,46 +99,48 @@ Explicitamente excluído. Documentado para evitar scope creep.
 
 ## Traceability
 
-Preenchida durante a criação do roadmap.
+Preenchida durante a criação do roadmap (2026-09-16).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | TBD | Pending |
-| AUTH-02 | TBD | Pending |
-| AUTH-03 | TBD | Pending |
-| COMP-01 | TBD | Pending |
-| COMP-02 | TBD | Pending |
-| COMP-03 | TBD | Pending |
-| CAT-01 | TBD | Pending |
-| CAT-02 | TBD | Pending |
-| INV-01 | TBD | Pending |
-| INV-02 | TBD | Pending |
-| ORD-01 | TBD | Pending |
-| ORD-02 | TBD | Pending |
-| ORD-03 | TBD | Pending |
-| ORD-04 | TBD | Pending |
-| ORD-05 | TBD | Pending |
-| ORD-06 | TBD | Pending |
-| ORD-07 | TBD | Pending |
-| ORD-08 | TBD | Pending |
-| ORD-09 | TBD | Pending |
-| ORD-10 | TBD | Pending |
-| NOTF-01 | TBD | Pending |
-| NOTF-02 | TBD | Pending |
-| QUAL-01 | TBD | Pending |
-| QUAL-02 | TBD | Pending |
-| INFRA-01 | TBD | Pending |
-| INFRA-02 | TBD | Pending |
-| INFRA-03 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| COMP-01 | Phase 1 | Pending |
+| COMP-02 | Phase 1 | Pending |
+| COMP-03 | Phase 1 | Pending |
+| CAT-01 | Phase 2 | Pending |
+| CAT-02 | Phase 2 | Pending |
+| INV-01 | Phase 2 | Pending |
+| INV-02 | Phase 2 | Pending |
+| ORD-01 | Phase 4 | Pending |
+| ORD-02 | Phase 4 | Pending |
+| ORD-03 | Phase 4 | Pending |
+| ORD-04 | Phase 5 | Pending |
+| ORD-05 | Phase 5 | Pending |
+| ORD-06 | Phase 5 | Pending |
+| ORD-07 | Phase 6 | Pending |
+| ORD-08 | Phase 4 | Pending |
+| ORD-09 | Phase 4 | Pending |
+| ORD-10 | Phase 6 | Pending |
+| NOTF-01 | Phase 3 | Pending |
+| NOTF-02 | Phase 3 | Pending |
+| QUAL-01 | Phase 7 | Pending |
+| QUAL-02 | Phase 7 | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 7 | Pending |
+| INFRA-03 | Phase 7 | Pending |
+| TEST-01 | Phase 7 | Pending |
+| TEST-02 | Phase 7 | Pending |
+| TEST-03 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30 ⚠
+- Mapped to phases: 30 ✓
+- Unmapped: 0
+
+**Nota sobre os requisitos transversais:** TEST-01, TEST-02, QUAL-01 e QUAL-02 estão formalmente ancorados na Fase 7 porque só ali "todos os serviços" existem e a cobertura pode ser verificada de fato. Isso **não** significa adiar testes ou documentação: cada fase deve entregar seus próprios testes unitários e de integração e sua documentação OpenAPI conforme os serviços nascem (PITFALLS.md, pitfall 7 — adiar testes para uma fase final é o antipadrão). A Fase 7 fecha lacunas e comprova a cobertura completa.
 
 ---
 *Requirements defined: 2026-09-16*
-*Last updated: 2026-09-16 after initial definition*
+*Last updated: 2026-09-16 after roadmap creation (traceability mapped)*
