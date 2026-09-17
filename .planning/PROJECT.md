@@ -17,12 +17,14 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 ### Active
 
 - [ ] Autenticação com papéis (BUYER, SELLER_ADMIN) via JWT
+- [ ] Empresa compradora é uma entidade própria (nome, limite de crédito) com usuários vinculados — não é só um atributo do usuário
 - [ ] Vendedor gerencia catálogo de produtos (criar/atualizar produtos e preços)
 - [ ] Vendedor gerencia níveis de estoque por produto
 - [ ] Empresa compradora cria pedido selecionando produtos do catálogo
 - [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação
 - [ ] Vendedor aprova ou rejeita pedidos pendentes de aprovação
-- [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga)
+- [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos
+- [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação)
 - [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade
 - [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada)
 - [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED)
@@ -61,6 +63,7 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - **Cloud**: AWS demonstrada via LocalStack (S3, SQS, DynamoDB simulados) — sem exigência de deploy real ativo continuamente
 - **CI/CD**: pipeline automatizado (GitHub Actions) validando build e testes a cada push
 - **Testes**: unitários (JUnit + Mockito), integração (Testcontainers), contrato/E2E entre microsserviços
+- **Confiabilidade de eventos**: padrão Transactional Outbox em order-service e inventory-service — evita o problema de dual-write (gravar no banco e publicar no SQS como operações separadas e não atômicas)
 - **Processo**: desenvolvimento incremental, fase a fase; nenhuma tecnologia implementada sem explicação prévia do motivo de seu uso
 
 ## Key Decisions
@@ -74,6 +77,8 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | Logística como atributos do order-service, com transportadora simulada via mock | Evita inflar em outro microsserviço, mas ainda demonstra integração externa simulada | — Pending |
 | AWS demonstrada via LocalStack, sem deploy real contínuo | Evita custo de nuvem constante, mas ainda demonstra uso de serviços AWS (S3, SQS, DynamoDB) | — Pending |
 | Documentação em português, código em inglês | Alinhado às convenções da comunidade Java/Spring e ao objetivo de portfólio para uma vaga no Brasil | — Pending |
+| Empresa compradora como entidade própria com limite de crédito | A regra de aprovação por limite de crédito não tem contra o que checar sem isso; achado da pesquisa de domínio | — Pending |
+| Padrão Transactional Outbox em vez de publicação direta (dual-write) | Evita divergência entre o estado salvo no banco e o evento publicado no SQS; achado de risco crítico da pesquisa de arquitetura/pitfalls | — Pending |
 
 ## Evolution
 
@@ -93,4 +98,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-09-16 após inicialização*
+*Última atualização: 2026-09-16 após pesquisa de domínio (achados incorporados)*
