@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  # D-05: o Gateway apenas roteia. Nenhuma configuração de spring.security existe neste arquivo —
+  # cada serviço downstream valida o JWT localmente e de forma independente (AUTH-03).
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: auth-service-route
+              uri: http://auth-service:8081
+              predicates:
+                - Path=/api/auth/**,/api/companies/**
+              filters:
+                - StripPrefix=1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
