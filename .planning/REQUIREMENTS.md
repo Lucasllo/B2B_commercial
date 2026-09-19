@@ -9,12 +9,12 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Authentication & Companies
 
-- [ ] **AUTH-01**: Vendedor (seller admin) cria contas de empresas compradoras com credenciais de usuário
-- [ ] **AUTH-02**: Usuário faz login com email/senha e recebe um JWT contendo papel (BUYER/SELLER_ADMIN) e, se comprador, o ID da empresa
-- [ ] **AUTH-03**: Cada serviço valida o JWT localmente (stateless), rejeitando tokens inválidos/expirados
-- [ ] **COMP-01**: Empresa compradora é armazenada com nome e limite de crédito
-- [ ] **COMP-02**: Vendedor pode visualizar/atualizar o limite de crédito de uma empresa compradora
-- [ ] **COMP-03**: Usuários compradores são restritos aos dados da própria empresa (não veem dados de outras empresas)
+- [x] **AUTH-01**: Vendedor (seller admin) cria contas de empresas compradoras com credenciais de usuário
+- [x] **AUTH-02**: Usuário faz login com email/senha e recebe um JWT contendo papel (BUYER/SELLER_ADMIN) e, se comprador, o ID da empresa
+- [x] **AUTH-03**: Cada serviço valida o JWT localmente (stateless), rejeitando tokens inválidos/expirados
+- [x] **COMP-01**: Empresa compradora é armazenada com nome e limite de crédito
+- [x] **COMP-02**: Vendedor pode visualizar/atualizar o limite de crédito de uma empresa compradora
+- [x] **COMP-03**: Usuários compradores são restritos aos dados da própria empresa (não veem dados de outras empresas)
 
 ### Catalog
 
@@ -51,7 +51,7 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Todo o sistema (microsserviços + Postgres + LocalStack) sobe localmente com um único comando `docker-compose up`
+- [x] **INFRA-01**: Todo o sistema (microsserviços + Postgres + LocalStack) sobe localmente com um único comando `docker-compose up`
 - [ ] **INFRA-02**: Pipeline de CI (GitHub Actions) builda e testa cada serviço a cada push
 - [ ] **INFRA-03**: Decisões arquiteturais são documentadas como ADRs em português
 
@@ -103,12 +103,12 @@ Preenchida durante a criação do roadmap (2026-09-16).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
-| AUTH-03 | Phase 1 | Pending |
-| COMP-01 | Phase 1 | Pending |
-| COMP-02 | Phase 1 | Pending |
-| COMP-03 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Complete |
+| AUTH-02 | Phase 1 | Complete |
+| AUTH-03 | Phase 1 | Complete |
+| COMP-01 | Phase 1 | Complete |
+| COMP-02 | Phase 1 | Complete |
+| COMP-03 | Phase 1 | Complete |
 | CAT-01 | Phase 2 | Pending |
 | CAT-02 | Phase 2 | Pending |
 | INV-01 | Phase 2 | Pending |
@@ -127,7 +127,7 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | NOTF-02 | Phase 3 | Pending |
 | QUAL-01 | Phase 7 | Pending |
 | QUAL-02 | Phase 7 | Pending |
-| INFRA-01 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 7 | Pending |
 | INFRA-03 | Phase 7 | Pending |
 | TEST-01 | Phase 7 | Pending |
@@ -135,6 +135,7 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | TEST-03 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 30 total
 - Mapped to phases: 30 ✓
 - Unmapped: 0
