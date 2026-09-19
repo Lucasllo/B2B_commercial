@@ -25,3 +25,7 @@ pasta é para consulta própria durante o aprendizado.
    por que ela não é versionada e por que pode ser apagada sem medo
 8. [Flyway e Migrations](08-flyway-migrations.md) — como o banco de dados evolui de
    forma controlada e versionada, e como isso funciona em produção
+9. [GlobalExceptionHandler](09-global-exception-handler.md) — como o `auth-service`
+   padroniza e protege as respostas de erro em toda a aplicação
+10. [application.yml do gateway](10-gateway-application-yml.md) — como o roteamento de
+    requisições para os outros serviços é configurado
