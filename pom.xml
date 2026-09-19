@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reactor Maven pai do OrderFlow. Não usa spring-boot-starter-parent: os BOMs são importados
+  explicitamente em dependencyManagement para manter controle total sobre a árvore de
+  dependências dos cinco microsserviços que este reactor vai hospedar (Fases 1 a 6).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.orderflow</groupId>
+    <artifactId>orderflow-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>OrderFlow Parent</name>
+    <description>Reactor Maven agregador dos microsserviços do OrderFlow</description>
+
+    <modules>
+        <module>gateway</module>
+        <module>auth-service</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- SPRING_BOOT_LINE registrado em 01-01-SUMMARY.md — decisão travada por checkpoint humano -->
+        <spring-boot.version>3.5.16</spring-boot.version>
+        <!-- SPRING_CLOUD_TRAIN registrado em 01-01-SUMMARY.md — trem compatível com spring-boot.version -->
+        <spring-cloud.version>2025.0.3</spring-cloud.version>
+        <!-- Versão do BOM do Testcontainers usada pelos testes de integração de todos os módulos -->
+        <testcontainers.version>1.20.4</testcontainers.version>
+        <!-- Versão do Lombok usada por todos os módulos para reduzir boilerplate de entidades/DTOs -->
+        <lombok.version>1.18.34</lombok.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- BOM oficial do Spring Boot — fixa as versões de todos os starters/auto-configurações -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- BOM do Spring Cloud, trem Northfields, compatível com a linha Spring Boot acima -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- BOM do Testcontainers — usado pelos módulos de testes de integração (Postgres real) -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!--
+                  Empacota cada módulo como jar executável Spring Boot. A execução do goal
+                  `repackage` é declarada explicitamente porque este reactor não herda de
+                  spring-boot-starter-parent (BOMs são importados manualmente acima), então o
+                  binding automático de `repackage` na fase `package` não é herdado por padrão.
+                -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <!-- Compilador Java 21 com o annotation processor path do Lombok configurado por módulo -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+                <!--
+                  Failsafe roda as classes *IT.java (integration-test + verify) — mantém os testes
+                  de integração fora de `./mvnw test` (que só roda o surefire, *Test.java) e dentro
+                  de `./mvnw verify`, conforme a convenção de nomes desta fase.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

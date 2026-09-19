@@ -1,0 +1,3 @@
+# Garante que o Maven Wrapper mantenha terminação de linha LF em qualquer plataforma —
+# um mvnw com CRLF quebra a execução do script shell no runner Linux do GitHub Actions.
+mvnw text eol=lf

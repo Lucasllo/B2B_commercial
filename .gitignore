@@ -1,0 +1,11 @@
+target/
+.env
+*.log
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Maven Wrapper jar is downloaded on demand from wrapperUrl (see .mvn/wrapper/maven-wrapper.properties) —
+# not committed, mirroring the wrapper's own "avoid checking in binary data" design goal.
+.mvn/wrapper/maven-wrapper.jar
