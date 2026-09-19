@@ -35,7 +35,7 @@ public record CreateCompanyRequest(
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record BuyerUser(
-            @NotBlank @Email String email,
+            @NotBlank @Email @Size(max = 255) String email,
             @NotBlank @Size(min = 8) String password
     ) {
     }
