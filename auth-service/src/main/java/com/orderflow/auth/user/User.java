@@ -42,6 +42,22 @@ public class User {
     @Column(name = "company_id")
     private UUID companyId;
 
-    @Column(name = "created_at")
+    // insertable/updatable = false: created_at é gravado pelo default now() do Postgres
+    // (V1__init_auth_schema.sql), nunca pela aplicação — evita violar o NOT NULL da coluna quando
+    // um User é persistido via JPA (o SELLER_ADMIN semeado pela V2 usa INSERT SQL direto e nunca
+    // passou por este caminho antes do plano 01-04 criar o primeiro BUYER via CompanyService).
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
+
+    /**
+     * Construtor usado por {@code CompanyService} para gravar o BUYER vinculado a uma empresa
+     * recém-criada. O papel é sempre passado explicitamente pelo chamador (nunca a partir de
+     * payload de cliente) — T-01-24.
+     */
+    public User(String email, String passwordHash, Role role, UUID companyId) {
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.role = role;
+        this.companyId = companyId;
+    }
 }
