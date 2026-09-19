@@ -2,12 +2,16 @@ package com.orderflow.auth.company;
 
 import com.orderflow.auth.company.dto.CompanyResponse;
 import com.orderflow.auth.company.dto.CreateCompanyRequest;
+import com.orderflow.auth.company.dto.CreditLimitResponse;
 import com.orderflow.auth.user.Role;
 import com.orderflow.auth.user.User;
 import com.orderflow.auth.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Cria uma empresa compradora e o usuário BUYER vinculado a ela numa única transação (AUTH-01,
@@ -53,5 +57,22 @@ public class CompanyService {
                 company.getCreditLimit(),
                 company.getCreatedAt(),
                 new CompanyResponse.BuyerUserSummary(buyer.getId(), buyer.getEmail(), buyer.getRole().name()));
+    }
+
+    @Transactional(readOnly = true)
+    public CreditLimitResponse getCreditLimit(UUID companyId) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new CompanyNotFoundException("Company not found"));
+        return new CreditLimitResponse(company.getId(), company.getCreditLimit());
+    }
+
+    @Transactional
+    public CreditLimitResponse updateCreditLimit(UUID companyId, BigDecimal newLimit) {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> new CompanyNotFoundException("Company not found"));
+        // Grava exatamente o BigDecimal recebido — a validação de escala (D-06) já aconteceu no
+        // DTO; arredondar aqui alteraria em silêncio o limite que o vendedor informou.
+        company.changeCreditLimit(newLimit);
+        return new CreditLimitResponse(company.getId(), company.getCreditLimit());
     }
 }

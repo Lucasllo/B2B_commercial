@@ -48,4 +48,13 @@ public class Company {
         this.name = name;
         this.creditLimit = creditLimit;
     }
+
+    /**
+     * Grava o novo limite de crédito exatamente como recebido — nunca {@code setScale} nem
+     * {@code round} aqui; a validação de escala (D-06) já aconteceu no DTO antes deste método ser
+     * chamado (plano 01-05, T-01-35).
+     */
+    public void changeCreditLimit(BigDecimal newCreditLimit) {
+        this.creditLimit = newCreditLimit;
+    }
 }

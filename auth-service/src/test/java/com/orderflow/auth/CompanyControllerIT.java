@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -307,5 +308,165 @@ class CompanyControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.companyId").value(companyId))
                 .andExpect(jsonPath("$.role").value("BUYER"));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Plano 01-05, Task 1 (COMP-02): consulta e atualização do limite de crédito, com
+    // autorização granular por papel e por empresa.
+    // ---------------------------------------------------------------------------------------
+
+    private record CreatedCompany(String companyId, String buyerEmail, String buyerPassword) {
+    }
+
+    private CreatedCompany createCompanyAndReturnIds(String name, String creditLimit, String buyerEmail,
+                                                       String buyerPassword) throws Exception {
+        String adminToken = adminToken();
+        MvcResult creation = mockMvc.perform(post("/companies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCompanyPayload(name, creditLimit, buyerEmail, buyerPassword)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String companyId = objectMapper.readTree(creation.getResponse().getContentAsString()).get("id").asText();
+        return new CreatedCompany(companyId, buyerEmail, buyerPassword);
+    }
+
+    @Test
+    void sellerAdminGetsCreditLimitOfAnyCompanyWithExactValue() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Consulta Ltda", "1500.50", "consulta1@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(1500.50))
+                .andExpect(jsonPath("$.companyId").value(company.companyId()));
+    }
+
+    @Test
+    void sellerAdminUpdatesCreditLimitAndSubsequentGetReturnsNewValue() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Atualiza Ltda", "1000.00", "atualiza1@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"2500.75"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(2500.75));
+    }
+
+    @Test
+    void sellerAdminUpdatesCreditLimitWithThreeDecimalsReturns400AndPreviousValuePersists() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Tres Casas Ltda", "1000.00", "atualiza2@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"2500.755"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(1000.00));
+    }
+
+    @Test
+    void sellerAdminUpdatesCreditLimitWithNegativeValueReturns400() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Negativo Ltda", "1000.00", "atualiza3@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"-0.01"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void sellerAdminUpdatesCreditLimitWithMissingFieldReturns400() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Ausente Ltda", "1000.00", "atualiza4@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void buyerGetsCreditLimitOfOwnCompanyReturns200WithCorrectValue() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Buyer Leitura Ltda", "333.33", "leitura1@silva.com", "Comprador!123");
+        String buyerToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, company.buyerEmail(), company.buyerPassword());
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(333.33));
+    }
+
+    @Test
+    void buyerUpdatesCreditLimitOfOwnCompanyReturns403() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Buyer Escrita Ltda", "333.33", "escrita1@silva.com", "Comprador!123");
+        String buyerToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, company.buyerEmail(), company.buyerPassword());
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"999.99"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void sellerAdminGetsCreditLimitOfNonexistentCompanyReturns404WithSameBodyShapeAsOtherErrors() throws Exception {
+        String token = adminToken();
+        String randomId = java.util.UUID.randomUUID().toString();
+
+        MvcResult result = mockMvc.perform(get("/companies/" + randomId + "/credit-limit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(json.has("error")).isTrue();
+        assertThat(json.has("message")).isTrue();
+    }
+
+    @Test
+    void getAndPutCreditLimitWithoutAuthorizationHeaderReturn401() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Limite Sem Token Ltda", "100.00", "semtoken1@silva.com", "Comprador!123");
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/companies/" + company.companyId() + "/credit-limit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"1.00"}
+                                """))
+                .andExpect(status().isUnauthorized());
     }
 }

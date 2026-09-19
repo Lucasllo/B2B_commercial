@@ -97,12 +97,21 @@
                         </execution>
                     </executions>
                 </plugin>
-                <!-- Compilador Java 21 com o annotation processor path do Lombok configurado por módulo -->
+                <!--
+                  Compilador Java 21 com o annotation processor path do Lombok configurado por
+                  módulo. `<parameters>true</parameters>` é obrigatório a partir do Spring 6/Boot
+                  3 (este reactor não herda de spring-boot-starter-parent, que já ativaria essa
+                  flag por padrão): sem ela, nem `@PathVariable UUID companyId` nem o SpEL
+                  `#companyId` de `@PreAuthorize` conseguem resolver o nome do parâmetro via
+                  reflection, e a requisição falha com 500 em vez do 403/404 esperado (plano
+                  01-05, Task 1 — descoberto pelos testes de `CompanyControllerIT`, Rule 3).
+                -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <configuration>
                         <release>${maven.compiler.release}</release>
+                        <parameters>true</parameters>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>

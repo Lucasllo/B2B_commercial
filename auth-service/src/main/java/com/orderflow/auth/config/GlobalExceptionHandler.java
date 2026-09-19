@@ -1,5 +1,6 @@
 package com.orderflow.auth.config;
 
+import com.orderflow.auth.company.CompanyNotFoundException;
 import com.orderflow.auth.company.EmailAlreadyUsedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -45,6 +46,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleConflict(Exception ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(errorBody("email_already_used", "Email is already in use"));
+    }
+
+    @ExceptionHandler(CompanyNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleCompanyNotFound(CompanyNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(errorBody("company_not_found", "Company not found"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
