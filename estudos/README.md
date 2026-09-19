@@ -21,3 +21,7 @@ pasta é para consulta própria durante o aprendizado.
    acessar o quê
 6. [JWKS](06-jwks.md) — como outros serviços vão confirmar que um token de login é
    autêntico, sem perguntar ao `auth-service` toda vez
+7. [Pasta target](07-pasta-target.md) — a pasta de saída gerada pelo Maven a cada build,
+   por que ela não é versionada e por que pode ser apagada sem medo
+8. [Flyway e Migrations](08-flyway-migrations.md) — como o banco de dados evolui de
+   forma controlada e versionada, e como isso funciona em produção
