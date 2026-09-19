@@ -1,0 +1,48 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Esqueleto Vertical — Infraestrutura, Autenticação e Empresas",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Catálogo e Estoque",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "Primeira Integração Assíncrona — Histórico de Notificações",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "Núcleo do Pedido — Criação e Aprovação por Limite de Crédito",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Saga de Reserva de Estoque — Outbox, Compensação e Confirmação",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Endurecimento, Observabilidade e Entrega",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 2)",
+    "reason": "Phase 2 of 7 — needs a plan"
+  },
+  "updated_at": "2026-09-19T03:15:45.405Z"
+}
