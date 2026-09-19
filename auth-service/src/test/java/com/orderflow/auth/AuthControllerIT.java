@@ -8,11 +8,15 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.orderflow.auth.auth.dto.LoginRequest;
+import com.orderflow.auth.company.Company;
+import com.orderflow.auth.company.CompanyRepository;
+import com.orderflow.auth.user.Role;
 import com.orderflow.auth.user.User;
 import com.orderflow.auth.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -20,6 +24,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.math.BigDecimal;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Instant;
@@ -55,6 +60,12 @@ class AuthControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private CompanyRepository companyRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     private String login(String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
@@ -215,5 +226,37 @@ class AuthControllerIT extends AbstractIntegrationTest {
     void actuatorHealthIsPubliclyAccessible() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * Task 2 (AUTH-02, Flagged Assumptions do plano 01-04): a asserção é sobre AUSÊNCIA da chave
+     * {@code company_id} no conjunto de claims do SELLER_ADMIN, não sobre o valor ser nulo —
+     * {@code Jwt#hasClaim} distingue os dois casos, ao contrário de {@code getClaimAsString}.
+     */
+    @Test
+    void sellerAdminTokenDoesNotHaveCompanyIdClaim() throws Exception {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+        Jwt decoded = jwtDecoder.decode(token);
+
+        assertThat(decoded.hasClaim("company_id")).isFalse();
+    }
+
+    /**
+     * Task 2: o {@code sub} do JWT do BUYER é o UUID do próprio usuário, não o da empresa à qual
+     * ele está vinculado — para que as Fases 2-6 nunca confundam os dois identificadores.
+     */
+    @Test
+    void buyerTokenSubjectIsBuyerUserIdNotCompanyId() throws Exception {
+        Company company = companyRepository.save(new Company("Auth IT Buyer Co", new BigDecimal("100.00")));
+        String rawPassword = "BuyerSenha!123";
+        User buyer = userRepository.save(new User(
+                "buyer.subject.test@silva.com", passwordEncoder.encode(rawPassword), Role.BUYER, company.getId()));
+
+        String token = login("buyer.subject.test@silva.com", rawPassword);
+        Jwt decoded = jwtDecoder.decode(token);
+
+        assertThat(decoded.getSubject()).isEqualTo(buyer.getId().toString());
+        assertThat(decoded.getSubject()).isNotEqualTo(company.getId().toString());
+        assertThat(decoded.getClaimAsString("company_id")).isEqualTo(company.getId().toString());
     }
 }

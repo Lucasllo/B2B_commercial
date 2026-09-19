@@ -8,6 +8,8 @@ import com.orderflow.auth.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +36,9 @@ class CompanyControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     private String adminToken() throws Exception {
         return TestTokens.loginAndGetToken(mockMvc, objectMapper, ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -274,5 +279,33 @@ class CompanyControllerIT extends AbstractIntegrationTest {
             assertThat(body).doesNotContain("at com.orderflow");
             assertThat(body).doesNotContain("Comprador!123");
         }
+    }
+
+    /**
+     * Task 2 (AUTH-02): o ciclo completo "admin cria empresa → BUYER faz login com o company_id
+     * certo" — o claim {@code company_id} do JWT do BUYER compara por igualdade em texto com o
+     * {@code id} devolvido por {@code POST /companies}, sem conversão.
+     */
+    @Test
+    void buyerCreatedByAdminLogsInAndReceivesCompanyIdClaimMatchingCreatedCompany() throws Exception {
+        String adminToken = adminToken();
+        MvcResult creation = mockMvc.perform(post("/companies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createCompanyPayload(
+                                "Encadeado Ltda", "750.25", "encadeado@silva.com", "Comprador!123")))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String companyId = objectMapper.readTree(creation.getResponse().getContentAsString()).get("id").asText();
+
+        String buyerToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, "encadeado@silva.com", "Comprador!123");
+        Jwt decoded = jwtDecoder.decode(buyerToken);
+        assertThat(decoded.getClaimAsString("role")).isEqualTo("BUYER");
+        assertThat(decoded.getClaimAsString("company_id")).isEqualTo(companyId);
+
+        mockMvc.perform(get("/auth/me").header("Authorization", "Bearer " + buyerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyId").value(companyId))
+                .andExpect(jsonPath("$.role").value("BUYER"));
     }
 }
