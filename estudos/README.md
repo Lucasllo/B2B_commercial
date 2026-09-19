@@ -29,3 +29,7 @@ pasta é para consulta própria durante o aprendizado.
    padroniza e protege as respostas de erro em toda a aplicação
 10. [application.yml do gateway](10-gateway-application-yml.md) — como o roteamento de
     requisições para os outros serviços é configurado
+11. [CompanyGuard](11-companyguard.md) — como o projeto impede que uma empresa veja ou
+    altere dados de outra empresa
+12. [Records e suas anotações](12-records-e-anotacoes.md) — o que é um `record` em Java
+    e todas as anotações de validação/serialização usadas nos DTOs do projeto
