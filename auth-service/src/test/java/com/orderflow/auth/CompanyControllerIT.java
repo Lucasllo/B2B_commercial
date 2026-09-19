@@ -469,4 +469,179 @@ class CompanyControllerIT extends AbstractIntegrationTest {
                                 """))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Plano 01-05, Task 2 (COMP-03): isolamento por empresa — comprovado por teste adversarial,
+    // incluindo a prova de que 403 não vira um oráculo de existência.
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void buyerOfCompanyAGettingCompanyBCreditLimitReturns403WithoutLeakingCompanyBData() throws Exception {
+        CreatedCompany companyA = createCompanyAndReturnIds(
+                "Isolamento A Ltda", "111.11", "isolamentoA1@silva.com", "Comprador!123");
+        CreatedCompany companyB = createCompanyAndReturnIds(
+                "Isolamento B Ltda", "222.22", "isolamentoB1@silva.com", "Comprador!123");
+        String buyerAToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, companyA.buyerEmail(), companyA.buyerPassword());
+
+        MvcResult result = mockMvc.perform(get("/companies/" + companyB.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerAToken))
+                .andExpect(status().isForbidden())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("Isolamento B Ltda");
+        assertThat(body).doesNotContain("222.22");
+    }
+
+    @Test
+    void forbiddenResponseForOtherCompanyIsByteIdenticalToForbiddenResponseForNonexistentCompany() throws Exception {
+        CreatedCompany companyA = createCompanyAndReturnIds(
+                "Isolamento Oraculo A Ltda", "111.11", "oraculoA1@silva.com", "Comprador!123");
+        CreatedCompany companyB = createCompanyAndReturnIds(
+                "Isolamento Oraculo B Ltda", "222.22", "oraculoB1@silva.com", "Comprador!123");
+        String buyerAToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, companyA.buyerEmail(), companyA.buyerPassword());
+        String nonexistentId = java.util.UUID.randomUUID().toString();
+
+        MvcResult otherCompanyResult = mockMvc.perform(get("/companies/" + companyB.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerAToken))
+                .andExpect(status().isForbidden())
+                .andReturn();
+        MvcResult nonexistentResult = mockMvc.perform(get("/companies/" + nonexistentId + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerAToken))
+                .andExpect(status().isForbidden())
+                .andReturn();
+
+        assertThat(otherCompanyResult.getResponse().getStatus()).isEqualTo(nonexistentResult.getResponse().getStatus());
+        assertThat(otherCompanyResult.getResponse().getContentAsString())
+                .isEqualTo(nonexistentResult.getResponse().getContentAsString());
+    }
+
+    @Test
+    void buyerOfCompanyAPuttingCompanyBCreditLimitReturns403AndCompanyBLimitUnchanged() throws Exception {
+        CreatedCompany companyA = createCompanyAndReturnIds(
+                "Isolamento Put A Ltda", "111.11", "isolamentoPutA1@silva.com", "Comprador!123");
+        CreatedCompany companyB = createCompanyAndReturnIds(
+                "Isolamento Put B Ltda", "222.22", "isolamentoPutB1@silva.com", "Comprador!123");
+        String buyerAToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, companyA.buyerEmail(), companyA.buyerPassword());
+
+        mockMvc.perform(put("/companies/" + companyB.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerAToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"creditLimit":"999.99"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        String adminToken = adminToken();
+        mockMvc.perform(get("/companies/" + companyB.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(222.22));
+    }
+
+    @Test
+    void buyerOfCompanyAGettingOwnCompanyCreditLimitReturns200() throws Exception {
+        CreatedCompany companyA = createCompanyAndReturnIds(
+                "Isolamento Propria Ltda", "111.11", "isolamentoPropria1@silva.com", "Comprador!123");
+        String buyerAToken = TestTokens.loginAndGetToken(mockMvc, objectMapper, companyA.buyerEmail(), companyA.buyerPassword());
+
+        mockMvc.perform(get("/companies/" + companyA.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + buyerAToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creditLimit").value(111.11));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Plano 01-05, Task 2 (AUTH-03): rejeição de token — quatro formas adversariais distintas.
+    // ---------------------------------------------------------------------------------------
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.nimbusds.jose.jwk.RSAKey rsaKey;
+
+    @Test
+    void expiredTokenReturns401() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Token Expirado Ltda", "10.00", "expirado1@silva.com", "Comprador!123");
+
+        com.nimbusds.jwt.JWTClaimsSet claims = new com.nimbusds.jwt.JWTClaimsSet.Builder()
+                .issuer("orderflow-auth-service")
+                .subject(java.util.UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(java.util.Date.from(java.time.Instant.now().minusSeconds(7200)))
+                .expirationTime(java.util.Date.from(java.time.Instant.now().minusSeconds(3600)))
+                .build();
+        String expiredToken = signWithKey(claims, rsaKey);
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void tokenSignedByDifferentKeyReturns401() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Token Outra Chave Ltda", "10.00", "outrachave1@silva.com", "Comprador!123");
+
+        java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        java.security.KeyPair keyPair = generator.generateKeyPair();
+        com.nimbusds.jose.jwk.RSAKey otherKey = new com.nimbusds.jose.jwk.RSAKey.Builder(
+                (java.security.interfaces.RSAPublicKey) keyPair.getPublic())
+                .privateKey(keyPair.getPrivate())
+                .keyID("other-key")
+                .build();
+
+        com.nimbusds.jwt.JWTClaimsSet claims = new com.nimbusds.jwt.JWTClaimsSet.Builder()
+                .issuer("orderflow-auth-service")
+                .subject(java.util.UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new java.util.Date())
+                .expirationTime(java.util.Date.from(java.time.Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenSignedByOtherKey = signWithKey(claims, otherKey);
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + tokenSignedByOtherKey))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void malformedAuthorizationHeaderReturns401() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Token Malformado Ltda", "10.00", "malformado1@silva.com", "Comprador!123");
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer nao-e-um-jwt"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void tokenWithTamperedPayloadAfterSigningReturns401() throws Exception {
+        CreatedCompany company = createCompanyAndReturnIds(
+                "Token Adulterado Ltda", "10.00", "adulterado1@silva.com", "Comprador!123");
+        String token = adminToken();
+
+        String[] parts = token.split("\\.");
+        assertThat(parts).hasSize(3);
+        String decodedPayload = new String(
+                java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+        String tamperedPayload = decodedPayload.replace("\"role\":\"SELLER_ADMIN\"", "\"role\":\"BUYER!\"");
+        String tamperedEncodedPayload = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(tamperedPayload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String tamperedToken = parts[0] + "." + tamperedEncodedPayload + "." + parts[2];
+
+        mockMvc.perform(get("/companies/" + company.companyId() + "/credit-limit")
+                        .header("Authorization", "Bearer " + tamperedToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private static String signWithKey(com.nimbusds.jwt.JWTClaimsSet claims, com.nimbusds.jose.jwk.RSAKey signingKey)
+            throws Exception {
+        com.nimbusds.jose.JWSHeader header = new com.nimbusds.jose.JWSHeader.Builder(com.nimbusds.jose.JWSAlgorithm.RS256)
+                .keyID(signingKey.getKeyID())
+                .build();
+        com.nimbusds.jwt.SignedJWT signedJWT = new com.nimbusds.jwt.SignedJWT(header, claims);
+        signedJWT.sign(new com.nimbusds.jose.crypto.RSASSASigner(signingKey));
+        return signedJWT.serialize();
+    }
 }
