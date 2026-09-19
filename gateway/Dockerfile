@@ -26,6 +26,8 @@ RUN groupadd --system orderflow && useradd --system --gid orderflow orderflow
 USER orderflow
 
 WORKDIR /app
-COPY --from=build /workspace/gateway/target/gateway.jar app.jar
+# gateway-exec.jar (classifier "exec") é o jar gordo executável — gateway.jar plano permanece o
+# artefato principal (ver comentário no pom.xml raiz sobre o classpath do maven-failsafe-plugin).
+COPY --from=build /workspace/gateway/target/gateway-exec.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

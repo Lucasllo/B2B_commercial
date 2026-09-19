@@ -81,6 +81,16 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          Fornece @ServiceConnection, que liga o PostgreSQLContainer do Testcontainers ao
+          datasource do Spring Boot automaticamente — sem essa dependência @ServiceConnection
+          não existe no classpath (não capturado na lista original de dependências do plano).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Integração JUnit 5 + ciclo de vida dos containers Testcontainers -->
         <dependency>
             <groupId>org.testcontainers</groupId>

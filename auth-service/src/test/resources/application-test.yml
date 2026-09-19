@@ -1,0 +1,15 @@
+spring:
+  flyway:
+    schemas: auth
+    default-schema: auth
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: auth
+
+orderflow:
+  auth:
+    token-ttl-seconds: 3600

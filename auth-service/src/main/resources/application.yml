@@ -1,0 +1,39 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    # D-01: instância Postgres única, um schema por serviço — currentSchema=auth isola este
+    # serviço das tabelas de catalog/inventory/order que nascem nas Fases 2+.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderflow?currentSchema=auth}
+    username: ${SPRING_DATASOURCE_USERNAME:orderflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:orderflow}
+  flyway:
+    schemas: auth
+    default-schema: auth
+    create-schemas: true
+  jpa:
+    # O Flyway é dono do schema; o Hibernate só valida que o mapeamento bate com o schema real —
+    # nunca gera DDL sozinho.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: auth
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+orderflow:
+  auth:
+    # D-04: apenas access token, sem refresh, TTL de referência ~1h.
+    token-ttl-seconds: 3600

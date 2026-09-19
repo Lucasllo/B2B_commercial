@@ -35,6 +35,8 @@
         <testcontainers.version>1.20.4</testcontainers.version>
         <!-- Versão do Lombok usada por todos os módulos para reduzir boilerplate de entidades/DTOs -->
         <lombok.version>1.18.34</lombok.version>
+        <!-- Versão do maven-failsafe-plugin, que roda as classes *IT.java em ./mvnw verify -->
+        <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -74,6 +76,11 @@
                   `repackage` é declarada explicitamente porque este reactor não herda de
                   spring-boot-starter-parent (BOMs são importados manualmente acima), então o
                   binding automático de `repackage` na fase `package` não é herdado por padrão.
+                  `classifier=exec` mantém o jar plano (auth-service.jar) como artefato principal
+                  — se repackage substituísse o artefato principal pelo jar gordo, o
+                  maven-failsafe-plugin (que roda depois, na fase integration-test) montaria o
+                  classpath de teste a partir do jar gordo, cujas classes vivem em BOOT-INF/classes
+                  e não na raiz do jar — um NoClassDefFoundError para toda classe da aplicação.
                 -->
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
@@ -84,6 +91,9 @@
                             <goals>
                                 <goal>repackage</goal>
                             </goals>
+                            <configuration>
+                                <classifier>exec</classifier>
+                            </configuration>
                         </execution>
                     </executions>
                 </plugin>
@@ -110,6 +120,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${maven-failsafe-plugin.version}</version>
                     <executions>
                         <execution>
                             <goals>

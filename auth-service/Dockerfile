@@ -26,6 +26,9 @@ RUN groupadd --system orderflow && useradd --system --gid orderflow orderflow
 USER orderflow
 
 WORKDIR /app
-COPY --from=build /workspace/auth-service/target/auth-service.jar app.jar
+# auth-service-exec.jar (classifier "exec") é o jar gordo executável — auth-service.jar plano
+# (sem classifier) permanece o artefato principal para não confundir o classpath de testes de
+# integração do maven-failsafe-plugin (ver comentário no pom.xml raiz).
+COPY --from=build /workspace/auth-service/target/auth-service-exec.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
