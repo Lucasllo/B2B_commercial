@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-16)
 Phase: 3 — Primeira Integração Assíncrona — Histórico de Notificações
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-20 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-09-20 - Completed quick task 260920-g6c: Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service
 
 Progress: [███░░░░░░░] 29%
 
@@ -93,6 +93,12 @@ None yet.
 - [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
 - [Fase 3/5]: Verificar API atual do Spring Cloud AWS (`SqsTemplate`, `@SqsListener`) e o desenho da tabela DynamoDB durante o planejamento dessas fases — lacunas MEDIUM de confiança da pesquisa.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260920-g6c | Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service para visualizacao e teste rapido dos endpoints no navegador | 2026-09-20 | 588785f | [260920-g6c-adicionar-springdoc-openapi-swagger-ui-e](./quick/260920-g6c-adicionar-springdoc-openapi-swagger-ui-e/) |
 
 ## Deferred Items
 
