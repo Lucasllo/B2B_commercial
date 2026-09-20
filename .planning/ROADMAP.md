@@ -16,7 +16,7 @@ Cada fase é uma fatia vertical: ao final dela, `docker-compose up` sobe o siste
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Esqueleto Vertical — Infraestrutura, Autenticação e Empresas** - Todo o sistema sobe com um comando e um usuário real se autentica pelo Gateway recebendo um JWT com papel e empresa (completed 2026-09-19)
-- [ ] **Phase 2: Catálogo e Estoque** - O vendedor mantém produtos e níveis de estoque, o comprador enxerga o catálogo, e a reserva já é atômica contra concorrência
+- [x] **Phase 2: Catálogo e Estoque** - O vendedor mantém produtos e níveis de estoque, o comprador enxerga o catálogo, e a reserva já é atômica contra concorrência (completed 2026-09-20)
 - [ ] **Phase 3: Primeira Integração Assíncrona — Histórico de Notificações** - Um evento publicado no SQS vira registro consultável no DynamoDB, provando o encanamento antes da saga
 - [ ] **Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito** - O comprador cria pedidos do catálogo e a regra de aprovação por crédito funciona, ainda sem saga
 - [ ] **Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação** - O Core Value: reserva assíncrona com Transactional Outbox terminando sempre em CONFIRMED ou CANCELLED
@@ -53,7 +53,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A operação de reserva de estoque é atômica: um teste de concorrência disparando requisições paralelas contra as últimas unidades de um produto nunca reserva mais do que o disponível.
   4. Catalog-service e inventory-service sobem no mesmo `docker-compose up` das fases anteriores, cada um com seu próprio banco, acessíveis somente com JWT válido.
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -66,7 +66,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — catálogo e estoque no `docker compose up` e nas rotas do Gateway, mais a prova de atomicidade por HTTP real e concorrência real (INV-02, CAT-02)
+- [x] 02-03-PLAN.md — catálogo e estoque no `docker compose up` e nas rotas do Gateway, mais a prova de atomicidade por HTTP real e concorrência real (INV-02, CAT-02)
 
 ### Phase 3: Primeira Integração Assíncrona — Histórico de Notificações
 
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
-| 2. Catálogo e Estoque | 2/3 | In Progress|  |
+| 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 0/TBD | Not started | - |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/TBD | Not started | - |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
