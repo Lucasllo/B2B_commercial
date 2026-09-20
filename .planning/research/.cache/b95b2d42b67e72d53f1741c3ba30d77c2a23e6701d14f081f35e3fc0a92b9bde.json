@@ -1,0 +1,1 @@
+{"content":"Real HTTP concurrency test: bind RANDOM_PORT + @LocalServerPort, use HttpClient/RestClient with Executors.newVirtualThreadPerTaskExecutor and a CyclicBarrier to force simultaneous request start; MockMvc is in-process, not real socket HTTP.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-09-20T00:42:00.635Z","ttl":86400000,"kind":"web"}

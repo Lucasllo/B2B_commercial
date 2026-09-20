@@ -1,0 +1,1 @@
+{"content":"@Retryable + @Transactional on same method needs @EnableRetry(order = Ordered.LOWEST_PRECEDENCE) so retry advice wraps outside transactional advice, else all retries share one rollback-only transaction.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-09-20T00:42:00.073Z","ttl":86400000,"kind":"docs"}

@@ -1,0 +1,1 @@
+{"content":"JPA @Version emits ObjectOptimisticLockingFailureException on conflicting UPDATE; Spring Retry @Retryable can retry it but each attempt must run in a fresh transaction, not the same doomed one.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-09-20T00:41:59.532Z","ttl":86400000,"kind":"docs"}

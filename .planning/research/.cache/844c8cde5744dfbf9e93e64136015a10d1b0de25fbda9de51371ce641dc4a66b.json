@@ -1,0 +1,1 @@
+{"content":"spring-retry requires spring-boot-starter-aop on the classpath; verified against spring-boot-dependencies-3.5.16.pom: spring-retry managed at 2.0.13, spring-boot-starter-aop at 3.5.16, postgresql driver at 42.7.11.","source":"web","provider":"websearch","confidence":"HIGH","fetched_at":"2026-09-20T00:42:01.696Z","ttl":86400000,"kind":"docs"}
