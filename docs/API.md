@@ -4,6 +4,12 @@
 > Endpoints disponíveis hoje no repositório, pertencentes ao `auth-service`, `catalog-service` e
 > `inventory-service`, todos acessados através do API Gateway. Veja
 > [VISAO-GERAL.md](VISAO-GERAL.md) para o contexto do projeto e o estado atual dos serviços.
+>
+> **Prefere testar no navegador em vez de ler?** Cada serviço também expõe uma Swagger UI
+> interativa na própria porta (não pelo Gateway): `http://localhost:8081/swagger-ui.html`
+> (auth-service), `:8082` (catalog-service), `:8083` (inventory-service). Cole um JWT no botão
+> **Authorize** e exercite qualquer endpoint abaixo via **Try it out** — ver
+> [VISAO-GERAL.md § Documentação interativa](VISAO-GERAL.md#documentação-interativa-swagger-ui).
 
 ## URL base
 

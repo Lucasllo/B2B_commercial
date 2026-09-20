@@ -33,3 +33,6 @@ pasta é para consulta própria durante o aprendizado.
     altere dados de outra empresa
 12. [Records e suas anotações](12-records-e-anotacoes.md) — o que é um `record` em Java
     e todas as anotações de validação/serialização usadas nos DTOs do projeto
+13. [springdoc-openapi (Swagger UI)](13-springdoc-openapi.md) — como cada serviço passou a
+    expor documentação interativa navegável, com botão Authorize funcional para testar
+    endpoints protegidos direto no navegador

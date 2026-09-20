@@ -80,14 +80,33 @@ Cada serviço acima valida o JWT localmente (JWKS publicado por auth-service em
 
 Java 21, Spring Boot 3.5.16, Spring Cloud 2025.0.3 ("Northfields") com Spring Cloud Gateway Server
 WebMVC, Spring Security (OAuth2 Resource Server, JWT auto-emitido via Nimbus), PostgreSQL 16.15 com
-Flyway, Docker Compose V2 para orquestração local. SQS e DynamoDB via LocalStack (imagem
-`localstack/localstack:2026.08.3`) estão provisionados na stack, mas ainda sem nenhum serviço
-consumidor.
+Flyway, springdoc-openapi 2.9.1 (Swagger UI por serviço), Docker Compose V2 para orquestração
+local. SQS e DynamoDB via LocalStack (imagem `localstack/localstack:2026.08.3`) estão provisionados
+na stack, mas ainda sem nenhum serviço consumidor.
+
+## Documentação interativa (Swagger UI)
+
+Além da referência estática em [API.md](API.md), `auth-service`, `catalog-service` e
+`inventory-service` servem Swagger UI na própria porta direta de cada um — **não** pelo Gateway:
+
+| Serviço | Swagger UI |
+|---|---|
+| `auth-service` | http://localhost:8081/swagger-ui.html |
+| `catalog-service` | http://localhost:8082/swagger-ui.html |
+| `inventory-service` | http://localhost:8083/swagger-ui.html |
+
+A página carrega sem token (é uma ferramenta local de desenvolvimento, deliberadamente aceita —
+ver `SecurityConfig.java` de cada serviço). O botão **Authorize** aceita um JWT colado (obtido em
+`POST /api/auth/login`) e permite exercitar qualquer endpoint protegido via **Try it out**
+diretamente no navegador, sem montar `curl` à mão. Como a UI roda na porta do serviço, não do
+Gateway, os caminhos exibidos não têm o prefixo `/api` (`StripPrefix=1` do Gateway não se aplica
+aqui).
 
 ## Para onde ir a partir daqui
 
 - **Consumir a API hoje:** [API.md](API.md) — todos os endpoints disponíveis, com autenticação,
   formatos de requisição/resposta e códigos de erro.
+- **Testar no navegador:** as três Swagger UIs acima — visualização e teste rápido sem cliente HTTP.
 - **Subir o projeto localmente:** [README.md](../README.md) na raiz do repositório — pré-requisitos,
   variáveis de ambiente e o passo a passo de `docker compose up`.
 

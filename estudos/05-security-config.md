@@ -76,13 +76,18 @@ identifica do zero (com o JWT) — API **stateless** (sem estado).
 
 ```java
 .authorizeHttpRequests(auth -> auth
-        .requestMatchers("/auth/login", "/.well-known/jwks.json", "/actuator/health/**").permitAll()
+        .requestMatchers("/auth/login", "/.well-known/jwks.json", "/actuator/health/**",
+                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
         .anyRequest().authenticated())
 ```
 - `/auth/login` — liberado (precisa poder logar sem já estar logado)
 - `/.well-known/jwks.json` — liberado (endereço público onde outros serviços buscam a
   chave pública para validar JWTs — precisa ser acessível sem autenticação)
 - `/actuator/health/**` — liberado (endpoint de "saúde" usado pelo `docker-compose.yml`)
+- `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs`, `/v3/api-docs/**` — liberados (ferramenta
+  de desenvolvimento local do springdoc-openapi; ver
+  [13-springdoc-openapi.md](13-springdoc-openapi.md) para o porquê de cada um desses quatro
+  caminhos exatos, nem mais nem menos)
 - qualquer outra rota — exige estar autenticado
 
 ```java
