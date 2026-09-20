@@ -46,6 +46,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Gera o spec OpenAPI 3 e serve a Swagger UI na porta do próprio serviço -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
         <!-- Motor de migração de schema — dono do schema catalog; Hibernate só valida (ddl-auto=validate) -->
         <dependency>
             <groupId>org.flywaydb</groupId>

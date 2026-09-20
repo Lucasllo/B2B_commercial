@@ -44,3 +44,19 @@ management:
     health:
       probes:
         enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: false
+
+orderflow:
+  openapi:
+    title: "OrderFlow — Catalog Service API"
+    description: >-
+      Catálogo de produtos do vendedor. Os caminhos aqui documentados são os do serviço direto,
+      sem o prefixo /api que o gateway acrescenta.

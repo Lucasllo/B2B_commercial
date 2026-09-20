@@ -37,6 +37,14 @@
         <testcontainers.version>1.20.4</testcontainers.version>
         <!-- Versão do Lombok usada por todos os módulos para reduzir boilerplate de entidades/DTOs -->
         <lombok.version>1.18.34</lombok.version>
+        <!--
+          Versão do springdoc-openapi (Swagger UI + spec OpenAPI 3). Diferente de Flyway/Lombok/
+          Postgres, este artefato NÃO é gerenciado pelo BOM do Spring Boot acima — a versão precisa
+          ser fixada aqui à mão. 2.9.1 é o topo da linha 2.x no Maven Central, alinhado à
+          spring-boot.version 3.5.16 deste reactor (a linha 3.x do springdoc é para Spring Boot 4.0,
+          fora da stack deste projeto).
+        -->
+        <springdoc.version>2.9.1</springdoc.version>
         <!-- Versão do maven-failsafe-plugin, que roda as classes *IT.java em ./mvnw verify -->
         <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
     </properties>
@@ -66,6 +74,12 @@
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Gera o spec OpenAPI 3 e serve a Swagger UI — versão fixada aqui, não vem de nenhum BOM -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
