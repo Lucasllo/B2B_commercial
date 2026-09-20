@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    schemas: catalog
+    default-schema: catalog
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: catalog

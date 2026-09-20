@@ -11,6 +11,7 @@ COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY auth-service/pom.xml auth-service/pom.xml
 COPY gateway/pom.xml gateway/pom.xml
+COPY catalog-service/pom.xml catalog-service/pom.xml
 RUN chmod +x mvnw && ./mvnw -B -pl auth-service -am dependency:go-offline
 
 COPY auth-service/src auth-service/src

@@ -1,0 +1,46 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: catalog-service
+  datasource:
+    # D-01: instância Postgres única, um schema por serviço — currentSchema=catalog isola este
+    # serviço das tabelas de auth/inventory/order.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderflow?currentSchema=catalog}
+    username: ${SPRING_DATASOURCE_USERNAME:orderflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:orderflow}
+  flyway:
+    schemas: catalog
+    default-schema: catalog
+    create-schemas: true
+  jpa:
+    # O Flyway é dono do schema; o Hibernate só valida que o mapeamento bate com o schema real —
+    # nunca gera DDL sozinho.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: catalog
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # catalog-service é apenas resource server — nunca emite token. A validação é local por
+          # chave pública buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
