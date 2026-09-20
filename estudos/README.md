@@ -36,3 +36,6 @@ pasta é para consulta própria durante o aprendizado.
 13. [springdoc-openapi (Swagger UI)](13-springdoc-openapi.md) — como cada serviço passou a
     expor documentação interativa navegável, com botão Authorize funcional para testar
     endpoints protegidos direto no navegador
+14. [Spring Retry (@Retryable, @Recover, @EnableRetry)](14-spring-retry.md) — como o
+    `inventory-service` reexecuta automaticamente operações de estoque que colidem por
+    conflito de versão, e por que a ordem entre o aspecto de retry e o de transação importa
