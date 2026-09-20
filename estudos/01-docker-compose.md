@@ -1,7 +1,7 @@
 # Docker Compose
 
 O `docker-compose.yml` define os serviços que sobem juntos, localmente, para rodar o
-projeto inteiro. Ele define 4 serviços, com dependências de saúde encadeadas
+projeto inteiro. Ele define 6 serviços, com dependências de saúde encadeadas
 (`depends_on: condition: service_healthy`) para garantir a ordem correta de subida.
 
 ## 1. `postgres` — banco relacional único
@@ -30,19 +30,39 @@ projeto inteiro. Ele define 4 serviços, com dependências de saúde encadeadas
   serviço" dentro de **uma única instância** Postgres
 - Exposto em `8081`, com healthcheck no Actuator
 
-## 4. `gateway` — API Gateway
+## 4. `catalog-service` — catálogo de produtos
 
-- Depende apenas do `auth-service` estar saudável
+- Mesmo padrão de build do `auth-service` (`Dockerfile` próprio, contexto na raiz)
+- Espera `postgres` e `auth-service` saudáveis — não depende do `localstack`, porque
+  não usa SQS nem DynamoDB nesta fase
+- Conecta no Postgres usando `currentSchema=catalog` — mesmo padrão "schema por
+  serviço" do `auth-service`, dentro da mesma instância
+- Exposto em `127.0.0.1:8082`, com healthcheck no Actuator
+
+## 5. `inventory-service` — estoque e reserva atômica
+
+- Idêntico ao `catalog-service` em estrutura: build próprio, depende de `postgres` e
+  `auth-service`, sem depender do `localstack`
+- Conecta no Postgres usando `currentSchema=inventory`
+- Exposto em `127.0.0.1:8083`, com healthcheck no Actuator
+- É o serviço que implementa a reserva de estoque protegida contra concorrência
+  (lock otimista + reexecução automática) — ver `StockReservationConcurrencyIT`
+
+## 6. `gateway` — API Gateway
+
+- Depende de `auth-service`, `catalog-service` e `inventory-service` estarem
+  saudáveis — a lista cresceu à medida que cada novo serviço ganhou uma rota
 - Único serviço exposto sem bind a `127.0.0.1` (porta `8080` aberta), sendo o ponto de
   entrada externo do sistema
 
 ## Observações sobre o estágio atual do projeto
 
-- Só `auth-service` e `gateway` existem até agora — `catalog`, `inventory`, `order` e
-  `notification` ainda não foram adicionados ao compose, coerente com o processo
-  incremental "fase a fase" do projeto.
-- Não há serviço de mensageria SQS consumido ainda por nenhum serviço além do
-  LocalStack estar disponível — a saga (order → inventory → notification) ainda não
-  está representada aqui.
+- `auth-service`, `catalog-service`, `inventory-service` e `gateway` existem hoje —
+  `order` e `notification` ainda não foram adicionados ao compose, coerente com o
+  processo incremental "fase a fase" do projeto.
+- Nenhum dos quatro microsserviços depende do `localstack` para subir — ele está
+  provisionado no compose (SQS + DynamoDB emulados), mas ainda sem nenhum consumidor.
+  A saga (order → inventory → notification) ainda não está representada aqui.
 - A escolha de schema único por Postgres (`orderflow` com schemas separados) é uma
-  decisão específica já tomada, diferente da alternativa "um Postgres por serviço".
+  decisão específica já tomada, diferente da alternativa "um Postgres por serviço" —
+  agora com três schemas em uso (`auth`, `catalog`, `inventory`).

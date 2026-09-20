@@ -3,10 +3,11 @@
 ## Spring Boot
 
 **Versão: 3.5.16**, fixada em `pom.xml` via BOM (`spring-boot-dependencies`) importado
-no `dependencyManagement` — não via `spring-boot-starter-parent`. Como o reactor hospeda
-5 microsserviços (auth, gateway, catalog, inventory, order), importar o BOM manualmente
-dá controle total sobre a árvore de dependências, em vez de herdar tudo do parent padrão
-do Spring.
+no `dependencyManagement` — não via `spring-boot-starter-parent`. O reactor hospeda hoje
+4 microsserviços (`gateway`, `auth-service`, `catalog-service`, `inventory-service` —
+`order-service` e `notification-service` ainda não foram criados, ver
+[01-docker-compose.md](01-docker-compose.md)); importar o BOM manualmente dá controle
+total sobre a árvore de dependências, em vez de herdar tudo do parent padrão do Spring.
 
 **Por quê 3.5.x e não 4.0**: é a última minor da linha 3.x, mais madura e testada. A 4.0
 força migração para Jackson 3 + Jakarta EE 11, o que geraria atrito de migração sem
@@ -44,6 +45,7 @@ roteamento.
   mercado Java/Spring hoje — evita tanto tecnologia obsoleta quanto churn de versão
   recém-lançada, mantendo o foco no que a vaga quer ver: arquitetura de microsserviços
   orientada a eventos, não malabarismo de upgrade.
-- **Gateway estático sem service discovery** (Eureka/Consul): com 5 serviços fixos e
-  conhecidos via docker-compose, service discovery seria complexidade desnecessária —
-  rotas estáticas em `application.yml` bastam.
+- **Gateway estático sem service discovery** (Eureka/Consul): com um número pequeno e
+  conhecido de serviços via docker-compose (4 hoje, crescendo fase a fase), service
+  discovery seria complexidade desnecessária — rotas estáticas em `application.yml`
+  bastam.

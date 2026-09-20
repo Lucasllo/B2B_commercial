@@ -95,12 +95,18 @@ chamada em tempo de execução a nenhum serviço".
 
 ## Para que serve o endpoint JWKS hoje
 
-Hoje só existem `auth-service` e `gateway` no projeto. Quando os próximos
-microsserviços forem criados (catalog, inventory, order — Fases 2+), eles vão precisar
-validar os JWTs emitidos pelo `auth-service` — e, ao contrário do próprio
-`auth-service`, não terão a chave em memória. Esses futuros serviços vão configurar algo
-como um `jwk-set-uri` apontando para
-`http://auth-service:8081/.well-known/jwks.json`, e o Spring Security vai baixar a chave
-pública de lá automaticamente para conferir a assinatura dos tokens recebidos — sem
-nunca precisar perguntar ativamente "esse token é válido?" ao `auth-service` a cada
-requisição.
+Na Fase 1, só existiam `auth-service` e `gateway` no projeto, e esta seção previa que os
+próximos microsserviços precisariam validar os JWTs emitidos pelo `auth-service` sem ter
+a chave em memória. Isso já aconteceu: `catalog-service` e `inventory-service` (Fase 2)
+configuram exatamente esse `jwk-set-uri` apontando para
+`http://auth-service:8081/.well-known/jwks.json` no seu `application.yml`, e o Spring
+Security baixa a chave pública de lá automaticamente para conferir a assinatura dos
+tokens recebidos — sem nunca precisar perguntar ativamente "esse token é válido?" ao
+`auth-service` a cada requisição. `order-service` e `notification-service` (fases
+futuras) vão repetir o mesmo padrão.
+
+Uma lacuna real encontrada na revisão de código da Fase 2: os dois serviços novos
+configuram `jwk-set-uri` (valida assinatura e expiração), mas não configuram um
+`issuer-uri` (validação de emissor) — só o decoder usado nos testes faz essa checagem.
+O risco é baixo hoje (só existe um emissor no sistema), mas é uma divergência entre o
+que o registro de ameaças da fase declarava e o que está em produção.

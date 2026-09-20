@@ -1,7 +1,8 @@
 # Dockerfile
 
-Os dois `Dockerfile` (`auth-service/Dockerfile` e `gateway/Dockerfile`) seguem o mesmo
-padrão de **build multi-stage**, já que ambos são módulos do mesmo reactor Maven.
+Os quatro `Dockerfile` do projeto (`auth-service/Dockerfile`, `gateway/Dockerfile`,
+`catalog-service/Dockerfile` e `inventory-service/Dockerfile`) seguem o mesmo padrão de
+**build multi-stage**, já que todos são módulos do mesmo reactor Maven.
 
 ## O que é Docker e por que usar
 
@@ -63,8 +64,8 @@ reaproveitando as dependências já baixadas.
 **Maven** compila projetos Java e gerencia suas dependências.
 
 Este projeto tem um **Maven multi-módulo** (o "reactor"): um `pom.xml` "pai" na raiz, e
-cada microsserviço (`auth-service`, `gateway`) é um módulo filho com seu próprio
-`pom.xml`.
+cada microsserviço (`auth-service`, `gateway`, `catalog-service`, `inventory-service`) é
+um módulo filho com seu próprio `pom.xml`.
 
 `-pl auth-service -am` diz ao Maven: "compile só o módulo `auth-service`, mas também
 compile (`-am` = "also make") qualquer módulo do qual ele dependa" — evita compilar
