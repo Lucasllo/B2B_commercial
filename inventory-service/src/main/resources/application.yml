@@ -30,9 +30,10 @@ spring:
           # por chave publica buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
           jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
 
-# Nenhuma decisao desta fase pede threads virtuais no lado servidor — nao ativar
-# spring.threads.virtual.enabled aqui (02-RESEARCH.md Pitfall 5 e Open Questions item 1). O uso de
-# threads virtuais desta fase e exclusivamente do lado do cliente do teste de concorrencia (02-03).
+# Nenhuma decisao desta fase pede threads virtuais no lado servidor — a flag de threads virtuais
+# do Spring Boot fica deliberadamente ausente deste arquivo (02-RESEARCH.md Pitfall 5 e Open
+# Questions item 1). O uso de threads virtuais desta fase e exclusivamente do lado do cliente do
+# teste de concorrencia (02-03).
 
 management:
   endpoints:
