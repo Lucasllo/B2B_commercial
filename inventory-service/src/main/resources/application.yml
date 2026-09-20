@@ -1,0 +1,45 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    # D-01: instancia Postgres unica, um schema por servico — currentSchema=inventory isola este
+    # servico das tabelas de auth/catalog/order.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderflow?currentSchema=inventory}
+    username: ${SPRING_DATASOURCE_USERNAME:orderflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:orderflow}
+  flyway:
+    schemas: inventory
+    default-schema: inventory
+    create-schemas: true
+  jpa:
+    # O Flyway e dono do schema; o Hibernate so valida que o mapeamento bate com o schema real —
+    # nunca gera DDL sozinho.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: inventory
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # inventory-service e apenas resource server — nunca emite token. A validacao e local
+          # por chave publica buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+
+# Nenhuma decisao desta fase pede threads virtuais no lado servidor — nao ativar
+# spring.threads.virtual.enabled aqui (02-RESEARCH.md Pitfall 5 e Open Questions item 1). O uso de
+# threads virtuais desta fase e exclusivamente do lado do cliente do teste de concorrencia (02-03).
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true

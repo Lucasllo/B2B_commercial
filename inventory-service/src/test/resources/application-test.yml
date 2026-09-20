@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    schemas: inventory
+    default-schema: inventory
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: inventory
