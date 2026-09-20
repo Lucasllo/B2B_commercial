@@ -24,7 +24,7 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 ### Inventory
 
 - [x] **INV-01**: Vendedor define/atualiza a quantidade em estoque por produto
-- [ ] **INV-02**: Reserva de estoque usa atualização atômica/lock otimista para evitar overselling sob concorrência
+- [x] **INV-02**: Reserva de estoque usa atualização atômica/lock otimista para evitar overselling sob concorrência
 
 ### Orders
 
@@ -112,7 +112,7 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | CAT-01 | Phase 2 | Complete |
 | CAT-02 | Phase 2 | Complete |
 | INV-01 | Phase 2 | Complete |
-| INV-02 | Phase 2 | Pending |
+| INV-02 | Phase 2 | Complete |
 | ORD-01 | Phase 4 | Pending |
 | ORD-02 | Phase 4 | Pending |
 | ORD-03 | Phase 4 | Pending |
