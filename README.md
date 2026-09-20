@@ -84,6 +84,28 @@ segredo vazado.
 
 Todos os endpoints abaixo são acessados através do API Gateway, em `http://localhost:8080`:
 
+### Documentação interativa (Swagger UI)
+
+Cada serviço com endpoints de negócio expõe sua própria Swagger UI, servida direto na porta do
+serviço — não através do Gateway:
+
+- `http://localhost:8081/swagger-ui.html` (auth-service)
+- `http://localhost:8082/swagger-ui.html` (catalog-service)
+- `http://localhost:8083/swagger-ui.html` (inventory-service)
+
+Como essas páginas são servidas na porta direta de cada serviço, e não pelo Gateway, os caminhos
+mostrados ali aparecem **sem** o prefixo `/api` que o Gateway acrescenta (`StripPrefix=1`): o que
+no Gateway é `POST /api/products` aparece na Swagger UI do catalog-service como `POST /products`.
+
+Para exercitar um endpoint protegido: obtenha um token com o `POST /api/auth/login` do fluxo de
+demonstração abaixo, clique em **Authorize** na Swagger UI, cole apenas o valor do token (sem
+escrever a palavra `Bearer` — a UI acrescenta o prefixo sozinha) e então use o **Try it out** de
+qualquer operação.
+
+A UI e o spec JSON (`/v3/api-docs`) são deliberadamente acessíveis sem token — é uma ferramenta
+local de desenvolvimento, e as portas 8081/8082/8083 estão ligadas apenas a `127.0.0.1` no
+`docker-compose.yml`. Essa liberação deveria ser fechada num eventual profile de produção.
+
 ### Autenticação e empresas (Fase 1)
 
 - `POST /api/auth/login` — autentica com `{ "email": ..., "password": ... }` e devolve um JWT.
