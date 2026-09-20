@@ -28,6 +28,28 @@ import java.util.UUID;
 @Service
 public class InventoryService {
 
+    /**
+     * Numero de tentativas e backoff da reexecucao por conflito de versao (D-20).
+     *
+     * <p>Valor original de {@code 02-02} era {@code maxAttempts = 4}, {@code delay = 25},
+     * {@code multiplier = 2}, sem teto de backoff. {@code InventoryRetryContentionIT} (02-03,
+     * cenario de dez threads concorrentes reservando 1 unidade cada sobre um estoque de dez —
+     * contencao pura de versao, sem escassez real de estoque) expos que 4 tentativas nao bastam
+     * sob dez gravadores simultaneos na MESMA linha: uma tentativa esgotou as reexecucoes e
+     * devolveu {@link ReservationConflictException} mesmo havendo estoque suficiente para todo
+     * mundo. Aumentado para {@code maxAttempts = 10} com um teto de backoff
+     * ({@code maxDelay = 200}ms) para que o crescimento exponencial nao deixe o pior caso lento
+     * demais — sem o teto, a decima tentativa esperaria mais de 12 segundos. Nao e uma tentativa
+     * de mascarar instabilidade: o conjunto de respostas aceito pelos testes de concorrencia ja
+     * inclui a disputa esgotada (D-21) como recusa legitima; este ajuste so reduz a frequencia
+     * dela no caso em que a matematica do cenario (contendores <= estoque disponivel) diz que
+     * todo mundo deveria caber.
+     */
+    private static final int RETRY_MAX_ATTEMPTS = 10;
+    private static final long RETRY_DELAY_MS = 20;
+    private static final double RETRY_MULTIPLIER = 2.0;
+    private static final long RETRY_MAX_DELAY_MS = 200;
+
     private final InventoryRepository inventoryRepository;
     private final StockReservationRepository stockReservationRepository;
 
@@ -49,8 +71,8 @@ public class InventoryService {
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
-            maxAttempts = 4,
-            backoff = @Backoff(delay = 25, multiplier = 2))
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
     @Transactional
     public StockResponse setStock(UUID productId, int quantityOnHand) {
         Inventory inventory = inventoryRepository.findByProductId(productId).orElse(null);
@@ -88,8 +110,8 @@ public class InventoryService {
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
-            maxAttempts = 4,
-            backoff = @Backoff(delay = 25, multiplier = 2))
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
     @Transactional
     public StockResponse reserve(UUID productId, String reservationId, int quantity) {
         Inventory inventory = inventoryRepository.findByProductId(productId)
@@ -126,8 +148,8 @@ public class InventoryService {
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
-            maxAttempts = 4,
-            backoff = @Backoff(delay = 25, multiplier = 2))
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
     @Transactional
     public StockResponse release(UUID productId, String reservationId) {
         Inventory inventory = inventoryRepository.findByProductId(productId)
