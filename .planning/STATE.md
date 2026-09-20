@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Catálogo e Estoque
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-09-20T02:22:08.801Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-09-20T02:53:25.505Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 02 execution started
-state_head: fd5083f14866a4a038180eaefdd6f414938c9748
+state_head: 8a2dcb0c73e466f4b779ca5215536a4d4d26d75d
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 14
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-16)
 ## Current Position
 
 Phase: 02 (Catálogo e Estoque) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-09-19 — Phase 02 execution started
 
@@ -59,6 +59,7 @@ Progress: [█░░░░░░░░░] 14%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 02 P01 | 26min | 3 tasks | 25 files |
+| Phase 02 P02 | 27min | 3 tasks | 29 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 02]: PRODUCT_STATUS_CONTRACT=status-two-values — dois estados ACTIVE/DISCONTINUED, retirada via PUT /products/{id}/status, sem remoção física (D-23)
 - [Phase 02]: catalog-service: porta 8082, jwk-set-uri padrão http://localhost:8081/.well-known/jwks.json
 - [Phase 02]: GET /products devolve o envelope padrão Page<T> do Spring Data (content/totalElements/...) — contrato consumido pela Fase 4
+- [Phase 02]: RESERVATION_ID_SCOPE=scope-per-product — unicidade por par (productId, reservationId) para o reservationId da reserva de estoque
+- [Phase 02]: inventory-service: porta 8083, jwk-set-uri padrão http://localhost:8081/.well-known/jwks.json
+- [Phase 02]: Reexecução de conflito de lock otimista: maxAttempts=4, backoff delay=25ms multiplier=2 (Spring Retry, @EnableRetry order=LOWEST_PRECEDENCE)
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-20T02:22:08.720Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-09-20T02:53:25.423Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
