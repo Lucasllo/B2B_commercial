@@ -33,7 +33,20 @@ management:
       probes:
         enabled: true
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: false
+
 orderflow:
   auth:
     # D-04: apenas access token, sem refresh, TTL de referência ~1h.
     token-ttl-seconds: 3600
+  openapi:
+    title: "OrderFlow — Auth Service API"
+    description: >-
+      Emissão de JWT e gestão de empresas compradoras e limite de crédito.

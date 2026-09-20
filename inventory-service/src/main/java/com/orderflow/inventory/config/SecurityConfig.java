@@ -52,7 +52,13 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**").permitAll()
+                        // Superficie nao autenticada aberta deliberadamente para ferramenta local
+                        // de desenvolvimento (Swagger UI); expoe o formato da API, nunca dado nem
+                        // logica. As portas diretas 8081/8082/8083 estao ligadas a 127.0.0.1 no
+                        // docker-compose.yml e nao sao roteadas pelo gateway. Deve ser fechada se
+                        // algum dia existir um profile de producao neste projeto (hoje nao existe).
+                        .requestMatchers("/actuator/health/**", "/swagger-ui.html", "/swagger-ui/**",
+                                "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
                 .build();

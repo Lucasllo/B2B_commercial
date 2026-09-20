@@ -46,6 +46,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Gera o spec OpenAPI 3 e serve a Swagger UI na porta do proprio servico -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
         <!--
           Reexecucao declarativa de conflito de lock otimista (D-20). Sem versao — resolvida pelo
           BOM do Spring Boot importado no pom raiz (auditado em 02-RESEARCH.md §Package
