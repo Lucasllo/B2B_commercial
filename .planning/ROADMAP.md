@@ -56,8 +56,16 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 02-01-PLAN.md — catalog-service: o vendedor mantém o catálogo (cria, atualiza, descontinua por soft-delete) e o comprador lista produtos ativos paginados (CAT-01, CAT-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02-PLAN.md — inventory-service: o vendedor define os níveis de estoque e a reserva nasce atômica por lock otimista e idempotente por identificador do chamador (INV-01, INV-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 02-03-PLAN.md — catálogo e estoque no `docker compose up` e nas rotas do Gateway, mais a prova de atomicidade por HTTP real e concorrência real (INV-02, CAT-02)
 
 ### Phase 3: Primeira Integração Assíncrona — Histórico de Notificações
