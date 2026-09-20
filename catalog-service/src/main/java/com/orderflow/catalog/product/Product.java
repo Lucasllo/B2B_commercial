@@ -69,4 +69,25 @@ public class Product {
         this.price = price;
         this.status = ProductStatus.ACTIVE;
     }
+
+    /**
+     * Grava nome, descrição e preço exatamente como recebidos — nunca {@code setScale} nem
+     * {@code round} aqui; a validação de escala (D-06) já aconteceu no DTO antes deste método ser
+     * chamado (plano 02-01, Task 3). O {@code sku} não tem método de mutação: é imutável depois
+     * da criação, porque é o código pelo qual o vendedor identifica o item fora do sistema.
+     */
+    public void updateDetails(String name, String description, BigDecimal price) {
+        this.name = name;
+        this.description = description;
+        this.price = price;
+    }
+
+    /**
+     * Único caminho de retirada/reativação do catálogo (D-23). Nenhum método deste tipo nem do
+     * repositório invoca operação de remoção de linha — os pedidos das Fases 4 a 6 referenciam
+     * produtos por id, e um apagamento físico destruiria o histórico.
+     */
+    public void changeStatus(ProductStatus newStatus) {
+        this.status = newStatus;
+    }
 }

@@ -1,8 +1,11 @@
 package com.orderflow.catalog.config;
 
 import com.orderflow.catalog.product.ProductNotFoundException;
+import com.orderflow.catalog.product.SkuAlreadyUsedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -16,8 +19,7 @@ import java.util.Map;
 /**
  * Corpo de erro uniforme para todo o serviço — sempre as chaves {@code error} e {@code message};
  * {@code fields} é adicionado apenas para erro de validação. Nenhum handler inclui stack trace,
- * nome de classe de exceção ou fragmento de SQL no corpo da resposta. Task 3 acrescenta os
- * handlers de conflito (SKU duplicado) e de corpo malformado.
+ * nome de classe de exceção, fragmento de SQL ou nome de constraint do banco no corpo da resposta.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,6 +34,23 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = errorBody("validation_failed", "One or more fields are invalid");
         body.put("fields", fields);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Corpo malformado — em particular o que um valor de status desconhecido em
+     * {@code UpdateProductStatusRequest} produz (o enum não desserializa e o erro chega aqui
+     * antes da validação de bean, em vez de virar nulo em silêncio).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedRequest(HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(errorBody("malformed_request", "Request body is malformed"));
+    }
+
+    @ExceptionHandler({SkuAlreadyUsedException.class, DataIntegrityViolationException.class})
+    public ResponseEntity<Map<String, Object>> handleConflict(Exception ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("sku_already_used", "SKU is already in use"));
     }
 
     @ExceptionHandler(ProductNotFoundException.class)
