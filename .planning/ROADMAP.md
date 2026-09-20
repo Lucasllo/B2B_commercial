@@ -53,12 +53,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A operação de reserva de estoque é atômica: um teste de concorrência disparando requisições paralelas contra as últimas unidades de um produto nunca reserva mais do que o disponível.
   4. Catalog-service e inventory-service sobem no mesmo `docker-compose up` das fases anteriores, cada um com seu próprio banco, acessíveis somente com JWT válido.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — catalog-service: o vendedor mantém o catálogo (cria, atualiza, descontinua por soft-delete) e o comprador lista produtos ativos paginados (CAT-01, CAT-02)
+- [x] 02-01-PLAN.md — catalog-service: o vendedor mantém o catálogo (cria, atualiza, descontinua por soft-delete) e o comprador lista produtos ativos paginados (CAT-01, CAT-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
-| 2. Catálogo e Estoque | 0/3 | Planned     | - |
+| 2. Catálogo e Estoque | 1/3 | In Progress|  |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 0/TBD | Not started | - |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/TBD | Not started | - |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |

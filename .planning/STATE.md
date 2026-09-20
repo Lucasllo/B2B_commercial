@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Catálogo e Estoque
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-09-20T01:20:06.854Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-09-20T02:22:08.801Z"
 last_activity: 2026-09-19
-last_activity_desc: Phase 1 complete, transitioned to Phase 2
-state_head: c29d4a825a9380be8cdf87fb6c2066702b27cb14
+last_activity_desc: Phase 02 execution started
+state_head: fd5083f14866a4a038180eaefdd6f414938c9748
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 14
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-16)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 1 — Esqueleto Vertical: Infraestrutura, Autenticação e Empresas
+**Current focus:** Phase 02 — Catálogo e Estoque
 
 ## Current Position
 
-Phase: 02 (Catálogo e Estoque) — READY TO EXECUTE
-Plan: Not started
+Phase: 02 (Catálogo e Estoque) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-09-19 — Phase 1 complete, transitioned to Phase 2
+Last activity: 2026-09-19 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 14%
 
@@ -54,6 +54,11 @@ Progress: [█░░░░░░░░░] 14%
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 02 P01 | 26min | 3 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -66,6 +71,9 @@ Recent decisions affecting current work:
 - [Roadmap]: Notification-service + SQS + DynamoDB construídos na Fase 3 como a integração assíncrona mais simples possível, antes da saga, para depurar o encanamento isoladamente.
 - [Roadmap]: Infraestrutura (docker-compose, Postgres, LocalStack, Gateway) fundida com autenticação na Fase 1 — modo `mvp` exige fatia vertical demonstrável, e infra sozinha não entrega valor observável.
 - [Roadmap]: Testes unitários/integração e CI registrados formalmente na Fase 7, mas devem ser escritos em cada fase (PITFALLS.md #7 — não adiar testes para uma fase final).
+- [Phase 02]: PRODUCT_STATUS_CONTRACT=status-two-values — dois estados ACTIVE/DISCONTINUED, retirada via PUT /products/{id}/status, sem remoção física (D-23)
+- [Phase 02]: catalog-service: porta 8082, jwk-set-uri padrão http://localhost:8081/.well-known/jwks.json
+- [Phase 02]: GET /products devolve o envelope padrão Page<T> do Spring Data (content/totalElements/...) — contrato consumido pela Fase 4
 
 ### Pending Todos
 
@@ -91,6 +99,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-19T18:09:06.939Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-cat-logo-e-estoque/02-CONTEXT.md
+Last session: 2026-09-20T02:22:08.720Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

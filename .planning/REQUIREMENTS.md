@@ -18,8 +18,8 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Catalog
 
-- [ ] **CAT-01**: Vendedor cria/atualiza produtos com nome, preço e descrição
-- [ ] **CAT-02**: Comprador lista e visualiza produtos e preços disponíveis
+- [x] **CAT-01**: Vendedor cria/atualiza produtos com nome, preço e descrição
+- [x] **CAT-02**: Comprador lista e visualiza produtos e preços disponíveis
 
 ### Inventory
 
@@ -109,8 +109,8 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | COMP-01 | Phase 1 | Complete |
 | COMP-02 | Phase 1 | Complete |
 | COMP-03 | Phase 1 | Complete |
-| CAT-01 | Phase 2 | Pending |
-| CAT-02 | Phase 2 | Pending |
+| CAT-01 | Phase 2 | Complete |
+| CAT-02 | Phase 2 | Complete |
 | INV-01 | Phase 2 | Pending |
 | INV-02 | Phase 2 | Pending |
 | ORD-01 | Phase 4 | Pending |
