@@ -39,3 +39,6 @@ pasta é para consulta própria durante o aprendizado.
 14. [Spring Retry (@Retryable, @Recover, @EnableRetry)](14-spring-retry.md) — como o
     `inventory-service` reexecuta automaticamente operações de estoque que colidem por
     conflito de versão, e por que a ordem entre o aspecto de retry e o de transação importa
+15. [Pasta de testes e Testcontainers](15-testes.md) — a convenção `*Test.java` vs
+    `*IT.java`, as dependências de teste declaradas nos `pom.xml`, e como o Testcontainers
+    sobe um Postgres real em Docker para cada suíte de integração
