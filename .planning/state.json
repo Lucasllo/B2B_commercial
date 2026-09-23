@@ -16,7 +16,7 @@
     {
       "number": "3",
       "name": "Primeira Integração Assíncrona — Histórico de Notificações",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "4",
@@ -41,8 +41,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 3)",
-    "reason": "Phase 3 of 7 — needs a plan"
+    "label": "Advance to the next step",
+    "reason": "Phase 03 of 7 · 29% · executing"
   },
-  "updated_at": "2026-09-20T14:12:16.538Z"
+  "updated_at": "2026-09-23T02:05:33.667Z"
 }

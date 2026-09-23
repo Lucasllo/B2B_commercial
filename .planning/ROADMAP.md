@@ -81,12 +81,12 @@ Plans:
   3. O registro é gravado com chave determinística (ex.: `id#tipoDeEvento`), de modo que uma reentrega do mesmo evento sobrescreve o registro em vez de duplicar o histórico.
   4. Filas SQS e tabela DynamoDB são criadas automaticamente na subida do LocalStack, sem passo manual, e um teste de integração com Testcontainers + LocalStack exercita o fluxo real de publicação e consumo.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — notification-service: evento na fila do LocalStack vira histórico no DynamoDB com chave determinística (reentrega sobrescreve, mensagem venenosa descartada com log), consulta `GET /notifications/{productId}` restrita a SELLER_ADMIN, init hook do LocalStack e módulo no reactor (NOTF-01, NOTF-02)
+- [x] 03-01-PLAN.md — notification-service: evento na fila do LocalStack vira histórico no DynamoDB com chave determinística (reentrega sobrescreve, mensagem venenosa descartada com log), consulta `GET /notifications/{productId}` restrita a SELLER_ADMIN, init hook do LocalStack e módulo no reactor (NOTF-01, NOTF-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -168,7 +168,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
-| 3. Primeira Integração Assíncrona — Histórico de Notificações | 0/TBD | Not started | - |
+| 3. Primeira Integração Assíncrona — Histórico de Notificações | 1/3 | In Progress|  |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/TBD | Not started | - |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
