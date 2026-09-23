@@ -41,8 +41,8 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Notifications
 
-- [ ] **NOTF-01**: Notification-service consome eventos do ciclo de vida do pedido e os grava no DynamoDB (via LocalStack)
-- [ ] **NOTF-02**: Histórico de notificações de um pedido pode ser consultado
+- [x] **NOTF-01**: Notification-service consome eventos do ciclo de vida do pedido e os grava no DynamoDB (via LocalStack)
+- [x] **NOTF-02**: Histórico de notificações de um pedido pode ser consultado
 
 ### Quality & Observability
 
@@ -123,8 +123,8 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | ORD-08 | Phase 4 | Pending |
 | ORD-09 | Phase 4 | Pending |
 | ORD-10 | Phase 6 | Pending |
-| NOTF-01 | Phase 3 | Pending |
-| NOTF-02 | Phase 3 | Pending |
+| NOTF-01 | Phase 3 | Complete |
+| NOTF-02 | Phase 3 | Complete |
 | QUAL-01 | Phase 7 | Pending |
 | QUAL-02 | Phase 7 | Pending |
 | INFRA-01 | Phase 1 | Complete |
