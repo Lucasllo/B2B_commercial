@@ -6,9 +6,12 @@ pedidos sujeitos a aprovação por limite de crédito, reserva de estoque, atrib
 transportadora e acompanhamento até a entrega. É um projeto de portfólio técnico voltado a
 demonstrar competências exigidas para uma vaga de Desenvolvedor Java Pleno.
 
-O que já funciona hoje (Fase 1 — esqueleto vertical): autenticação com JWT auto-emitido, gestão
-de empresas compradoras e limite de crédito, tudo rodando atrás de um API Gateway com a stack
-inteira subindo localmente via `docker compose`.
+O que já funciona hoje (Fases 1 a 3): autenticação com JWT auto-emitido, gestão de empresas
+compradoras e limite de crédito, catálogo de produtos, controle de estoque com reserva protegida
+contra concorrência, e um histórico de notificações assíncrono — um ajuste de estoque publica um
+evento numa fila SQS real que o `notification-service` consome e grava no DynamoDB, sem nenhuma
+chamada REST entre os dois serviços — tudo rodando atrás de um API Gateway com a stack inteira
+subindo localmente via `docker compose`.
 
 ## Pré-requisitos
 
@@ -39,8 +42,11 @@ repositório e baixa a distribuição correta sob demanda.
 docker compose up -d --wait
 ```
 
-Esse comando sobe os seis serviços (`postgres`, `localstack`, `auth-service`, `catalog-service`,
-`inventory-service`, `gateway`) e só retorna quando todos estiverem `healthy`. Confira com:
+Esse comando sobe os sete serviços (`postgres`, `localstack`, `auth-service`, `catalog-service`,
+`inventory-service`, `notification-service`, `gateway`) e só retorna quando todos estiverem
+`healthy`. A fila `notification-events-queue` e a tabela `notification-history` nascem sozinhas
+nessa subida, provisionadas pelo init hook do LocalStack (`localstack-init/ready.d/`) — nenhum
+passo manual é necessário. Confira com:
 
 ```
 docker compose ps
@@ -55,14 +61,18 @@ docker compose down -v
 ## Build e testes
 
 ```
-./mvnw -B -pl auth-service,catalog-service,inventory-service test
+./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service test
 ```
 Testes unitários, sem necessidade de Docker.
 
 ```
-./mvnw -B -pl auth-service,catalog-service,inventory-service verify
+./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service verify
 ```
 Suíte completa, incluindo testes de integração com Testcontainers — exige o Docker em execução.
+As suítes de integração do `inventory-service` e do `notification-service` sobem um LocalStack
+real via Testcontainers e por isso precisam de `LOCALSTACK_AUTH_TOKEN` disponível como variável de
+ambiente ou no `.env` da raiz do repositório — o suporte de teste (`LocalStackTestSupport`) resolve
+o token subindo os diretórios pais a partir do módulo, sem configuração extra.
 
 ```
 ./mvnw -B -pl inventory-service verify -Dit.test=StockReservationConcurrencyIT
@@ -92,6 +102,7 @@ serviço — não através do Gateway:
 - `http://localhost:8081/swagger-ui.html` (auth-service)
 - `http://localhost:8082/swagger-ui.html` (catalog-service)
 - `http://localhost:8083/swagger-ui.html` (inventory-service)
+- `http://localhost:8084/swagger-ui.html` (notification-service)
 
 Como essas páginas são servidas na porta direta de cada serviço, e não pelo Gateway, os caminhos
 mostrados ali aparecem **sem** o prefixo `/api` que o Gateway acrescenta (`StripPrefix=1`): o que
@@ -103,7 +114,7 @@ escrever a palavra `Bearer` — a UI acrescenta o prefixo sozinha) e então use 
 qualquer operação.
 
 A UI e o spec JSON (`/v3/api-docs`) são deliberadamente acessíveis sem token — é uma ferramenta
-local de desenvolvimento, e as portas 8081/8082/8083 estão ligadas apenas a `127.0.0.1` no
+local de desenvolvimento, e as portas 8081/8082/8083/8084 estão ligadas apenas a `127.0.0.1` no
 `docker-compose.yml`. Essa liberação deveria ser fechada num eventual profile de produção.
 
 ### Autenticação e empresas (Fase 1)
@@ -143,6 +154,52 @@ requisição (AUTH-03, D-03).
 Catálogo e estoque são sempre duas chamadas HTTP separadas pelo Gateway — nenhum dos dois
 serviços enriquece a resposta do outro (D-16).
 
+### Histórico de notificações (Fase 3 — papel exigido entre parênteses)
+
+- `GET /api/notifications/{productId}` (SELLER_ADMIN) — lista os eventos registrados para o
+  produto, em ordem cronológica de `occurredAt`. Cada elemento traz `productId`, `eventId`,
+  `eventType`, uma `message` legível, o `payload` original do evento (objeto JSON aninhado, não
+  texto escapado), `occurredAt` e `recordedAt`. Produto sem nenhum evento devolve lista vazia
+  (nunca `404`). `{productId}` que não é um UUID válido devolve `400 invalid_identifier`; um
+  `BUYER` recebe `403 forbidden`.
+
+### Como o evento flui (SQS → DynamoDB)
+
+Um ajuste de estoque (`PUT /api/inventory/{productId}`) é gravado no PostgreSQL do
+`inventory-service` dentro de uma transação. Só depois que essa transação já foi commitada, o
+`inventory-service` publica um evento `STOCK_ADJUSTED` na fila SQS `notification-events-queue`. O
+`notification-service` consome essa fila e grava um item na tabela DynamoDB
+`notification-history`, com partition key `productId` e sort key `STOCK_ADJUSTED#<eventId>` — por
+isso reentregar a mesma mensagem (mesmo `eventId`) sobrescreve o item existente em vez de duplicar,
+e cada ajuste novo (um `eventId` novo) vira uma linha nova. A consulta em
+`GET /api/notifications/{productId}` lê a tabela por Query (partition key) e ordena o resultado por
+`occurredAt` na leitura, porque a fila padrão do SQS não garante ordem de entrega. **Em nenhum
+momento o inventory-service e o notification-service se chamam por HTTP** — a única ligação entre
+os dois é a fila.
+
+Fila e tabela são criadas automaticamente pelo init hook do LocalStack montado no
+`docker-compose.yml` (`localstack-init/ready.d/01-create-notification-resources.sh`) na primeira
+subida da stack — nenhum passo manual é necessário. Para inspecionar os recursos diretamente:
+
+```bash
+# Atributos da fila (mensagens visíveis e em processamento)
+docker compose exec localstack awslocal --region us-east-1 sqs get-queue-attributes \
+  --queue-url "$(docker compose exec -T localstack awslocal --region us-east-1 sqs get-queue-url \
+    --queue-name notification-events-queue --query QueueUrl --output text)" \
+  --attribute-names All
+
+# Varredura completa da tabela de histórico
+docker compose exec localstack awslocal --region us-east-1 dynamodb scan \
+  --table-name notification-history
+```
+
+Para provar o fluxo de ponta a ponta na stack real, sem abrir o código — fluxo pelo Gateway,
+reentrega sem duplicação e ajustes distintos acumulando —, rode:
+
+```bash
+bash scripts/smoke-notification-flow.sh
+```
+
 ### Fluxo de demonstração completo
 
 Comandos copiáveis, executados em sequência (`jq` é opcional, só para extrair campos do JSON;
@@ -175,7 +232,29 @@ curl -s -X POST http://localhost:8080/api/inventory/$PRODUCT_ID/reservations \
 
 # 6. Conferir que a disponibilidade caiu exatamente pela quantidade reservada (100 -> 90)
 curl -s http://localhost:8080/api/inventory/$PRODUCT_ID -H "Authorization: Bearer $TOKEN"
+
+# 7. Consultar o histórico de notificações do produto (evento STOCK_ADJUSTED do passo 3, Fase 3)
+curl -s http://localhost:8080/api/notifications/$PRODUCT_ID -H "Authorization: Bearer $TOKEN"
 ```
+
+## Limitações conhecidas (Fase 3)
+
+1. **Dual-write na publicação do evento** — o `inventory-service` publica `STOCK_ADJUSTED`
+   diretamente no SQS depois do commit no PostgreSQL, sem Transactional Outbox (D-29). Se o SQS
+   falhar exatamente nesse instante, o ajuste de estoque continua gravado, mas o evento se perde —
+   o `inventory-service` registra a perda em log `ERROR` com `eventId`/`productId`/nome da fila,
+   sem repetir a publicação. A Fase 5 (saga de reserva de estoque) introduz o padrão Transactional
+   Outbox onde a atomicidade entre gravação e publicação passa a ser exigida.
+2. **Sem fila de mensagens mortas (DLQ)** — uma mensagem que nunca poderia virar um registro válido
+   (JSON malformado, campo obrigatório ausente) é descartada com log `WARN` em vez de reprocessada
+   para sempre; uma falha transitória do DynamoDB, por outro lado, faz a mensagem voltar à fila sem
+   teto de reentregas. Uma fila de mensagens mortas dedicada é requisito de uma v2 (`DLQ-01`).
+3. **Fila sem política de acesso** — no LocalStack local, qualquer processo que alcance a porta
+   4566 pode publicar na fila `notification-events-queue`. Em uma conta AWS real, `SendMessage`
+   seria restrito à identidade do `inventory-service` por uma política de fila/IAM.
+4. **Fila padrão, sem ordem garantida de entrega** — o SQS padrão (não FIFO) não garante que as
+   mensagens cheguem na ordem em que foram publicadas; o histórico é reordenado por `occurredAt` no
+   momento da leitura, não na gravação.
 
 ## Arquitetura
 

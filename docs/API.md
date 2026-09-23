@@ -1,14 +1,15 @@
 <!-- generated-by: gsd-doc-writer -->
 # OrderFlow — Referência da API
 
-> Endpoints disponíveis hoje no repositório, pertencentes ao `auth-service`, `catalog-service` e
-> `inventory-service`, todos acessados através do API Gateway. Veja
+> Endpoints disponíveis hoje no repositório, pertencentes ao `auth-service`, `catalog-service`,
+> `inventory-service` e `notification-service`, todos acessados através do API Gateway. Veja
 > [VISAO-GERAL.md](VISAO-GERAL.md) para o contexto do projeto e o estado atual dos serviços.
 >
 > **Prefere testar no navegador em vez de ler?** Cada serviço também expõe uma Swagger UI
 > interativa na própria porta (não pelo Gateway): `http://localhost:8081/swagger-ui.html`
-> (auth-service), `:8082` (catalog-service), `:8083` (inventory-service). Cole um JWT no botão
-> **Authorize** e exercite qualquer endpoint abaixo via **Try it out** — ver
+> (auth-service), `:8082` (catalog-service), `:8083` (inventory-service), `:8084`
+> (notification-service). Cole um JWT no botão **Authorize** e exercite qualquer endpoint abaixo
+> via **Try it out** — ver
 > [VISAO-GERAL.md § Documentação interativa](VISAO-GERAL.md#documentação-interativa-swagger-ui).
 
 ## URL base
@@ -27,6 +28,7 @@ downstream (`StripPrefix=1` em todas as rotas, `gateway/src/main/resources/appli
 | `/api/auth/**`, `/api/companies/**` | `auth-service` | `POST /api/auth/login` → `POST /auth/login` |
 | `/api/products/**` | `catalog-service` | `GET /api/products/{id}` → `GET /products/{id}` |
 | `/api/inventory/**` | `inventory-service` | `GET /api/inventory/{productId}` → `GET /inventory/{productId}` |
+| `/api/notifications/**` | `notification-service` | `GET /api/notifications/{productId}` → `GET /notifications/{productId}` |
 
 `GET /.well-known/jwks.json` **não é roteado pelo Gateway** — é interno ao `auth-service`
 (`http://auth-service:8081/.well-known/jwks.json` na rede do Docker Compose) e existe para que
@@ -71,6 +73,7 @@ controller ser executado.
 | inventory-service | `GET` | `/api/inventory/{productId}` | Consulta o estoque exato de um produto | Bearer (qualquer papel) |
 | inventory-service | `POST` | `/api/inventory/{productId}/reservations` | Reserva uma quantidade de estoque (idempotente) | Bearer, papel `SELLER_ADMIN` |
 | inventory-service | `DELETE` | `/api/inventory/{productId}/reservations/{reservationId}` | Libera uma reserva de estoque (idempotente) | Bearer, papel `SELLER_ADMIN` |
+| notification-service | `GET` | `/api/notifications/{productId}` | Histórico de eventos de notificação de um produto, em ordem cronológica | Bearer, papel `SELLER_ADMIN` |
 | gateway | `GET` | `/actuator/health` | Health check do Gateway | Nenhuma |
 
 > As rotas de reserva/liberação do `inventory-service` são restritas a `SELLER_ADMIN` nesta fase —
@@ -139,6 +142,13 @@ isso é intencional, para não expor se um e-mail existe na base.
 | 409 | `stock_below_reserved` | `PUT /inventory/{productId}` tenta gravar `quantityOnHand` menor que a quantidade já reservada |
 | 409 | `data_conflict` | Rede de segurança genérica para `DataIntegrityViolationException` não capturada pelos handlers acima |
 | 503 | `reservation_conflict` | Disputa de concorrência sobre a mesma linha de inventário esgotou as reexecuções (até 10 tentativas com backoff); semanticamente distinto de `insufficient_stock` — significa "tente novamente", não "não há estoque" |
+
+**Erros específicos de `notification-service`:**
+
+| Status | `error` | Quando ocorre |
+|---|---|---|
+| 400 | `invalid_identifier` | `{productId}` não é um UUID válido |
+| 503 | `notification_store_unavailable` | Falha do SDK da AWS ao falar com o DynamoDB (indisponibilidade, timeout, erro de credencial) — o motivo real fica só no log do servidor |
 
 ---
 
@@ -589,6 +599,58 @@ silencioso que devolve o estado atual sem alterar nada — não é um erro.
 **Erros possíveis:** `401 unauthorized`, `403 forbidden`, `404 inventory_not_found` (`productId`
 sem linha de inventário — a ausência da própria reserva não gera erro), `409 data_conflict`,
 `503 reservation_conflict`.
+
+---
+
+## `GET /api/notifications/{productId}`
+
+Lista o histórico de eventos de notificação de um produto, em ordem cronológica de `occurredAt`
+(a fila SQS padrão não garante ordem de entrega, então a ordem é restaurada na leitura, não na
+gravação). Consumido de forma assíncrona: o `inventory-service` publica o evento na fila
+`notification-events-queue` depois de commitar um ajuste de estoque, e o `notification-service`
+grava o histórico no DynamoDB sem nenhuma chamada HTTP de entrada do `inventory-service` — ver
+[README.md § Como o evento flui](../README.md#como-o-evento-flui-sqs--dynamodb).
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN`.
+
+**Resposta `200 OK`** (produto com um evento `STOCK_ADJUSTED` registrado):
+
+```json
+[
+  {
+    "productId": "6a4f2e10-...",
+    "eventId": "3f7b1c2a-...",
+    "eventType": "STOCK_ADJUSTED",
+    "message": "Estoque do produto 6a4f2e10-... ajustado de 0 para 7 unidades",
+    "payload": {
+      "eventId": "3f7b1c2a-...",
+      "eventType": "STOCK_ADJUSTED",
+      "productId": "6a4f2e10-...",
+      "previousQuantityOnHand": 0,
+      "newQuantityOnHand": 7,
+      "occurredAt": "2026-09-23T02:26:12.244646700Z"
+    },
+    "occurredAt": "2026-09-23T02:26:12.244646700Z",
+    "recordedAt": "2026-09-23T02:26:13.108921400Z"
+  }
+]
+```
+
+`message` é um texto legível montado pelo servidor a partir do evento — não vem do
+`inventory-service`. `payload` é o corpo original do evento de contrato, como objeto JSON aninhado
+(não texto escapado), para inspeção direta pela Swagger UI. `recordedAt` é o instante em que o
+`notification-service` gravou o item no DynamoDB, sempre igual ou posterior a `occurredAt`.
+
+**Resposta `200 OK`** (produto sem nenhum evento registrado):
+
+```json
+[]
+```
+
+**Erros possíveis:** `400 invalid_identifier` (`{productId}` não é um UUID válido),
+`401 unauthorized`, `403 forbidden` (qualquer papel diferente de `SELLER_ADMIN`, incluindo
+`BUYER`), `503 notification_store_unavailable` (DynamoDB indisponível — o motivo real fica só no
+log do servidor).
 
 ---
 

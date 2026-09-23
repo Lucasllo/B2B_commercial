@@ -17,32 +17,38 @@ arquitetura de microsserviços orientada a eventos — não é um produto comerc
 
 **Valor central do projeto:** o fluxo de pedido (criação → aprovação por limite de crédito →
 reserva de estoque → confirmação) funcionando entre microsserviços via orquestração por eventos
-(padrão saga). Esse fluxo completo ainda depende de serviços que não existem no repositório —
-**order-service** (orquestração da saga e aprovação por limite de crédito) e
-**notification-service** (histórico de notificações em DynamoDB) — e da comunicação assíncrona via
-SQS, ainda não consumida por nenhum serviço. Ver "Estado atual" abaixo para o que já funciona hoje.
+(padrão saga). Esse fluxo completo ainda depende de um serviço que não existe no repositório —
+**order-service** (orquestração da saga e aprovação por limite de crédito). A Fase 3 já entrega a
+primeira integração assíncrona real do projeto: o **notification-service** consome eventos de
+ajuste de estoque via SQS e mantém um histórico consultável em DynamoDB, provando o encanamento de
+mensageria que a saga da Fase 5 vai reutilizar. Ver "Estado atual" abaixo para o que já funciona
+hoje.
 
 ## Estado atual (o que já existe e funciona)
 
 O repositório já expõe, de ponta a ponta e através do Gateway, autenticação, gestão de empresas
-compradoras, catálogo de produtos e controle de estoque com reserva protegida contra concorrência.
-Os serviços de pedido e notificação — o núcleo do fluxo de saga descrito acima — ainda não foram
-implementados, e o SQS/DynamoDB do LocalStack seguem provisionados na stack sem nenhum consumidor.
+compradoras, catálogo de produtos, controle de estoque com reserva protegida contra concorrência, e
+um histórico de notificações assíncrono: um ajuste de estoque publica um evento `STOCK_ADJUSTED`
+numa fila SQS real (LocalStack) que o `notification-service` consome e grava no DynamoDB, sem
+nenhuma chamada HTTP entre os dois serviços. O `order-service` — o núcleo do fluxo de saga descrito
+acima — ainda não foi implementado.
 
 | Serviço | Papel | Porta | Exposto externamente |
 |---|---|---|---|
 | `gateway` | API Gateway — único ponto de entrada para clientes externos | 8080 | Sim |
 | `auth-service` | Autenticação (JWT auto-emitido), cadastro de empresas compradoras e limite de crédito | 8081 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `catalog-service` | Catálogo de produtos do vendedor (criação, atualização, ativação/descontinuação) | 8082 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
-| `inventory-service` | Estoque por produto: quantidade em mãos, reserva e liberação, com proteção contra overselling concorrente | 8083 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `inventory-service` | Estoque por produto: quantidade em mãos, reserva e liberação, com proteção contra overselling concorrente; publica `STOCK_ADJUSTED` na fila SQS depois de cada ajuste | 8083 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `notification-service` | Consome eventos de ajuste de estoque da fila SQS e mantém o histórico consultável por produto no DynamoDB | 8084 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `postgres` | Persistência transacional — um schema por serviço (`auth`, `catalog`, `inventory`) na mesma instância | 5432 | Não |
-| `localstack` | Emulação local de SQS e DynamoDB — provisionado, mas ainda não consumido por nenhum serviço | 4566 | Não |
+| `localstack` | Emulação local de SQS (`notification-events-queue`) e DynamoDB (`notification-history`), provisionados automaticamente na subida pelo init hook | 4566 | Não |
 
 Através do Gateway, um usuário autenticado já consegue, hoje: fazer login e obter um JWT; cadastrar
 e consultar empresas compradoras e limite de crédito; criar, atualizar, listar e
-ativar/descontinuar produtos no catálogo (papel `SELLER_ADMIN`); e definir, consultar, reservar e
-liberar estoque por produto — inclusive sob concorrência, sem reservar mais do que o disponível.
-Ver [API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
+ativar/descontinuar produtos no catálogo (papel `SELLER_ADMIN`); definir, consultar, reservar e
+liberar estoque por produto — inclusive sob concorrência, sem reservar mais do que o disponível; e
+consultar o histórico de notificações de um produto, alimentado de forma assíncrona pelos ajustes
+de estoque. Ver [API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
 
 ## Arquitetura em alto nível
 
@@ -56,10 +62,20 @@ Cliente externo
       │
       ├── /api/products/**                  ──▶ catalog-service (:8082) ──▶ PostgreSQL (schema catalog)
       │
-      └── /api/inventory/**                 ──▶ inventory-service (:8083) ──▶ PostgreSQL (schema inventory)
+      ├── /api/inventory/**                 ──▶ inventory-service (:8083) ──▶ PostgreSQL (schema inventory)
+      │                                            │
+      │                                            │ publica STOCK_ADJUSTED após o commit
+      │                                            ▼
+      │                                      SQS notification-events-queue (LocalStack)
+      │                                            │
+      │                                            │ consumido de forma assíncrona
+      │                                            ▼
+      └── /api/notifications/**             ──▶ notification-service (:8084) ──▶ DynamoDB notification-history (LocalStack)
 
 Cada serviço acima valida o JWT localmente (JWKS publicado por auth-service em
-/.well-known/jwks.json) — nenhuma chamada síncrona de volta ao auth-service a cada requisição.
+/.well-known/jwks.json) — nenhuma chamada síncrona de volta ao auth-service a cada requisição. A
+ligação entre inventory-service e notification-service é só a fila SQS — nenhum dos dois chama o
+outro por HTTP.
 ```
 
 - O Gateway (Spring Cloud Gateway Server WebMVC) apenas roteia por prefixo de caminho — a validação
@@ -81,19 +97,24 @@ Cada serviço acima valida o JWT localmente (JWKS publicado por auth-service em
 Java 21, Spring Boot 3.5.16, Spring Cloud 2025.0.3 ("Northfields") com Spring Cloud Gateway Server
 WebMVC, Spring Security (OAuth2 Resource Server, JWT auto-emitido via Nimbus), PostgreSQL 16.15 com
 Flyway, springdoc-openapi 2.9.1 (Swagger UI por serviço), Docker Compose V2 para orquestração
-local. SQS e DynamoDB via LocalStack (imagem `localstack/localstack:2026.08.3`) estão provisionados
-na stack, mas ainda sem nenhum serviço consumidor.
+local. SQS (via Spring Cloud AWS) e DynamoDB (via AWS SDK v2 Enhanced Client) rodam contra
+LocalStack (imagem `localstack/localstack:2026.08.3`) — a fila `notification-events-queue` e a
+tabela `notification-history` são provisionadas automaticamente por um init hook na subida da
+stack, e o `inventory-service`/`notification-service` já produzem e consomem eventos reais nessa
+fila (Fase 3).
 
 ## Documentação interativa (Swagger UI)
 
-Além da referência estática em [API.md](API.md), `auth-service`, `catalog-service` e
-`inventory-service` servem Swagger UI na própria porta direta de cada um — **não** pelo Gateway:
+Além da referência estática em [API.md](API.md), `auth-service`, `catalog-service`,
+`inventory-service` e `notification-service` servem Swagger UI na própria porta direta de cada um —
+**não** pelo Gateway:
 
 | Serviço | Swagger UI |
 |---|---|
 | `auth-service` | http://localhost:8081/swagger-ui.html |
 | `catalog-service` | http://localhost:8082/swagger-ui.html |
 | `inventory-service` | http://localhost:8083/swagger-ui.html |
+| `notification-service` | http://localhost:8084/swagger-ui.html |
 
 A página carrega sem token (é uma ferramenta local de desenvolvimento, deliberadamente aceita —
 ver `SecurityConfig.java` de cada serviço). O botão **Authorize** aceita um JWT colado (obtido em
