@@ -68,28 +68,39 @@ public class InventoryService {
      * ambas nao encontrar linha existente e tentar inserir duas vezes, colidindo na constraint
      * {@code UNIQUE(product_id)} — a reexecucao absorve essa corrida e a tentativa perdedora
      * relê a linha ja comitada pela vencedora.
+     *
+     * <p>Devolve tambem a quantidade anterior ao ajuste (0 quando a linha e criada agora), lida
+     * dentro desta mesma transacao — nunca por uma leitura separada de fora, porque o metodo
+     * inteiro e reexecutado num conflito de versao, e so a releitura de dentro da tentativa atual
+     * garante que o valor capturado nunca fica desatualizado (03-RESEARCH.md Pitfall C). Esta
+     * classe nao conhece nada de mensageria: o evento de ajuste (03-02) e publicado pelo chamador
+     * — {@code InventoryController} — depois que este metodo retorna e a transacao ja foi
+     * commitada, nunca daqui de dentro.
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
             maxAttempts = RETRY_MAX_ATTEMPTS,
             backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
     @Transactional
-    public StockResponse setStock(UUID productId, int quantityOnHand) {
+    public StockAdjustmentResult setStock(UUID productId, int quantityOnHand) {
         Inventory inventory = inventoryRepository.findByProductId(productId).orElse(null);
+        int previousQuantityOnHand;
         if (inventory == null) {
+            previousQuantityOnHand = 0;
             inventory = inventoryRepository.save(new Inventory(productId, quantityOnHand));
         } else {
             if (quantityOnHand < inventory.getQuantityReserved()) {
                 throw new StockBelowReservedException(inventory.getQuantityReserved(), quantityOnHand);
             }
+            previousQuantityOnHand = inventory.getQuantityOnHand();
             inventory.setOnHand(quantityOnHand);
             inventoryRepository.saveAndFlush(inventory);
         }
-        return StockResponse.from(inventory);
+        return new StockAdjustmentResult(StockResponse.from(inventory), previousQuantityOnHand);
     }
 
     @Recover
-    public StockResponse recoverSetStock(DataAccessException ex, UUID productId, int quantityOnHand) {
+    public StockAdjustmentResult recoverSetStock(DataAccessException ex, UUID productId, int quantityOnHand) {
         throw new ReservationConflictException();
     }
 

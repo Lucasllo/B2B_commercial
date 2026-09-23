@@ -2,6 +2,7 @@ package com.orderflow.inventory;
 
 import com.orderflow.inventory.stock.StockReservationRepository;
 import com.orderflow.inventory.stock.dto.StockResponse;
+import com.orderflow.inventory.support.LocalStackTestSupport;
 import com.orderflow.inventory.support.TestJwt;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +11,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.IOException;
@@ -59,6 +62,11 @@ class StockReservationConcurrencyIT {
 
     static {
         postgres.start();
+    }
+
+    @DynamicPropertySource
+    static void awsProperties(DynamicPropertyRegistry registry) {
+        LocalStackTestSupport.registerAwsProperties(registry);
     }
 
     // Cliente HTTP compartilhado por toda a classe, reutilizado em todas as requisicoes -- e

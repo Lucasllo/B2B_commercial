@@ -91,6 +91,15 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!--
+          Publica o evento de ajuste de estoque na fila de fan-out consumida pelo
+          notification-service (D-27), direto, sem outbox nesta fase (D-29). Sem versao — vem do
+          BOM io.awspring.cloud:spring-cloud-aws-dependencies importado no pom raiz.
+        -->
+        <dependency>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-starter-sqs</artifactId>
+        </dependency>
 
         <!-- Dependencias de teste -->
         <!-- MockMvc, AssertJ, JUnit 5 e Mockito para os testes de integracao -->
@@ -115,6 +124,22 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Container LocalStack real usado por StockAdjustedEventPublishingIT/StockEventPublishFailureIT
+          — Spring Cloud AWS nao oferece @ServiceConnection para LocalStack (03-RESEARCH.md
+          Pitfall A), as propriedades sao registradas a mao via @DynamicPropertySource.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>localstack</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Asserções assíncronas de espera de provisionamento do LocalStack e leitura da fila -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

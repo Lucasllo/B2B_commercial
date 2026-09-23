@@ -3,6 +3,7 @@ package com.orderflow.inventory.stock;
 import com.orderflow.inventory.stock.dto.ReserveStockRequest;
 import com.orderflow.inventory.stock.dto.SetStockRequest;
 import com.orderflow.inventory.stock.dto.StockResponse;
+import com.orderflow.inventory.stock.messaging.StockEventPublisher;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,27 +18,36 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * {@code PUT /inventory/{productId}} — so o papel SELLER_ADMIN define estoque (INV-01).
- * {@code GET /inventory/{productId}} — qualquer autenticado consulta a disponibilidade exata
- * (D-25), sem restricao de papel alem de {@code authenticated()} vinda de {@code SecurityConfig}.
+ * {@code PUT /inventory/{productId}} — so o papel SELLER_ADMIN define estoque (INV-01). O ajuste
+ * publica o evento de contrato ({@code StockEventPublisher}) depois do commit, porque a chamada ao
+ * servico transacional ({@code inventoryService.setStock}) ja retornou quando a publicacao comeca
+ * — o proxy Spring ja commitou a transacao nesse ponto (03-RESEARCH.md Pitfall B). {@code
+ * GET /inventory/{productId}} — qualquer autenticado consulta a disponibilidade exata (D-25), sem
+ * restricao de papel alem de {@code authenticated()} vinda de {@code SecurityConfig}.
  * {@code POST .../reservations} e {@code DELETE .../reservations/{reservationId}} — restritos a
  * SELLER_ADMIN nesta fase (leitura conservadora: nenhum comprador reserva estoque diretamente; a
- * Fase 5 introduz uma identidade de servico propria para o order-service chamar estas rotas).
+ * Fase 5 introduz uma identidade de servico propria para o order-service chamar estas rotas) e nao
+ * publicam evento de ajuste (D-28) — reserva e liberacao so passam a publicar na Fase 5.
  */
 @RestController
 @RequestMapping("/inventory")
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final StockEventPublisher stockEventPublisher;
 
-    public InventoryController(InventoryService inventoryService) {
+    public InventoryController(InventoryService inventoryService, StockEventPublisher stockEventPublisher) {
         this.inventoryService = inventoryService;
+        this.stockEventPublisher = stockEventPublisher;
     }
 
     @PutMapping("/{productId}")
     @PreAuthorize("hasRole('SELLER_ADMIN')")
     public StockResponse setStock(@PathVariable UUID productId, @Valid @RequestBody SetStockRequest request) {
-        return inventoryService.setStock(productId, request.quantityOnHand());
+        StockAdjustmentResult result = inventoryService.setStock(productId, request.quantityOnHand());
+        stockEventPublisher.publishStockAdjusted(
+                productId, result.previousQuantityOnHand(), result.stock().quantityOnHand());
+        return result.stock();
     }
 
     @GetMapping("/{productId}")

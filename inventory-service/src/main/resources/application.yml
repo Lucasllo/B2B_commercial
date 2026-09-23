@@ -29,6 +29,23 @@ spring:
           # inventory-service e apenas resource server — nunca emite token. A validacao e local
           # por chave publica buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
           jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        # Literais fixos, de proposito nao ligados as variaveis AWS_* do ambiente do
+        # desenvolvedor — mesmo motivo registrado no application.yml do notification-service:
+        # credencial real nunca chega a este servico, e credencial falsa impede chamada acidental
+        # a AWS real se o endpoint local faltar.
+        access-key: test
+        secret-key: test
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+      sqs:
+        # O padrao do Spring Cloud AWS e criar a fila ausente quando o cliente a procura — isso
+        # esconderia um init hook do LocalStack quebrado (Success Criteria 4 do ROADMAP). "fail"
+        # faz o envio falhar alto em vez de mascarar o problema.
+        queue-not-found-strategy: fail
 
 # Nenhuma decisao desta fase pede threads virtuais no lado servidor — a flag de threads virtuais
 # do Spring Boot fica deliberadamente ausente deste arquivo (02-RESEARCH.md Pitfall 5 e Open
@@ -55,6 +72,10 @@ springdoc:
   show-actuator: false
 
 orderflow:
+  messaging:
+    # Fila de fan-out consumida pelo notification-service (03-01) — precisa bater exatamente com o
+    # nome criado pelo init hook localstack-init/ready.d/01-create-notification-resources.sh.
+    notification-events-queue: notification-events-queue
   openapi:
     title: "OrderFlow — Inventory Service API"
     description: >-

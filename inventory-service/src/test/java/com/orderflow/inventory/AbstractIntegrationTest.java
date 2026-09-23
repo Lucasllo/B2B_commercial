@@ -1,5 +1,6 @@
 package com.orderflow.inventory;
 
+import com.orderflow.inventory.support.LocalStackTestSupport;
 import com.orderflow.inventory.support.TestJwt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -7,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -25,6 +28,12 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * {@code @Testcontainers}) garante um unico {@code start()} por JVM, nunca interrompido entre
  * classes; a limpeza fica a cargo do Ryuk/encerramento da JVM, exatamente como o padrao oficial
  * recomenda (padrao herdado de {@code auth-service}/{@code catalog-service}).
+ *
+ * <p>Desde o plano 03-02, um LocalStack real tambem sobe (via {@link LocalStackTestSupport}) para
+ * que {@code StockEventPublisher} tenha uma fila de verdade para publicar — sem isso, todo
+ * {@code PUT /inventory/{productId}} dos testes existentes tentaria falar com um endpoint
+ * inexistente. Spring Cloud AWS nao oferece {@code @ServiceConnection} para LocalStack
+ * (03-RESEARCH.md Pitfall A), entao as propriedades sao registradas a mao.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
@@ -38,6 +47,11 @@ abstract class AbstractIntegrationTest {
 
     static {
         postgres.start();
+    }
+
+    @DynamicPropertySource
+    static void awsProperties(DynamicPropertyRegistry registry) {
+        LocalStackTestSupport.registerAwsProperties(registry);
     }
 
     @Autowired
