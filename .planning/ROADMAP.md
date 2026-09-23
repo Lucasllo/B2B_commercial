@@ -81,7 +81,20 @@ Plans:
   3. O registro é gravado com chave determinística (ex.: `id#tipoDeEvento`), de modo que uma reentrega do mesmo evento sobrescreve o registro em vez de duplicar o histórico.
   4. Filas SQS e tabela DynamoDB são criadas automaticamente na subida do LocalStack, sem passo manual, e um teste de integração com Testcontainers + LocalStack exercita o fluxo real de publicação e consumo.
 
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — notification-service: evento na fila do LocalStack vira histórico no DynamoDB com chave determinística (reentrega sobrescreve, mensagem venenosa descartada com log), consulta `GET /notifications/{productId}` restrita a SELLER_ADMIN, init hook do LocalStack e módulo no reactor (NOTF-01, NOTF-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — inventory-service: o ajuste de estoque publica `STOCK_ADJUSTED` direto no SQS depois do commit, sem outbox (D-29), com a quantidade anterior capturada na transação e falha de publicação registrada em log sem derrubar o ajuste (D-30) (NOTF-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — notification-service no `docker compose up` e atrás do Gateway, LocalStack saudável só com fila e tabela provisionadas, smoke ponta a ponta na stack real (fluxo, reentrega, ajustes distintos), Swagger do serviço novo e README com a limitação de dual-write (NOTF-01, NOTF-02)
 
 ### Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 
