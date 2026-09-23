@@ -1,7 +1,11 @@
 package com.orderflow.notification.history.messaging;
 
+import com.orderflow.notification.history.InvalidNotificationEventException;
 import com.orderflow.notification.history.NotificationService;
 import io.awspring.cloud.sqs.annotation.SqsListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -10,18 +14,33 @@ import org.springframework.stereotype.Component;
  * {@code String} de proposito: o corpo chega verbatim (o conversor padrao entrega o texto
  * original quando o tipo alvo e {@code String}), a fila e de fan-out e vai receber outros tipos de
  * evento nas Fases 5 e 6, e a decisao de como interpretar o corpo fica no servico.
+ *
+ * <p>Sem fila de mensagens mortas ({@code DLQ-01}, v2), o descarte com log e a unica defesa contra
+ * uma mensagem que nunca poderia ser processada ficar voltando para sempre: retornar normalmente
+ * faz o Spring Cloud AWS confirmar e apagar a mensagem. Qualquer outra excecao (ex.: falha de
+ * gravacao no DynamoDB) nao e capturada aqui — sem confirmacao, a mensagem volta a fila depois do
+ * timeout de visibilidade, e como a gravacao e idempotente por chave, a reentrega e segura.
  */
 @Component
 public class NotificationEventListener {
 
-    private final NotificationService notificationService;
+    private static final Logger log = LoggerFactory.getLogger(NotificationEventListener.class);
 
-    public NotificationEventListener(NotificationService notificationService) {
+    private final NotificationService notificationService;
+    private final String queueName;
+
+    public NotificationEventListener(NotificationService notificationService,
+                                      @Value("${orderflow.notifications.queue-name}") String queueName) {
         this.notificationService = notificationService;
+        this.queueName = queueName;
     }
 
     @SqsListener("${orderflow.notifications.queue-name}")
     public void onMessage(String payload) {
-        notificationService.record(payload);
+        try {
+            notificationService.record(payload);
+        } catch (InvalidNotificationEventException e) {
+            log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
+        }
     }
 }

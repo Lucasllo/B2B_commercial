@@ -11,19 +11,22 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Mapeia evento -> registro, monta a mensagem legivel, e ordena a leitura por ordem cronologica.
- * Nesta task (Task 1) um corpo invalido simplesmente propaga a excecao do Jackson (envolvida em
- * {@link IllegalArgumentException}); a Task 2 transforma isso em descarte controlado via
- * {@link InvalidNotificationEventException}.
+ * Mapeia evento -> registro, monta a mensagem legivel, valida o evento antes de gravar, e ordena
+ * a leitura por ordem cronologica. Uma falha do repositorio no {@code save} nao e capturada aqui —
+ * ela propaga como esta, para que a mensagem nao seja confirmada e o SQS a entregue de novo (a
+ * gravacao e idempotente por chave, entao a reentrega e segura).
  */
 @Service
 public class NotificationService {
 
     static final String SORT_KEY_SEPARATOR = "#";
+
+    private static final int SANITIZED_VALUE_MAX_LENGTH = 64;
 
     private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
@@ -32,46 +35,122 @@ public class NotificationService {
     public NotificationService(NotificationRepository notificationRepository, ObjectMapper objectMapper) {
         this.notificationRepository = notificationRepository;
         this.objectMapper = objectMapper;
-        // FAIL_ON_TRAILING_TOKENS detecta conteudo depois do valor JSON valido (Task 2 converte
-        // essa excecao do Jackson em descarte controlado).
+        // FAIL_ON_TRAILING_TOKENS detecta conteudo depois do valor JSON valido — uma mensagem
+        // venenosa nao pode passar por valida so porque o primeiro objeto do corpo e bem formado.
         this.eventReader = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
 
     public void record(String rawPayload) {
+        JsonNode tree;
         try {
-            JsonNode tree = eventReader.readTree(rawPayload);
-            StockAdjustedEvent event = objectMapper.treeToValue(tree, StockAdjustedEvent.class);
-
-            String message = "Estoque do produto %s ajustado de %d para %d unidades"
-                    .formatted(event.productId(), event.previousQuantityOnHand(), event.newQuantityOnHand());
-
-            NotificationRecord record = new NotificationRecord();
-            record.setProductId(event.productId().toString());
-            record.setSortKey(event.eventType() + SORT_KEY_SEPARATOR + event.eventId());
-            record.setEventId(event.eventId().toString());
-            record.setEventType(event.eventType());
-            record.setRawPayload(objectMapper.writeValueAsString(tree));
-            record.setMessage(message);
-            record.setOccurredAt(event.occurredAt());
-            record.setRecordedAt(Instant.now());
-
-            notificationRepository.save(record);
+            tree = eventReader.readTree(rawPayload);
         } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Failed to parse notification event", e);
+            throw new InvalidNotificationEventException("Corpo da mensagem nao e um JSON valido");
+        }
+
+        if (tree == null || !tree.isObject()) {
+            throw new InvalidNotificationEventException("Corpo da mensagem nao e um objeto JSON");
+        }
+
+        StockAdjustedEvent event;
+        try {
+            event = objectMapper.treeToValue(tree, StockAdjustedEvent.class);
+        } catch (JsonProcessingException e) {
+            throw new InvalidNotificationEventException("Evento com um ou mais campos em formato invalido");
+        }
+
+        validate(event);
+
+        String message = "Estoque do produto %s ajustado de %d para %d %s"
+                .formatted(event.productId(), event.previousQuantityOnHand(), event.newQuantityOnHand(),
+                        event.newQuantityOnHand() == 1 ? "unidade" : "unidades");
+
+        NotificationRecord record = new NotificationRecord();
+        record.setProductId(event.productId().toString());
+        record.setSortKey(event.eventType() + SORT_KEY_SEPARATOR + event.eventId());
+        record.setEventId(event.eventId().toString());
+        record.setEventType(event.eventType());
+        record.setRawPayload(serializeTree(tree));
+        record.setMessage(message);
+        record.setOccurredAt(event.occurredAt());
+        record.setRecordedAt(Instant.now());
+
+        // Sem expressao de condicao: PutItem substitui completamente o item de mesma chave, o que
+        // da a sobrescrita em reentrega de graca. Nao ha leitura previa "ja processei este
+        // evento?" — a chave deterministica ja resolve a idempotencia.
+        notificationRepository.save(record);
+    }
+
+    private void validate(StockAdjustedEvent event) {
+        String eventType = event.eventType();
+        if (eventType == null || !eventType.equals(StockAdjustedEvent.EVENT_TYPE)) {
+            throw new InvalidNotificationEventException(
+                    "Tipo de evento nao suportado: " + sanitizeForLog(eventType));
+        }
+        if (event.eventId() == null) {
+            throw new InvalidNotificationEventException("Campo eventId ausente");
+        }
+        if (event.productId() == null) {
+            throw new InvalidNotificationEventException("Campo productId ausente");
+        }
+        if (event.occurredAt() == null) {
+            throw new InvalidNotificationEventException("Campo occurredAt ausente");
+        }
+        if (event.previousQuantityOnHand() == null) {
+            throw new InvalidNotificationEventException("Campo previousQuantityOnHand ausente");
+        }
+        if (event.newQuantityOnHand() == null) {
+            throw new InvalidNotificationEventException("Campo newQuantityOnHand ausente");
+        }
+        if (event.previousQuantityOnHand() < 0 || event.newQuantityOnHand() < 0) {
+            throw new InvalidNotificationEventException("Quantidade negativa nao e permitida");
+        }
+    }
+
+    /**
+     * O valor recebido vem de fora e acabaria numa linha de log WARN do listener — troca qualquer
+     * caractere de controle por {@code _} e corta em 64 caracteres para impedir injecao de linha
+     * de log e mensagens de exceção desproporcionalmente grandes.
+     */
+    private static String sanitizeForLog(String value) {
+        if (value == null) {
+            return "(ausente)";
+        }
+        String sanitized = value.replaceAll("[\\r\\n\\t]", "_");
+        return sanitized.length() > SANITIZED_VALUE_MAX_LENGTH
+                ? sanitized.substring(0, SANITIZED_VALUE_MAX_LENGTH)
+                : sanitized;
+    }
+
+    private String serializeTree(JsonNode tree) {
+        try {
+            return objectMapper.writeValueAsString(tree);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize notification event payload", e);
         }
     }
 
     public List<NotificationResponse> history(UUID productId) {
-        List<NotificationRecord> records = notificationRepository.findByProductId(productId.toString());
+        List<NotificationRecord> records = new ArrayList<>(
+                notificationRepository.findByProductId(productId.toString()));
+        // A Query devolve os itens em ordem de sort key (um UUID aleatorio no fim, portanto nao
+        // cronologica), e a fila padrao do SQS nao garante ordem de entrega — a ordem cronologica
+        // e restaurada aqui, na leitura.
+        records.sort(Comparator.comparing(NotificationRecord::getOccurredAt)
+                .thenComparing(NotificationRecord::getSortKey));
+
         List<NotificationResponse> responses = new ArrayList<>();
+        for (NotificationRecord record : records) {
+            responses.add(NotificationResponse.from(record, parsePayload(record.getRawPayload())));
+        }
+        return responses;
+    }
+
+    private JsonNode parsePayload(String rawPayload) {
         try {
-            for (NotificationRecord record : records) {
-                JsonNode payload = objectMapper.readTree(record.getRawPayload());
-                responses.add(NotificationResponse.from(record, payload));
-            }
+            return objectMapper.readTree(rawPayload);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to parse stored notification payload", e);
         }
-        return responses;
     }
 }
