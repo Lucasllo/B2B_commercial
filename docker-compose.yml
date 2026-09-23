@@ -24,12 +24,24 @@ services:
       - PERSISTENCE=0
     ports:
       - "127.0.0.1:4566:4566"
+    volumes:
+      - ./localstack-init/ready.d:/etc/localstack/init/ready.d:ro
+    # O endpoint padrao de saude do LocalStack (/_localstack/health) responde antes de o init hook
+    # terminar de rodar (03-RESEARCH.md Pitfall D) — um healthcheck so de processo deixaria
+    # inventory-service e notification-service subirem contra uma fila/tabela ainda inexistente, e
+    # o notification-service, configurado com queue-not-found-strategy=fail, cairia na subida. Por
+    # isso o healthcheck verifica os proprios recursos criados pelo init hook
+    # (localstack-init/ready.d/01-create-notification-resources.sh), nao apenas o processo.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history > /dev/null",
+        ]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
   auth-service:
     build:
@@ -85,15 +97,41 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      localstack:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderflow?currentSchema=inventory
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      # A partir da Fase 3 este servico publica na fila apos o commit do ajuste de estoque (03-02);
+      # nome de servico do compose, nao localhost (default do application.yml).
+      SPRING_CLOUD_AWS_ENDPOINT: http://localstack:4566
     ports:
       - "127.0.0.1:8083:8083"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    depends_on:
+      localstack:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_CLOUD_AWS_ENDPOINT: http://localstack:4566
+    ports:
+      - "127.0.0.1:8084:8084"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -109,6 +147,8 @@ services:
       catalog-service:
         condition: service_healthy
       inventory-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
     ports:
       - "8080:8080"

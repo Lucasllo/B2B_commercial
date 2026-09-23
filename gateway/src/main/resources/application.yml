@@ -29,6 +29,12 @@ spring:
                 - Path=/api/inventory/**
               filters:
                 - StripPrefix=1
+            - id: notification-service-route
+              uri: http://notification-service:8084
+              predicates:
+                - Path=/api/notifications/**
+              filters:
+                - StripPrefix=1
 
 management:
   endpoints:
