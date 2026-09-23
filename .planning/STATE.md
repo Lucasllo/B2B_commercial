@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Primeira Integração Assíncrona — Histórico de Notificações
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-23T02:30:04.029Z"
-last_activity: 2026-09-22
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-23T23:40:56.011Z"
+last_activity: 2026-09-23
 last_activity_desc: Phase 03 execution started
-state_head: 8171845aa1355f0240fa4f43cfc01f4c9eb76efc
+state_head: 2f2e76de08b0935032ab3e49cf934dcae50c2a6c
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-16)
 Phase: 03 (Primeira Integração Assíncrona — Histórico de Notificações) — EXECUTING
 Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-09-22 — Phase 03 execution started
+Last activity: 2026-09-23 — Phase 03 execution started
 
 Progress: [███░░░░░░░] 29%
 
@@ -61,6 +61,7 @@ Progress: [███░░░░░░░] 29%
 |------|----------|-------|-------|
 | Phase 02 P01 | 26min | 3 tasks | 25 files |
 | Phase 02 P02 | 27min | 3 tasks | 29 files |
+| Phase 03 P03 | 37min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ Recent decisions affecting current work:
 - [Phase 02]: RESERVATION_ID_SCOPE=scope-per-product — unicidade por par (productId, reservationId) para o reservationId da reserva de estoque
 - [Phase 02]: inventory-service: porta 8083, jwk-set-uri padrão http://localhost:8081/.well-known/jwks.json
 - [Phase 02]: Reexecução de conflito de lock otimista: maxAttempts=4, backoff delay=25ms multiplier=2 (Spring Retry, @EnableRetry order=LOWEST_PRECEDENCE)
+- [Phase 03]: [Phase 3]: Healthcheck do LocalStack verifica fila e tabela via awslocal (não só o processo) — recurso de negócio precisa existir antes de qualquer serviço dependente subir saudável
+- [Phase 03]: [Phase 3]: Reentrega provada na stack real enviando duas vezes o mesmo eventId direto na fila via awslocal, em vez de derrubar o consumidor no meio do processamento
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-22T22:58:15.368Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-primeira-integra-o-ass-ncrona-hist-rico-de-notifica-es/03-CONTEXT.md
+Last session: 2026-09-23T23:40:55.898Z
+Stopped at: Completed 03-03-PLAN.md
+Resume file: None
