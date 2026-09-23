@@ -1,0 +1,59 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: notification-service
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        # Literais fixos, de proposito nao ligados as variaveis AWS_* do ambiente do
+        # desenvolvedor: uma credencial real nunca deve chegar a este servico, e uma credencial
+        # falsa garante que, se o endpoint local faltar, a chamada falha em vez de alcancar a AWS
+        # de verdade.
+        access-key: test
+        secret-key: test
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+      sqs:
+        # O padrao do Spring Cloud AWS e criar a fila ausente quando o consumidor a procura — isso
+        # esconderia um init hook do LocalStack quebrado (Success Criteria 4 do ROADMAP). "fail"
+        # faz a subida falhar alto em vez de mascarar o problema.
+        queue-not-found-strategy: fail
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # notification-service e apenas resource server — nunca emite token. A validacao e
+          # local por chave publica buscada uma vez do JWKS do auth-service.
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+
+orderflow:
+  notifications:
+    queue-name: notification-events-queue
+    table-name: notification-history
+  openapi:
+    title: "OrderFlow — Notification Service API"
+    description: >-
+      Historico de notificacoes consumido de forma assincrona via SQS e consultavel por
+      identificador da entidade.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: false

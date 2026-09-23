@@ -22,6 +22,7 @@
         <module>auth-service</module>
         <module>catalog-service</module>
         <module>inventory-service</module>
+        <module>notification-service</module>
     </modules>
 
     <properties>
@@ -47,6 +48,13 @@
         <springdoc.version>2.9.1</springdoc.version>
         <!-- Versão do maven-failsafe-plugin, que roda as classes *IT.java em ./mvnw verify -->
         <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
+        <!--
+          Versão do Spring Cloud AWS usada pelo notification-service (starters SQS/DynamoDB). A
+          linha 4.x exige Spring Boot 4.0; 3.4.x é a última linha compatível com a
+          spring-boot.version 3.5.16 e o trem spring-cloud.version 2025.0.3 fixados acima
+          (03-RESEARCH.md §Standard Stack).
+        -->
+        <spring-cloud-aws.version>3.4.2</spring-cloud-aws.version>
     </properties>
 
     <dependencyManagement>
@@ -80,6 +88,18 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+            <!--
+              BOM do Spring Cloud AWS — gerencia os starters SQS/DynamoDB do notification-service e
+              a versão do AWS SDK v2 que o próprio Spring Cloud AWS testou. Nenhum módulo deve
+              declarar versão do software.amazon.awssdk à mão.
+            -->
+            <dependency>
+                <groupId>io.awspring.cloud</groupId>
+                <artifactId>spring-cloud-aws-dependencies</artifactId>
+                <version>${spring-cloud-aws.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
