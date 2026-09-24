@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 03
-current_phase_name: Primeira Integração Assíncrona — Histórico de Notificações
-status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-09-24T00:49:07.055Z"
+current_phase: 4
+current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
+status: planning
+stopped_at: Phase 03 complete, ready to plan Phase 4
+last_updated: "2026-09-24T01:01:50.973Z"
 last_activity: 2026-09-23
-last_activity_desc: Phase 03 execution started
-state_head: 805d5c290568f908dcef31d7797837c067b3d9e8
+last_activity_desc: Phase 03 complete, transitioned to Phase 4
+state_head: 48756d4b7e6ebcbb7d7ccf633816becb1c2b869c
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
   completed_plans: 11
-  percent: 29
+  percent: 43
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-16)
+See: .planning/PROJECT.md (updated 2026-09-24)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 03 — Primeira Integração Assíncrona — Histórico de Notificações
+**Current focus:** Phase 4 — Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 
 ## Current Position
 
-Phase: 03 (Primeira Integração Assíncrona — Histórico de Notificações) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-09-24 - Completed quick task 260923-tj9: validar issuer do JWT nos resource servers (T-03-02)
+Phase: 4 — Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-23 — Phase 03 complete, transitioned to Phase 4
 
-Progress: [███░░░░░░░] 29%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
+- Total plans completed: 11
 - Average duration: —
 - Total execution time: 0.0 hours
 
@@ -48,6 +48,7 @@ Progress: [███░░░░░░░] 29%
 |-------|-------|-------|----------|
 | 1 | 5 | - | - |
 | 02 | 3 | - | - |
+| 03 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -95,7 +96,9 @@ None yet.
 
 - [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
-- [Fase 3/5]: Verificar API atual do Spring Cloud AWS (`SqsTemplate`, `@SqsListener`) e o desenho da tabela DynamoDB durante o planejamento dessas fases — lacunas MEDIUM de confiança da pesquisa.
+- [Fase 5]: Padrões do Spring Cloud AWS (`SqsTemplate`/`@SqsListener`, `doNotSendPayloadTypeHeader`, `setPayloadTypeMapper`) já provados na Fase 3 — reusar na saga; o desenho de tabela DynamoDB (partition por agregado + sort `TIPO#eventId`) serve de base para a timeline do pedido (Fase 6).
+- [Fase 3 → antes da Fase 5]: avisos abertos do 03-REVIEW.md — WR-01 (`NotificationStoreUnavailableIT` consome a fila compartilhada; IT dependente de ordem), WR-02 (item >400 KB no DynamoDB reentrega para sempre sem DLQ), WR-03 (publicação SQS sem timeout na thread HTTP), WR-04 (`occurredAt` gerado após o commit), WR-05/WR-06. Corrigir via `/gsd-code-review 03 --fix`. WR-07 já resolvido (quick 260923-tj9).
+- [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
 
@@ -114,6 +117,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-23T23:40:55.898Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-09-24T01:10:00Z
+Stopped at: Phase 3 complete, ready to plan Phase 4
 Resume file: None

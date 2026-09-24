@@ -28,7 +28,7 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade
 - [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada)
 - [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED)
-- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS
+- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; falta ligar os eventos do ciclo de vida do pedido (Fases 5/6)*
 - [ ] Todo o sistema sobe localmente via docker-compose (microsserviços + Postgres + LocalStack)
 - [ ] Pipeline de CI/CD (GitHub Actions) builda e testa cada serviço a cada push
 - [ ] Decisões arquiteturais documentadas como ADRs em português
@@ -79,6 +79,9 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | Documentação em português, código em inglês | Alinhado às convenções da comunidade Java/Spring e ao objetivo de portfólio para uma vaga no Brasil | — Pending |
 | Empresa compradora como entidade própria com limite de crédito | A regra de aprovação por limite de crédito não tem contra o que checar sem isso; achado da pesquisa de domínio | — Pending |
 | Padrão Transactional Outbox em vez de publicação direta (dual-write) | Evita divergência entre o estado salvo no banco e o evento publicado no SQS; achado de risco crítico da pesquisa de arquitetura/pitfalls | — Pending |
+| Fase 3 publica direto (dual-write) do inventory-service, após o commit, e adia o Outbox para a Fase 5 (D-29/D-30) | Isola o encanamento SQS/DynamoDB antes da saga; a perda de evento fica observável em log ERROR e declarada no README | ✓ Aceito temporariamente — Fase 3 |
+| Idempotência do histórico pela chave `productId` + `STOCK_ADJUSTED#<eventId>` com `putItem` sem condição | Reentrega do SQS sobrescreve em vez de duplicar, sem precisar de tabela de deduplicação | ✓ Good — Fase 3 (IT + smoke na stack real) |
+| Resource servers validam o `iss` do JWT (`issuer-uri` junto de `jwk-set-uri`) e os testes usam o decoder de produção | Fecha a ameaça T-03-02; testes que trocam o decoder inteiro escondiam a falta da checagem | ✓ Good — quick 260923-tj9 |
 
 ## Evolution
 
@@ -98,4 +101,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-09-16 após pesquisa de domínio (achados incorporados)*
+*Última atualização: 2026-09-24 após a Fase 3*
