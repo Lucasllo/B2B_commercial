@@ -41,8 +41,13 @@ exec_localstack() {
 # Conta elementos do histórico contando ocorrências de "recordedAt" — eventId e eventType
 # aparecem duas vezes por elemento (no nível do elemento e dentro do payload aninhado), mas
 # recordedAt só existe no nível do elemento.
+#
+# Com "set -o pipefail", um corpo sem nenhum "recordedAt" (lista vazia "[]", ou um corpo de
+# erro) faz o "grep -o" sair com 1, o que sozinho já derrubaria o script inteiro por causa do
+# "set -e" — sem imprimir nenhum diagnóstico de "fail". O "|| true" garante que a ausência de
+# match vira "0 ocorrências" (contagem legítima), não um erro fatal.
 count_history_entries() {
-    grep -o '"recordedAt"' | wc -l | tr -d ' '
+    { grep -o '"recordedAt"' || true; } | wc -l | tr -d ' '
 }
 
 # 1. Autentica com a credencial de demonstração e extrai o accessToken — nunca impresso.
@@ -80,8 +85,10 @@ WAIT_START=$SECONDS
 ELAPSED=0
 FOUND=0
 while [ "$ELAPSED" -le 15 ]; do
+    # "|| true" protege o laço de um erro de conexão transitório do curl (ex.: exit 7): sem isso,
+    # "set -e" mataria o script na primeira tentativa em vez de repetir no próximo segundo.
     HISTORY_BODY=$(exec_gateway curl -s "${GATEWAY_URL}/api/notifications/${PRODUCT_ID}" \
-        -H "Authorization: Bearer ${TOKEN}")
+        -H "Authorization: Bearer ${TOKEN}" || true)
     if printf '%s' "$HISTORY_BODY" | grep -q '"eventType":"STOCK_ADJUSTED"' \
         && printf '%s' "$HISTORY_BODY" | grep -q '"newQuantityOnHand":42'; then
         FOUND=1
@@ -153,8 +160,10 @@ WAIT_START=$SECONDS
 ELAPSED=0
 FOUND_THREE=0
 while [ "$ELAPSED" -le 15 ]; do
+    # Mesma protecao do passo 5: uma resposta transitoria (corpo vazio ou erro de conexao) so
+    # zera a contagem dessa iteracao e deixa o laco tentar de novo, em vez de abortar o script.
     DISTINCT_HISTORY=$(exec_gateway curl -s "${GATEWAY_URL}/api/notifications/${PRODUCT_ID}" \
-        -H "Authorization: Bearer ${TOKEN}")
+        -H "Authorization: Bearer ${TOKEN}" || true)
     DISTINCT_COUNT=$(printf '%s' "$DISTINCT_HISTORY" | count_history_entries)
     if [ "$DISTINCT_COUNT" = "3" ]; then
         FOUND_THREE=1
