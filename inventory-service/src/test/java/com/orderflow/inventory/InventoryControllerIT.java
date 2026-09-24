@@ -261,6 +261,47 @@ class InventoryControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void getStockWithTokenSignedByTrustedKeyButWrongIssuerReturns401() throws Exception {
+        UUID productId = UUID.randomUUID();
+
+        JWTClaimsSet wrongIssuerClaims = new JWTClaimsSet.Builder()
+                .issuer("https://emissor-forjado.example")
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithWrongIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, wrongIssuerClaims);
+        mockMvc.perform(get("/inventory/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithWrongIssuer))
+                .andExpect(status().isUnauthorized());
+
+        JWTClaimsSet noIssuerClaims = new JWTClaimsSet.Builder()
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithNoIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, noIssuerClaims);
+        mockMvc.perform(get("/inventory/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithNoIssuer))
+                .andExpect(status().isUnauthorized());
+
+        JWTClaimsSet correctIssuerClaims = new JWTClaimsSet.Builder()
+                .issuer("orderflow-auth-service")
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithCorrectIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, correctIssuerClaims);
+        MvcResult result = mockMvc.perform(get("/inventory/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithCorrectIssuer))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).isNotEqualTo(401);
+    }
+
+    @Test
     void settingStockForProductIdThatDoesNotExistInAnyCatalogWorksNormally() throws Exception {
         // D-15: productId e referencia opaca — o inventory-service nunca valida contra o
         // catalog-service, entao um UUID aleatorio que nao corresponde a produto nenhum funciona

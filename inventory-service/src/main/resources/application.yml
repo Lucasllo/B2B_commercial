@@ -29,6 +29,13 @@ spring:
           # inventory-service e apenas resource server — nunca emite token. A validacao e local
           # por chave publica buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
           jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+          # Com jwk-set-uri tambem definido, o Boot NAO faz descoberta OIDC: busca as chaves no
+          # jwk-set-uri e usa o issuer-uri so como o valor esperado do claim iss. O valor nao e
+          # uma URL porque o auth-service emite o iss literal orderflow-auth-service, que nao
+          # depende de host nem de rede — por isso o docker-compose.yml nao ganha variavel nova.
+          # Fecha T-03-02/WR-07: sem esta linha, um token assinado pela chave confiavel mas com
+          # iss diferente (ou ausente) era aceito, pois so assinatura e exp/nbf eram validados.
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:orderflow-auth-service}
   cloud:
     aws:
       region:
