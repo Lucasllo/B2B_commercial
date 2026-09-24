@@ -46,7 +46,7 @@ public class InventoryController {
     public StockResponse setStock(@PathVariable UUID productId, @Valid @RequestBody SetStockRequest request) {
         StockAdjustmentResult result = inventoryService.setStock(productId, request.quantityOnHand());
         stockEventPublisher.publishStockAdjusted(
-                productId, result.previousQuantityOnHand(), result.stock().quantityOnHand());
+                productId, result.previousQuantityOnHand(), result.stock().quantityOnHand(), result.adjustedAt());
         return result.stock();
     }
 

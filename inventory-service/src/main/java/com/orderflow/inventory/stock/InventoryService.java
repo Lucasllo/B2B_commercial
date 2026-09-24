@@ -10,6 +10,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -96,7 +97,11 @@ public class InventoryService {
             inventory.setOnHand(quantityOnHand);
             inventoryRepository.saveAndFlush(inventory);
         }
-        return new StockAdjustmentResult(StockResponse.from(inventory), previousQuantityOnHand);
+        // Capturado aqui, dentro da tentativa transacional que de fato gravou o ajuste — nao no
+        // momento da publicacao do evento (fora da transacao, depois do commit), que sob dois PUT
+        // concorrentes no mesmo produto pode inverter a ordem cronologica do occurredAt em relacao
+        // a ordem real de commit (WR-04).
+        return new StockAdjustmentResult(StockResponse.from(inventory), previousQuantityOnHand, Instant.now());
     }
 
     @Recover

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -40,8 +41,9 @@ public class StockEventPublisher {
      * local de pendencias — qualquer mecanismo de reenvio seria, na pratica, um outbox parcial, e
      * D-29 decide que o outbox so entra na Fase 5.
      */
-    public void publishStockAdjusted(UUID productId, int previousQuantityOnHand, int newQuantityOnHand) {
-        StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, newQuantityOnHand);
+    public void publishStockAdjusted(UUID productId, int previousQuantityOnHand, int newQuantityOnHand,
+                                      Instant adjustedAt) {
+        StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, newQuantityOnHand, adjustedAt);
         try {
             sqsTemplate.send(to -> to.queue(queueName).payload(event));
         } catch (RuntimeException e) {

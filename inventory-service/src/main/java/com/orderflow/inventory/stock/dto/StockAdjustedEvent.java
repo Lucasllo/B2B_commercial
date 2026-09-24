@@ -24,8 +24,15 @@ public record StockAdjustedEvent(
 ) {
     public static final String EVENT_TYPE = "STOCK_ADJUSTED";
 
-    public static StockAdjustedEvent of(UUID productId, int previousQuantityOnHand, int newQuantityOnHand) {
+    /**
+     * {@code occurredAt} e recebido de fora (capturado pelo chamador dentro da tentativa
+     * transacional que gravou o ajuste), e nao gerado aqui com {@code Instant.now()} — este metodo
+     * roda no momento da publicacao, depois do commit, e sob concorrencia essa hora pode nao
+     * refletir a ordem real em que os ajustes foram commitados (WR-04).
+     */
+    public static StockAdjustedEvent of(UUID productId, int previousQuantityOnHand, int newQuantityOnHand,
+                                         Instant occurredAt) {
         return new StockAdjustedEvent(
-                UUID.randomUUID(), EVENT_TYPE, productId, previousQuantityOnHand, newQuantityOnHand, Instant.now());
+                UUID.randomUUID(), EVENT_TYPE, productId, previousQuantityOnHand, newQuantityOnHand, occurredAt);
     }
 }
