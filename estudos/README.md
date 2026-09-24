@@ -42,3 +42,7 @@ pasta é para consulta própria durante o aprendizado.
 15. [Pasta de testes e Testcontainers](15-testes.md) — a convenção `*Test.java` vs
     `*IT.java`, as dependências de teste declaradas nos `pom.xml`, e como o Testcontainers
     sobe um Postgres real em Docker para cada suíte de integração
+16. [SQS, Outbox e mensageria entre serviços](16-sqs-outbox-mensageria.md) — como o
+    `inventory-service` publica eventos no SQS (LocalStack) e o `notification-service` os
+    consome de forma idempotente para o DynamoDB, o problema de dual-write que o padrão
+    Transactional Outbox (ainda não implementado) vai resolver na Fase 5
