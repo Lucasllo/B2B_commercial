@@ -52,3 +52,6 @@ pasta é para consulta própria durante o aprendizado.
 18. [OIDC e a claim `iss`](18-oidc-claim-iss.md) — o que é a claim `iss` de um JWT, o que é
     OIDC e por que o projeto não usa descoberta automática, e a correção (T-03-02/WR-07)
     que passou a rejeitar tokens com emissor errado ou ausente
+19. [`@SqsListener` — como o notification-service recebe mensagens](19-sqslistener-consumo.md)
+    — o container ouvinte em segundo plano, long polling, por que o parâmetro é `String`, e
+    como o retorno (ou exceção) do método decide se a mensagem é confirmada ou volta à fila
