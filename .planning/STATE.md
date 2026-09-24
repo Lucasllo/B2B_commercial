@@ -97,7 +97,6 @@ None yet.
 - [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
 - [Fase 5]: Padrões do Spring Cloud AWS (`SqsTemplate`/`@SqsListener`, `doNotSendPayloadTypeHeader`, `setPayloadTypeMapper`) já provados na Fase 3 — reusar na saga; o desenho de tabela DynamoDB (partition por agregado + sort `TIPO#eventId`) serve de base para a timeline do pedido (Fase 6).
-- [Fase 3 → antes da Fase 5]: avisos abertos do 03-REVIEW.md — WR-01 (`NotificationStoreUnavailableIT` consome a fila compartilhada; IT dependente de ordem), WR-02 (item >400 KB no DynamoDB reentrega para sempre sem DLQ), WR-03 (publicação SQS sem timeout na thread HTTP), WR-04 (`occurredAt` gerado após o commit), WR-05/WR-06. Corrigir via `/gsd-code-review 03 --fix`. WR-07 já resolvido (quick 260923-tj9).
 - [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
