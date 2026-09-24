@@ -49,3 +49,6 @@ pasta é para consulta própria durante o aprendizado.
 17. [DynamoDB](17-dynamodb.md) — o banco NoSQL do `notification-service`, partition key e
     sort key da tabela `notification-history`, `@DynamoDbBean`/Enhanced Client, e como isso
     se compara ao Postgres/JPA usado nos demais serviços
+18. [OIDC e a claim `iss`](18-oidc-claim-iss.md) — o que é a claim `iss` de um JWT, o que é
+    OIDC e por que o projeto não usa descoberta automática, e a correção (T-03-02/WR-07)
+    que passou a rejeitar tokens com emissor errado ou ausente
