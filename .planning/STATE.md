@@ -4,10 +4,10 @@ current_phase: 03
 current_phase_name: Primeira Integração Assíncrona — Histórico de Notificações
 status: executing
 stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-09-23T23:40:56.011Z"
+last_updated: "2026-09-24T00:49:07.055Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 03 execution started
-state_head: 2f2e76de08b0935032ab3e49cf934dcae50c2a6c
+state_head: 805d5c290568f908dcef31d7797837c067b3d9e8
 progress:
   total_phases: 7
   completed_phases: 2
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-16)
 Phase: 03 (Primeira Integração Assíncrona — Histórico de Notificações) — EXECUTING
 Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-09-23 — Phase 03 execution started
+Last activity: 2026-09-24 - Completed quick task 260923-tj9: validar issuer do JWT nos resource servers (T-03-02)
 
 Progress: [███░░░░░░░] 29%
 
@@ -102,6 +102,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260920-g6c | Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service para visualizacao e teste rapido dos endpoints no navegador | 2026-09-20 | 588785f | [260920-g6c-adicionar-springdoc-openapi-swagger-ui-e](./quick/260920-g6c-adicionar-springdoc-openapi-swagger-ui-e/) |
+| 260923-tj9 | Validar issuer (iss) do JWT nos resource servers notification/catalog/inventory — fecha T-03-02 / WR-07; testes passam a usar o decoder de produção | 2026-09-24 | 805d5c2 | [260923-tj9-validar-issuer-do-jwt-nos-resource-serve](./quick/260923-tj9-validar-issuer-do-jwt-nos-resource-serve/) |
 
 ## Deferred Items
 
