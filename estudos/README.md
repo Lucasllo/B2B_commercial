@@ -46,3 +46,6 @@ pasta é para consulta própria durante o aprendizado.
     `inventory-service` publica eventos no SQS (LocalStack) e o `notification-service` os
     consome de forma idempotente para o DynamoDB, o problema de dual-write que o padrão
     Transactional Outbox (ainda não implementado) vai resolver na Fase 5
+17. [DynamoDB](17-dynamodb.md) — o banco NoSQL do `notification-service`, partition key e
+    sort key da tabela `notification-history`, `@DynamoDbBean`/Enhanced Client, e como isso
+    se compara ao Postgres/JPA usado nos demais serviços

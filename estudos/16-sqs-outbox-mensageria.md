@@ -2,6 +2,7 @@
 
 Arquivos: `inventory-service/src/main/java/com/orderflow/inventory/stock/messaging/StockEventPublisher.java`,
 `inventory-service/src/main/java/com/orderflow/inventory/config/SqsMessagingConfig.java`,
+`notification-service/src/main/java/com/orderflow/notification/config/SqsMessagingConfig.java`,
 `notification-service/src/main/java/com/orderflow/notification/history/messaging/NotificationEventListener.java`,
 `notification-service/src/main/java/com/orderflow/notification/history/NotificationService.java`,
 `localstack-init/ready.d/01-create-notification-resources.sh`.
@@ -77,7 +78,142 @@ criar a fila silenciosamente e mascarar o problema.
 5. `NotificationService.record(...)` valida o JSON, monta uma mensagem
    legível e grava um registro no DynamoDB (tabela `notification-history`).
 
-## `SqsMessagingConfig` — por que existe um bean só para isso
+## O `SqsTemplate` — o "telefone" que fala com o SQS
+
+Antes de entender o `SqsMessagingConfig`, vale entender o que ele configura:
+o `SqsTemplate`, usado em `StockEventPublisher.publishStockAdjusted`:
+
+```java
+sqsTemplate.send(to -> to.queue(queueName).payload(event));
+```
+
+O `SqsTemplate` é uma classe pronta do Spring Cloud AWS que sabe como
+conectar, formatar e enviar mensagens para uma fila SQS — você não precisa
+escrever esse código de baixo nível na mão (abrir conexão, montar a
+requisição HTTP, serializar o objeto para JSON etc.).
+
+Repara que em nenhum lugar do projeto existe um `new SqsTemplate(...)`: ele é
+apenas **injetado** no construtor de `StockEventPublisher`:
+
+```java
+public StockEventPublisher(SqsTemplate sqsTemplate,
+                            @Value("${orderflow.messaging.notification-events-queue}") String queueName) {
+    this.sqsTemplate = sqsTemplate;
+    this.queueName = queueName;
+}
+```
+
+Isso funciona porque o `pom.xml` do inventory-service declara a dependência
+
+```xml
+<artifactId>spring-cloud-aws-starter-sqs</artifactId>
+```
+
+— um "starter" de auto-configuração. Assim que essa dependência está no
+classpath, o Spring Boot cria automaticamente um bean `SqsTemplate` pronto
+para uso e o disponibiliza para qualquer classe pedir no construtor, do
+mesmo jeito que outros beans do projeto (como um `@Repository`) aparecem
+prontos por injeção de dependência. Você só **pede** (`SqsTemplate
+sqsTemplate` no construtor); o Spring entrega a instância já configurada.
+
+### Para onde ele manda a mensagem — isso vem da configuração, não do código
+
+O `SqsTemplate` autoconfigurado lê a configuração de AWS do
+`application.yml` do inventory-service:
+
+```yaml
+cloud:
+  aws:
+    region:
+      static: us-east-1
+    credentials:
+      access-key: test
+      secret-key: test
+    endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+```
+
+- `endpoint: http://localhost:4566` — em vez de falar com a AWS real, ele
+  aponta para o **LocalStack** rodando local (ou `http://localstack:4566`
+  dentro do docker-compose, que sobrescreve essa variável de ambiente).
+- `access-key`/`secret-key: test` — credenciais fixas e falsas, porque o
+  LocalStack não valida autenticação de verdade; são propositalmente
+  diferentes das variáveis `AWS_*` reais do ambiente do desenvolvedor, para
+  nunca acidentalmente conseguir falar com a AWS de produção se o endpoint
+  local estiver ausente.
+
+Ou seja: o `SqsTemplate` em si é só a "interface de programação" —
+essa configuração é quem decide se ele fala com o LocalStack (dev/teste) ou
+com a AWS real (produção), sem precisar mudar uma linha de código Java.
+
+### A sintaxe `to -> to.queue(...).payload(...)`
+
+```java
+sqsTemplate.send(to -> to.queue(queueName).payload(event));
+```
+
+Isso é uma **lambda** (uma função anônima curta) que recebe um "construtor de
+mensagem" (`to`) e devolve como a mensagem deve ser montada:
+
+- `.queue(queueName)` — para qual fila enviar.
+- `.payload(event)` — qual objeto é o conteúdo da mensagem (o `SqsTemplate`
+  serializa esse objeto para JSON automaticamente, usando o `ObjectMapper` do
+  Spring Boot).
+
+É a mesma ideia de builder que aparece em outros lugares do projeto — só que
+em vez de montar o objeto passo a passo numa variável antes de enviar, o
+método `send` já recebe a função que constrói a mensagem inteira e a envia
+de uma vez.
+
+### Uma analogia para o `SqsTemplate`
+
+O `SqsTemplate` é como uma **agência dos Correios pronta para uso**: você não
+precisa saber como um caminhão de carga funciona, nem como o sistema de
+rastreamento é implementado — você só chega no balcão, diz "essa carta
+(`payload`), para esse endereço (`queue`)", e a agência (o Spring Cloud AWS)
+cuida do resto. A "agência" em si (o bean `SqsTemplate`) já vem pronta assim
+que você contrata o serviço (`spring-cloud-aws-starter-sqs` no `pom.xml`); o
+endereço da agência (LocalStack local vs. AWS real) é definido pela
+configuração no `application.yml`, não pelo código.
+
+## `SqsMessagingConfig` — ajustando um detalhe de como o `SqsTemplate` converte mensagens
+
+O `SqsTemplate` (e, do lado do consumidor, o mecanismo por trás do
+`@SqsListener`) precisam transformar objetos Java em JSON e vice-versa. Quem
+faz essa tradução é um **`MessagingMessageConverter`** — e por padrão o
+Spring Cloud AWS já fornece um, sem você precisar declarar nada. Só que o
+comportamento padrão desse conversor causa um problema específico neste
+projeto, e é isso que os dois `SqsMessagingConfig` (um em cada serviço)
+existem para corrigir.
+
+### O problema que motivou esse bean
+
+Por padrão, ao enviar uma mensagem, o conversor anexa um cabeçalho técnico
+chamado `JavaType`, contendo o **nome completo da classe Java** do objeto
+enviado — por exemplo, `com.orderflow.inventory.stock.dto.StockAdjustedEvent`.
+A ideia original desse cabeçalho é ajudar quem consome a mensagem a saber
+"para qual classe Java eu devo desserializar isso".
+
+O problema: o `notification-service` tem sua **própria cópia** dessa classe,
+em outro pacote e outro módulo Maven —
+`com.orderflow.notification.history.dto.StockAdjustedEvent`. Os dois serviços
+não compartilham uma biblioteca comum (cada um tem seu próprio DTO,
+propositalmente — microsserviços independentes não deveriam depender do
+mesmo `.jar` de domínio). Se o consumidor confiasse nesse cabeçalho para
+decidir qual classe carregar, ele tentaria carregar
+`com.orderflow.inventory.stock.dto.StockAdjustedEvent` — uma classe que
+**não existe** no classpath do notification-service — e explodiria com um
+erro de classe não encontrada, antes mesmo do `NotificationEventListener`
+rodar. Como o Javadoc do arquivo do notification-service explica: sem uma
+fila de mensagens mortas (DLQ), essa mensagem nunca seria confirmada e
+voltaria para a fila **para sempre**, tentando (e falhando) repetidamente.
+
+### A correção, um lado de cada vez
+
+Cada serviço declara seu próprio `SqsMessagingConfig`, e cada um resolve a
+parte do problema que cabe a ele — não é o mesmo código copiado duas vezes,
+são duas correções diferentes:
+
+**Lado do produtor** (`inventory-service/.../config/SqsMessagingConfig.java`):
 
 ```java
 @Bean
@@ -88,22 +224,55 @@ public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
 }
 ```
 
-Por padrão, o Spring Cloud AWS anexa um cabeçalho técnico à mensagem (o
-atributo `JavaType`) com o **nome completo da classe Java** do evento no lado
-de quem envia — por exemplo,
-`com.orderflow.inventory.stock.dto.StockAdjustedEvent`. O problema: o
-`notification-service` tem sua **própria** cópia dessa classe, em outro
-pacote (`com.orderflow.notification.history.dto.StockAdjustedEvent`), porque
-os dois serviços não compartilham uma biblioteca comum. Se o consumidor
-tentasse usar esse cabeçalho para decidir qual classe carregar, ele quebraria
-— a classe do produtor não existe no classpath do consumidor.
+`doNotSendPayloadTypeHeader()` faz o produtor **parar de mandar** o cabeçalho
+`JavaType` desde a origem. A mensagem que chega na fila passa a carregar só o
+JSON do evento, sem nenhum metadado de classe Java grudado nela.
 
-A solução, dos dois lados: o **produtor** (`inventory-service`) desliga o
-envio desse cabeçalho com `doNotSendPayloadTypeHeader()`; o **consumidor**
-(`notification-service`) já se defende de qualquer forma configurando seu
-próprio conversor sem mapeador de tipo. O contrato entre os dois serviços
-fica sendo só o **JSON puro do payload** — nada de metadado de classe Java
-atravessando a fronteira entre serviços.
+**Lado do consumidor** (`notification-service/.../config/SqsMessagingConfig.java`):
+
+```java
+@Bean
+public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
+    SqsMessagingMessageConverter converter = new SqsMessagingMessageConverter();
+    converter.setPayloadTypeMapper(message -> null);
+    return converter;
+}
+```
+
+Aqui a correção é diferente: `setPayloadTypeMapper(message -> null)` diz ao
+conversor "nunca tente decidir o tipo de destino olhando um cabeçalho da
+mensagem — devolva sempre `null`". Nesse caso, quem passa a decidir a que
+tipo desserializar é **o parâmetro do próprio método do listener**
+(`onMessage(String payload)`, que pede `String` — o texto bruto do JSON,
+sem nenhuma tentativa de virar objeto automaticamente).
+
+O Javadoc desse arquivo é explícito sobre por que essa segunda correção
+existe *mesmo já existindo a primeira, do lado do produtor*: **"o consumidor
+não pode depender de o produtor desligar esse atributo — quem decide a
+conversão é o tipo do parâmetro do método do listener, nunca o atributo
+enviado pelo produtor"**. Ou seja, o consumidor se defende de forma
+independente, sem confiar que quem publica a mensagem sempre vai lembrar de
+configurar isso direito — uma defesa em profundidade, não uma correção
+redundante.
+
+### Por que isso é registrado como `@Bean` em vez de configurar na chamada
+
+Em ambos os casos, o comentário do arquivo observa que a auto-configuração
+do Spring Cloud AWS **procura** por um bean `MessagingMessageConverter` já
+existente e, se encontrar, o usa tanto no `SqsTemplate` quanto (no lado do
+consumidor) na fábrica padrão de containers de listener — continuando a
+aplicar por baixo o `ObjectMapper` do Spring Boot (o mesmo que serializa
+`Instant` como texto ISO-8601 em todo o resto da API). Isso é o padrão comum
+no Spring: em vez de configurar cada chamada individualmente, você declara
+**um bean central** e o framework aplica essa configuração em todos os
+lugares relevantes automaticamente — o mesmo princípio já visto em
+`RetryConfig` (`@EnableRetry`), só que aqui o "interruptor" é a própria
+presença do bean, não uma anotação.
+
+O contrato entre os dois serviços fica sendo, no fim, só o **JSON puro do
+payload** — nada de metadado de classe Java atravessando a fronteira entre
+serviços, o que é exatamente o que se espera de dois microsserviços que não
+compartilham código de domínio.
 
 ## O que é o padrão Transactional Outbox (e por que ainda não existe aqui)
 
