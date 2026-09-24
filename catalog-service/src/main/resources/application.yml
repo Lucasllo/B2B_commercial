@@ -29,6 +29,13 @@ spring:
           # catalog-service é apenas resource server — nunca emite token. A validação é local por
           # chave pública buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
           jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+          # Com jwk-set-uri também definido, o Boot NÃO faz descoberta OIDC: busca as chaves no
+          # jwk-set-uri e usa o issuer-uri só como o valor esperado do claim iss. O valor não é
+          # uma URL porque o auth-service emite o iss literal orderflow-auth-service, que não
+          # depende de host nem de rede — por isso o docker-compose.yml não ganha variável nova.
+          # Fecha T-03-02/WR-07: sem esta linha, um token assinado pela chave confiável mas com
+          # iss diferente (ou ausente) era aceito, pois só assinatura e exp/nbf eram validados.
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:orderflow-auth-service}
   data:
     web:
       pageable:

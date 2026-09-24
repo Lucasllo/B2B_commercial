@@ -3,15 +3,16 @@ package com.orderflow.catalog.support;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.nimbusds.jose.proc.JWSVerificationKeySelector;
+import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.JwkSetUriJwtDecoderBuilderCustomizer;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -22,11 +23,17 @@ import java.util.UUID;
 
 /**
  * Suporte de teste que resolve o problema de o catalog-service não emitir token: um par de
- * chaves RSA gerado uma única vez e um {@link JwtDecoder} de teste publicado no contexto, com o
- * mesmo emissor ({@code orderflow-auth-service}) que o auth-service usa. Publicar esse
- * {@code JwtDecoder} faz a autoconfiguração do resource server recuar (ela só cria o decoder por
- * {@code jwk-set-uri} quando não existe nenhum bean {@code JwtDecoder}), então nenhum teste tenta
- * buscar JWKS pela rede — nenhum teste desta fase sobe o auth-service.
+ * chaves RSA gerado uma única vez, usado para assinar tokens de teste.
+ *
+ * <p>{@link Config} não publica mais um {@code JwtDecoder} próprio. Em vez disso, publica um
+ * {@link JwkSetUriJwtDecoderBuilderCustomizer} que troca só a fonte de chave do decoder
+ * autoconfigurado pelo Boot (WR-07): sem bean {@code JwtDecoder} no contexto, o Boot 3.5.16 monta
+ * o decoder de PRODUÇÃO a partir do application.yml (jwk-set-uri, RS256, validadores padrão e o
+ * validador de emissor do issuer-uri). O customizer roda depois de o Spring montar o seletor de
+ * chave remoto (baseado no jwk-set-uri) e o substitui pela chave pública em memória deste
+ * arquivo — nenhum teste busca JWKS pela rede, mas o emissor, o algoritmo e os demais validadores
+ * continuam vindo da configuração de produção. É isso que faz um token com {@code iss} errado ou
+ * ausente ser rejeitado nos testes exatamente como seria em produção (T-03-02/WR-07).
  */
 public final class TestJwt {
 
@@ -92,12 +99,11 @@ public final class TestJwt {
     public static class Config {
 
         @Bean
-        public JwtDecoder jwtDecoder() throws com.nimbusds.jose.JOSEException {
-            NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(RSA_KEY.toRSAPublicKey())
-                    .signatureAlgorithm(SignatureAlgorithm.RS256)
-                    .build();
-            decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
-            return decoder;
+        public JwkSetUriJwtDecoderBuilderCustomizer testJwkSourceCustomizer() {
+            return builder -> builder.jwtProcessorCustomizer(processor ->
+                    processor.setJWSKeySelector(new JWSVerificationKeySelector<SecurityContext>(
+                            JWSAlgorithm.RS256,
+                            new ImmutableJWKSet<>(new JWKSet(RSA_KEY.toPublicJWK())))));
         }
     }
 }

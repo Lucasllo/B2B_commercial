@@ -270,6 +270,47 @@ class ProductControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void getProductWithTokenSignedByTrustedKeyButWrongIssuerReturns401() throws Exception {
+        UUID productId = UUID.randomUUID();
+
+        JWTClaimsSet wrongIssuerClaims = new JWTClaimsSet.Builder()
+                .issuer("https://emissor-forjado.example")
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithWrongIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, wrongIssuerClaims);
+        mockMvc.perform(get("/products/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithWrongIssuer))
+                .andExpect(status().isUnauthorized());
+
+        JWTClaimsSet noIssuerClaims = new JWTClaimsSet.Builder()
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithNoIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, noIssuerClaims);
+        mockMvc.perform(get("/products/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithNoIssuer))
+                .andExpect(status().isUnauthorized());
+
+        JWTClaimsSet correctIssuerClaims = new JWTClaimsSet.Builder()
+                .issuer("orderflow-auth-service")
+                .subject(UUID.randomUUID().toString())
+                .claim("role", "SELLER_ADMIN")
+                .issueTime(new Date())
+                .expirationTime(Date.from(Instant.now().plusSeconds(3600)))
+                .build();
+        String tokenWithCorrectIssuer = TestJwt.tokenSignedBy(TestJwt.RSA_KEY, correctIssuerClaims);
+        MvcResult result = mockMvc.perform(get("/products/" + productId)
+                        .header("Authorization", "Bearer " + tokenWithCorrectIssuer))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).isNotEqualTo(401);
+    }
+
     private static String signWithKey(JWTClaimsSet claims, RSAKey signingKey) throws Exception {
         JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
                 .keyID(signingKey.getKeyID())
