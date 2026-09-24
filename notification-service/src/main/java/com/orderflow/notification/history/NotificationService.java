@@ -9,6 +9,7 @@ import com.orderflow.notification.history.dto.NotificationResponse;
 import com.orderflow.notification.history.dto.StockAdjustedEvent;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +29,12 @@ public class NotificationService {
 
     private static final int SANITIZED_VALUE_MAX_LENGTH = 64;
 
+    // DynamoDB rejeita itens acima de 400 KB (ValidationException). Um rawPayload assim de grande
+    // (ex.: um campo extra inesperado) faz o putItem falhar permanentemente, e como o listener trata
+    // qualquer excecao alem de InvalidNotificationEventException como transitoria, a mensagem volta
+    // para a fila e reentrega para sempre. Rejeitar cedo, antes do parse, corta esse laco (WR-02).
+    private static final int MAX_RAW_PAYLOAD_BYTES = 64 * 1024;
+
     private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
     private final ObjectReader eventReader;
@@ -41,6 +48,11 @@ public class NotificationService {
     }
 
     public void record(String rawPayload) {
+        if (rawPayload.getBytes(StandardCharsets.UTF_8).length > MAX_RAW_PAYLOAD_BYTES) {
+            throw new InvalidNotificationEventException(
+                    "Corpo da mensagem excede o tamanho maximo permitido de " + MAX_RAW_PAYLOAD_BYTES + " bytes");
+        }
+
         JsonNode tree;
         try {
             tree = eventReader.readTree(rawPayload);
