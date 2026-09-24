@@ -160,6 +160,30 @@ class NotificationServiceTest {
     }
 
     @Test
+    void unsupportedEventTypeWithAnsiEscapeAndUnicodeLineSeparatorProducesSanitizedMessage() {
+        // WR-06: o regex antigo cobria so tres caracteres de controle. ESC (codepoint 27, usado
+        // em sequencias ANSI de terminal) e o separador de linha Unicode (codepoint 8232, que
+        // varios agregadores de log tratam como quebra) tinham que passar intactos antes da
+        // correcao. Construidos via (char) para nao depender de escapes no fonte.
+        UUID eventId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String esc = String.valueOf((char) 27);
+        String unicodeLineSeparator = String.valueOf((char) 8232);
+        String maliciousType = "EVIL" + esc + "TYPE" + unicodeLineSeparator + "CONTROL" + "X".repeat(190);
+        String body = """
+                {"eventId":"%s","eventType":"%s","productId":"%s","previousQuantityOnHand":5,"newQuantityOnHand":12,"occurredAt":"2026-09-22T12:00:00Z"}
+                """.formatted(eventId, maliciousType, productId);
+
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOf(InvalidNotificationEventException.class)
+                .satisfies(e -> {
+                    assertThat(e.getMessage()).doesNotContain(esc).doesNotContain(unicodeLineSeparator);
+                    assertThat(e.getMessage().length()).isLessThanOrEqualTo(200);
+                });
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
     void repositoryRuntimeExceptionOnSavePropagatesUnconverted() {
         when(notificationRepository.findByProductId(any())).thenReturn(List.of());
         org.mockito.Mockito.doThrow(new RuntimeException("dynamo down"))

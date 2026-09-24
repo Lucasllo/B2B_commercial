@@ -121,14 +121,16 @@ public class NotificationService {
 
     /**
      * O valor recebido vem de fora e acabaria numa linha de log WARN do listener — troca qualquer
-     * caractere de controle por {@code _} e corta em 64 caracteres para impedir injecao de linha
-     * de log e mensagens de exceção desproporcionalmente grandes.
+     * caractere de controle (inclusive NEL, U+0085) e os separadores de linha/paragrafo Unicode
+     * U+2028 e U+2029 (que varios agregadores de log tratam como quebra) por {@code _} e corta em
+     * 64 caracteres para impedir injecao de linha de log e mensagens de exceção
+     * desproporcionalmente grandes.
      */
     private static String sanitizeForLog(String value) {
         if (value == null) {
             return "(ausente)";
         }
-        String sanitized = value.replaceAll("[\\r\\n\\t]", "_");
+        String sanitized = value.replaceAll("[\\p{Cntrl}\\u0085\\u2028\\u2029]", "_");
         return sanitized.length() > SANITIZED_VALUE_MAX_LENGTH
                 ? sanitized.substring(0, SANITIZED_VALUE_MAX_LENGTH)
                 : sanitized;
