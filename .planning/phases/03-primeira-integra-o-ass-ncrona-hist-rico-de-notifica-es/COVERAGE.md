@@ -1,1 +1,1 @@
-No external API integration: Phase 3 uses AWS SQS and DynamoDB (via the AWS SDK v2 and Spring Cloud AWS, emulated by LocalStack) purely as internal messaging and storage infrastructure between OrderFlow's own services; there is no third-party product API with a capability surface to integrate or opt out of.
+No external API integration: SQS and DynamoDB (via LocalStack) are internal messaging/storage between OrderFlow services; no third-party product API.
