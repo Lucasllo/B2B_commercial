@@ -1,10 +1,13 @@
 package com.orderflow.inventory.config;
 
+import io.awspring.cloud.autoconfigure.sqs.SqsAsyncClientCustomizer;
 import io.awspring.cloud.sqs.support.converter.MessagingMessageConverter;
 import io.awspring.cloud.sqs.support.converter.SqsMessagingMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.services.sqs.model.Message;
+
+import java.time.Duration;
 
 /**
  * O contrato entre os servicos e so o JSON do payload — mandar o nome completo de uma classe
@@ -25,5 +28,20 @@ public class SqsMessagingConfig {
         SqsMessagingMessageConverter converter = new SqsMessagingMessageConverter();
         converter.doNotSendPayloadTypeHeader();
         return converter;
+    }
+
+    /**
+     * O {@code SqsAsyncClient} padrao (Netty) usa read timeout de 30s e retry standard (3
+     * tentativas) — sem limite mais curto, {@code StockEventPublisher.publishStockAdjusted}
+     * (chamado sincronamente na thread HTTP do Tomcat, depois do commit) pode prender a
+     * requisicao por 1-2 minutos se o LocalStack/SQS aceitar a conexao mas nao responder (WR-03).
+     * Limitar a chamada inteira a poucos segundos garante que a resposta HTTP (que ja reflete um
+     * commit real no Postgres) nunca fica presa pelo "melhor esforco" declarado do envio.
+     */
+    @Bean
+    public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
+        return builder -> builder.overrideConfiguration(c -> c
+                .apiCallTimeout(Duration.ofSeconds(3))
+                .apiCallAttemptTimeout(Duration.ofSeconds(1)));
     }
 }
