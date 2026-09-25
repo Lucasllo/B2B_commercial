@@ -110,7 +110,7 @@ Plans:
   4. O comprador lista e abre o detalhe apenas dos pedidos da própria empresa; o vendedor lista e abre o detalhe de todos os pedidos.
   5. Dois pedidos concorrentes do mesmo comprador na fronteira do limite de crédito não passam ambos na verificação — checagem transacional com bloqueio comprovada por teste.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 **Wave 1**
@@ -119,7 +119,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — endurecimento da criação: tudo ou nada (repetido 400, itens inválidos 422), falha fechada 503 com vizinho quebrado/lento/inalcançável, limites de entrada, total fora da faixa, tokens adversariais, snapshot congelado e testes unitários da regra de crédito (ORD-01, ORD-02)
+- [x] 04-02-PLAN.md — endurecimento da criação: tudo ou nada (repetido 400, itens inválidos 422), falha fechada 503 com vizinho quebrado/lento/inalcançável, limites de entrada, total fora da faixa, tokens adversariais, snapshot congelado e testes unitários da regra de crédito (ORD-01, ORD-02)
 - [ ] 04-03-PLAN.md — `GET /orders` paginado: BUYER só a própria empresa, SELLER_ADMIN todas, `createdAt` decrescente imposto pelo servidor, `?status=` como fila de aprovação (ORD-08, ORD-09)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -187,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
-| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 1/5 | In Progress|  |
+| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 2/5 | In Progress|  |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |

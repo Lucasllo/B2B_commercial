@@ -4,15 +4,15 @@ current_phase: 04
 current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 status: executing
 stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-25T02:05:47.900Z"
-last_activity: 2026-09-24
+last_updated: "2026-09-25T22:43:44.025Z"
+last_activity: 2026-09-25
 last_activity_desc: Phase 04 execution started
-state_head: 76e3fb469ed6547074db712129214e0b3d0a2fea
+state_head: b0c01e149a415216f0f3dac4f1b97ce50049a5aa
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 12
+  completed_plans: 13
   percent: 43
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — EXECUTING
 Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-09-24 — Phase 04 execution started
+Last activity: 2026-09-25 — Phase 04 execution started
 
 Progress: [████░░░░░░] 43%
 
@@ -64,6 +64,7 @@ Progress: [████░░░░░░] 43%
 | Phase 02 P02 | 27min | 3 tasks | 29 files |
 | Phase 03 P03 | 37min | 2 tasks | 8 files |
 | Phase 04 P01 | 48min | 2 tasks | 48 files |
+| Phase 04 P02 | 40min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 04]: ORDER_RESPONSE_CONTRACT=id,companyId,status,total,createdBy,createdAt,decidedBy,decidedAt,reason,items[...] — Contrato consumido pelo smoke do plano 04-05 e pela documentação
 - [Phase 04]: Cláusula de bloqueio Postgres/Hibernate para PESSIMISTIC_WRITE é 'for no key update', não 'for update' — Comportamento padrão do dialeto Postgres do Hibernate 6.6 para entidade sem FK-alvo; ambas as formas se excluem mutuamente, serialização continua válida (comprovado por 3 cenários de concorrência)
 - [Phase 04]: DownstreamStubServer (JDK pura) em vez de MockRestServiceServer para stub de auth-service/catalog-service nos testes — MockRestServiceServer troca a fábrica de requisições do cliente — os timeouts de ClientConfig nunca seriam exercitados e o repasse do header Authorization não passaria por socket real
+- [Phase 04]: [Phase 04]: MAX_ITEMS_PER_ORDER=50, MAX_QUANTITY_PER_ITEM=1000000 (Claude's Discretion) — defesa contra amplificacao de chamadas sincronas ao catalog-service e abuso de quantidade
+- [Phase 04]: [Phase 04]: Guarda de total order_total_out_of_range usa precision()-scale() > 17, mesmo criterio do @Digits(integer=17,fraction=2) do auth-service, checada antes do limite de credito
+- [Phase 04]: [Phase 04]: AuthenticationEntryPoint customizado em JSON adicionado a SecurityConfig (Rule 2) — rejeicao de JWT acontece no filtro de seguranca antes do GlobalExceptionHandler, corpo de 401 vazio quebraria o envelope uniforme
 
 ### Pending Todos
 
