@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-25T22:43:44.025Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-25T23:03:07.882Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 04 execution started
-state_head: b0c01e149a415216f0f3dac4f1b97ce50049a5aa
+state_head: e3e1f1dd3a3ca1e890eed2fe92763640e356602f
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 14
   percent: 43
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 04 execution started
 
@@ -65,6 +65,7 @@ Progress: [████░░░░░░] 43%
 | Phase 03 P03 | 37min | 2 tasks | 8 files |
 | Phase 04 P01 | 48min | 2 tasks | 48 files |
 | Phase 04 P02 | 40min | 3 tasks | 13 files |
+| Phase 04 P03 | 35min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,7 @@ Recent decisions affecting current work:
 - [Phase 04]: [Phase 04]: MAX_ITEMS_PER_ORDER=50, MAX_QUANTITY_PER_ITEM=1000000 (Claude's Discretion) — defesa contra amplificacao de chamadas sincronas ao catalog-service e abuso de quantidade
 - [Phase 04]: [Phase 04]: Guarda de total order_total_out_of_range usa precision()-scale() > 17, mesmo criterio do @Digits(integer=17,fraction=2) do auth-service, checada antes do limite de credito
 - [Phase 04]: [Phase 04]: AuthenticationEntryPoint customizado em JSON adicionado a SecurityConfig (Rule 2) — rejeicao de JWT acontece no filtro de seguranca antes do GlobalExceptionHandler, corpo de 401 vazio quebraria o envelope uniforme
+- [Phase 04]: GET /orders: ?status= vale para BUYER e SELLER_ADMIN (Open Question 2 resolvida) — Filtro adicional sobre escopo ja resolvido, nao enfraquece isolamento por empresa
 
 ### Pending Todos
 
@@ -124,6 +126,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-25T02:05:47.693Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-25T23:03:07.702Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
