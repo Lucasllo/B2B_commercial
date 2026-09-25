@@ -5,6 +5,7 @@ import com.orderflow.order.client.CatalogServiceUnavailableException;
 import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
 import com.orderflow.order.order.exception.OrderNotFoundException;
+import com.orderflow.order.order.exception.OrderTotalOutOfRangeException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -83,6 +84,13 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = errorBody("invalid_order_items", "One or more items are invalid or unavailable");
         body.put("productIds", ex.getProductIds());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
+    /** Total que não cabe em {@code NUMERIC(19,2)} — 422, nunca 500 com detalhe do banco (04-02 Task 3). */
+    @ExceptionHandler(OrderTotalOutOfRangeException.class)
+    public ResponseEntity<Map<String, Object>> handleTotalOutOfRange(OrderTotalOutOfRangeException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(errorBody("order_total_out_of_range", "Order total does not fit in the allowed range"));
     }
 
     @ExceptionHandler(CatalogServiceUnavailableException.class)

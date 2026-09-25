@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
@@ -14,5 +15,12 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CreateOrderRequest(
-        @NotEmpty List<@Valid @NotNull OrderItemRequest> items) {
+        @NotEmpty @Size(max = MAX_ITEMS_PER_ORDER) List<@Valid @NotNull OrderItemRequest> items) {
+
+    /**
+     * Cada item vira uma chamada síncrona ao catalog-service — o limite é também a defesa contra
+     * um pedido que amplifica uma requisição em milhares de chamadas de saída (Claude's Discretion,
+     * T-04-11, 04-02 Task 3; nenhuma decisão do contexto fixa limites).
+     */
+    public static final int MAX_ITEMS_PER_ORDER = 50;
 }

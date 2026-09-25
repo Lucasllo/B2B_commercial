@@ -8,6 +8,7 @@ import com.orderflow.order.order.dto.OrderItemRequest;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
+import com.orderflow.order.order.exception.OrderTotalOutOfRangeException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -35,6 +36,12 @@ import java.util.UUID;
  */
 @Service
 public class OrderCreationService {
+
+    /**
+     * {@code NUMERIC(19,2)} cabe até 17 dígitos na parte inteira — mesmo critério do
+     * {@code @Digits(integer = 17, fraction = 2)} de {@code CreateCompanyRequest} no auth-service.
+     */
+    private static final int MAX_TOTAL_INTEGER_DIGITS = 17;
 
     private final CatalogServiceClient catalogServiceClient;
     private final AuthServiceClient authServiceClient;
@@ -84,6 +91,15 @@ public class OrderCreationService {
             throw new InvalidOrderItemsException(invalidProductIds);
         }
 
+        // Guarda de total (Task 3): calculado independente do total gravado pelo agregado, mas com
+        // a MESMA soma de subtotais — checado ANTES da chamada ao auth-service, a única checagem
+        // restante que faz rede (D-44 ordering, javadoc da classe).
+        BigDecimal total = BigDecimal.ZERO;
+        for (PricedItem pricedItem : pricedItems) {
+            total = total.add(pricedItem.subtotal());
+        }
+        guardTotalFitsInColumn(total);
+
         BigDecimal creditLimit = authServiceClient.getCreditLimit(companyId, bearerToken);
 
         return orderService.createWithCreditCheck(companyId, createdBy, pricedItems, creditLimit);
@@ -95,6 +111,19 @@ public class OrderCreationService {
             if (!seen.add(item.productId())) {
                 throw new DuplicateOrderItemsException();
             }
+        }
+    }
+
+    /**
+     * Mesmo critério do validador de {@code @Digits}: {@code precision() - scale()} é o número de
+     * dígitos na parte inteira. Nunca {@code compareTo} contra um limiar numérico — a contagem de
+     * dígitos é o que realmente estoura a coluna {@code NUMERIC(19,2)}, não a magnitude do valor
+     * (04-RESEARCH.md Common Pitfall 2, mesmo espírito de nunca usar {@code equals} no BigDecimal).
+     */
+    private void guardTotalFitsInColumn(BigDecimal total) {
+        int integerDigits = total.precision() - total.scale();
+        if (integerDigits > MAX_TOTAL_INTEGER_DIGITS) {
+            throw new OrderTotalOutOfRangeException();
         }
     }
 }

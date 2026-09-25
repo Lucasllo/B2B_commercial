@@ -1,11 +1,14 @@
 package com.orderflow.order;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.orderflow.order.support.DownstreamStubServer.Failure;
 import com.orderflow.order.support.TestJwt;
 import com.nimbusds.jwt.JWTClaimsSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -14,10 +17,15 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,6 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * entrada, tokens adversariais e o snapshot congelado (D-43) — plano {@code 04-02}.
  */
 class OrderCreationEdgeCasesIT extends AbstractIntegrationTest {
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @AfterEach
     void clearDownstreamFailures() {
@@ -337,6 +348,176 @@ class OrderCreationEdgeCasesIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.error").value("forbidden"));
 
         assertThat(stub().requests()).isEmpty();
+    }
+
+    // ---- Task 3: limites de entrada, total fora da faixa, snapshot congelado, regra de crédito ----
+
+    @Test
+    void emptyItemsListIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected("{\"items\":[]}");
+    }
+
+    @Test
+    void missingItemsFieldIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected("{}");
+    }
+
+    @Test
+    void moreThan50ItemsIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected(itemsBody(51));
+    }
+
+    @Test
+    void nullProductIdIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected("{\"items\":[{\"productId\":null,\"quantity\":1}]}");
+    }
+
+    @Test
+    void nullQuantityIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected(
+                "{\"items\":[{\"productId\":\"%s\",\"quantity\":null}]}".formatted(UUID.randomUUID()));
+    }
+
+    @Test
+    void zeroQuantityIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected(quantityBody(0));
+    }
+
+    @Test
+    void negativeQuantityIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected(quantityBody(-1));
+    }
+
+    @Test
+    void quantityAboveMaxIsRejectedWith400WithoutCallingStub() throws Exception {
+        assertStructurallyInvalidBodyRejected(quantityBody(1_000_001));
+    }
+
+    @Test
+    void nonJsonBodyIsRejectedWith400MalformedRequestWithoutCallingStub() throws Exception {
+        stub().resetRecordedRequests();
+        String buyerToken = TestJwt.buyerToken(UUID.randomUUID());
+
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("malformed_request"));
+
+        assertThat(stub().requests()).isEmpty();
+    }
+
+    @Test
+    void exactly50DistinctItemsWithSufficientLimitIsCreated() throws Exception {
+        stub().resetRecordedRequests();
+        UUID companyId = UUID.randomUUID();
+        String buyerToken = TestJwt.buyerToken(companyId);
+        stub().registerCreditLimit(companyId, new BigDecimal("100000.00"));
+
+        List<UUID> productIds = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            UUID productId = UUID.randomUUID();
+            productIds.add(productId);
+            stub().registerProduct(productId, "SKU-L" + i, "Produto L" + i, new BigDecimal("10.00"), "ACTIVE");
+        }
+
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(itemsBody(productIds)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void totalThatDoesNotFitInColumnReturns422WithoutSavingOrder() throws Exception {
+        stub().resetRecordedRequests();
+        UUID companyId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String buyerToken = TestJwt.buyerToken(companyId);
+        // 99999999999999999.99 x 2 = 199999999999999999.98 — 18 dígitos inteiros, estoura os 17 de
+        // NUMERIC(19,2); a checagem do limite de crédito nem chega a ser alcançada.
+        stub().registerProduct(productId, "SKU-HUGE", "Produto caro",
+                new BigDecimal("99999999999999999.99"), "ACTIVE");
+
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(quantityItemBody(productId, 2)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("order_total_out_of_range"));
+
+        assertThat(stub().countRequests("/companies/")).isZero();
+        assertOrderRowCount(companyId, 0);
+    }
+
+    @Test
+    void orderSnapshotDoesNotChangeWhenCatalogProductChangesAfterCreation() throws Exception {
+        stub().resetRecordedRequests();
+        UUID companyId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String buyerToken = TestJwt.buyerToken(companyId);
+        stub().registerCreditLimit(companyId, new BigDecimal("1000.00"));
+        stub().registerProduct(productId, "SKU-SNAP", "Parafuso", new BigDecimal("100.00"), "ACTIVE");
+
+        MvcResult created = mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(singleItemBody(productId)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID orderId = extractId(created.getResponse().getContentAsString());
+
+        // Produto muda de nome e preço DEPOIS de o pedido já existir — o snapshot gravado não pode
+        // seguir essa mudança (D-43).
+        stub().updateProduct(productId, "Parafuso Novo", new BigDecimal("999.00"));
+
+        mockMvc.perform(get("/orders/{orderId}", orderId)
+                        .header("Authorization", "Bearer " + buyerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(100.00))
+                .andExpect(jsonPath("$.items[0].unitPrice").value(100.00))
+                .andExpect(jsonPath("$.items[0].name").value("Parafuso"))
+                .andExpect(jsonPath("$.items[0].subtotal").value(100.00));
+    }
+
+    private void assertStructurallyInvalidBodyRejected(String body) throws Exception {
+        stub().resetRecordedRequests();
+        String buyerToken = TestJwt.buyerToken(UUID.randomUUID());
+
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_failed"));
+
+        assertThat(stub().requests()).isEmpty();
+    }
+
+    private String quantityBody(int quantity) {
+        return quantityItemBody(UUID.randomUUID(), quantity);
+    }
+
+    private String quantityItemBody(UUID productId, int quantity) {
+        return "{\"items\":[{\"productId\":\"%s\",\"quantity\":%d}]}".formatted(productId, quantity);
+    }
+
+    /** {@code count} itens distintos, quantidade 1 cada — usado para os limites de tamanho da lista. */
+    private String itemsBody(int count) {
+        return itemsBody(IntStream.range(0, count).mapToObj(i -> UUID.randomUUID()).toList());
+    }
+
+    private String itemsBody(List<UUID> productIds) {
+        String items = productIds.stream()
+                .map(id -> "{\"productId\":\"%s\",\"quantity\":1}".formatted(id))
+                .collect(Collectors.joining(","));
+        return "{\"items\":[" + items + "]}";
+    }
+
+    private UUID extractId(String responseBody) throws Exception {
+        JsonNode json = objectMapper.readTree(responseBody);
+        return UUID.fromString(json.get("id").asText());
     }
 
     private JWTClaimsSet buyerClaims(UUID companyId, String issuer, Date issueTime, Date expirationTime) {
