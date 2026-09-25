@@ -2,14 +2,15 @@
 # OrderFlow — Referência da API
 
 > Endpoints disponíveis hoje no repositório, pertencentes ao `auth-service`, `catalog-service`,
-> `inventory-service` e `notification-service`, todos acessados através do API Gateway. Veja
-> [VISAO-GERAL.md](VISAO-GERAL.md) para o contexto do projeto e o estado atual dos serviços.
+> `inventory-service`, `notification-service` e `order-service`, todos acessados através do API
+> Gateway. Veja [VISAO-GERAL.md](VISAO-GERAL.md) para o contexto do projeto e o estado atual dos
+> serviços.
 >
 > **Prefere testar no navegador em vez de ler?** Cada serviço também expõe uma Swagger UI
 > interativa na própria porta (não pelo Gateway): `http://localhost:8081/swagger-ui.html`
 > (auth-service), `:8082` (catalog-service), `:8083` (inventory-service), `:8084`
-> (notification-service). Cole um JWT no botão **Authorize** e exercite qualquer endpoint abaixo
-> via **Try it out** — ver
+> (notification-service), `:8085` (order-service). Cole um JWT no botão **Authorize** e exercite
+> qualquer endpoint abaixo via **Try it out** — ver
 > [VISAO-GERAL.md § Documentação interativa](VISAO-GERAL.md#documentação-interativa-swagger-ui).
 
 ## URL base
@@ -29,6 +30,7 @@ downstream (`StripPrefix=1` em todas as rotas, `gateway/src/main/resources/appli
 | `/api/products/**` | `catalog-service` | `GET /api/products/{id}` → `GET /products/{id}` |
 | `/api/inventory/**` | `inventory-service` | `GET /api/inventory/{productId}` → `GET /inventory/{productId}` |
 | `/api/notifications/**` | `notification-service` | `GET /api/notifications/{productId}` → `GET /notifications/{productId}` |
+| `/api/orders/**` | `order-service` | `POST /api/orders` → `POST /orders` |
 
 `GET /.well-known/jwks.json` **não é roteado pelo Gateway** — é interno ao `auth-service`
 (`http://auth-service:8081/.well-known/jwks.json` na rede do Docker Compose) e existe para que
@@ -74,6 +76,11 @@ controller ser executado.
 | inventory-service | `POST` | `/api/inventory/{productId}/reservations` | Reserva uma quantidade de estoque (idempotente) | Bearer, papel `SELLER_ADMIN` |
 | inventory-service | `DELETE` | `/api/inventory/{productId}/reservations/{reservationId}` | Libera uma reserva de estoque (idempotente) | Bearer, papel `SELLER_ADMIN` |
 | notification-service | `GET` | `/api/notifications/{productId}` | Histórico de eventos de notificação de um produto, em ordem cronológica | Bearer, papel `SELLER_ADMIN` |
+| order-service | `POST` | `/api/orders` | Cria um pedido a partir de itens do catálogo, decidido automaticamente pelo limite de crédito | Bearer, papel `BUYER` |
+| order-service | `GET` | `/api/orders` | Lista pedidos, paginado (`BUYER` só da própria empresa, `SELLER_ADMIN` todos) | Bearer (qualquer papel) |
+| order-service | `GET` | `/api/orders/{orderId}` | Consulta um pedido pelo id (`BUYER` só da própria empresa) | Bearer (qualquer papel) |
+| order-service | `POST` | `/api/orders/{orderId}/approve` | Aprova manualmente um pedido `PENDING_APPROVAL` | Bearer, papel `SELLER_ADMIN` |
+| order-service | `POST` | `/api/orders/{orderId}/reject` | Rejeita um pedido `PENDING_APPROVAL`, com motivo obrigatório | Bearer, papel `SELLER_ADMIN` |
 | gateway | `GET` | `/actuator/health` | Health check do Gateway | Nenhuma |
 
 > As rotas de reserva/liberação do `inventory-service` são restritas a `SELLER_ADMIN` nesta fase —
@@ -149,6 +156,18 @@ isso é intencional, para não expor se um e-mail existe na base.
 |---|---|---|
 | 400 | `invalid_identifier` | `{productId}` não é um UUID válido |
 | 503 | `notification_store_unavailable` | Falha do SDK da AWS ao falar com o DynamoDB (indisponibilidade, timeout, erro de credencial) — o motivo real fica só no log do servidor |
+
+**Erros específicos de `order-service`:**
+
+| Status | `error` | Quando ocorre |
+|---|---|---|
+| 400 | `invalid_parameter` | `{orderId}` não é um UUID válido |
+| 404 | `order_not_found` | `{orderId}` não corresponde a nenhum pedido, **ou** corresponde a um pedido de outra empresa e o requisitante é `BUYER` (pedido alheio é indistinguível de inexistente) |
+| 409 | `order_not_pending` | `POST /orders/{orderId}/approve` ou `/reject` sobre um pedido que não está em `PENDING_APPROVAL` |
+| 422 | `invalid_order_items` | Um ou mais `productId` do pedido não correspondem a um produto `ACTIVE` no catálogo (inexistente ou `DISCONTINUED`); o corpo inclui o campo extra `productIds` com os ids inválidos, na ordem em que apareceram no pedido |
+| 422 | `order_total_out_of_range` | O total do pedido não cabe na coluna `NUMERIC(19,2)` |
+| 503 | `catalog_service_unavailable` | `catalog-service` fora do ar, lento (acima do timeout) ou com resposta malformada — nenhum pedido é criado |
+| 503 | `auth_service_unavailable` | `auth-service` fora do ar, lento, com resposta malformada, ou empresa sem limite de crédito registrado — nenhum pedido é criado |
 
 ---
 
@@ -651,6 +670,202 @@ grava o histórico no DynamoDB sem nenhuma chamada HTTP de entrada do `inventory
 `401 unauthorized`, `403 forbidden` (qualquer papel diferente de `SELLER_ADMIN`, incluindo
 `BUYER`), `503 notification_store_unavailable` (DynamoDB indisponível — o motivo real fica só no
 log do servidor).
+
+---
+
+## `POST /api/orders`
+
+Cria um pedido a partir de itens do catálogo. A empresa dona do pedido vem sempre do claim
+`company_id` do próprio token — não existe (nem é aceito) um campo de empresa no corpo. Cada item é
+validado e precificado com uma chamada síncrona ao `catalog-service` (`GET /products/{productId}`);
+o preço, nome e SKU são congelados como snapshot no momento da criação e não mudam depois, mesmo
+que o produto mude no catálogo. O pedido nasce `APPROVED` (decidido automaticamente, `decidedBy:
+"SYSTEM"`) se `exposição de crédito atual da empresa + total do pedido` couber no limite de
+crédito da empresa (consultado no `auth-service`); caso contrário nasce `PENDING_APPROVAL` e espera
+a decisão manual do vendedor — ver
+[README.md § Como a aprovação por crédito funciona](../README.md#como-a-aprovação-por-crédito-funciona).
+
+**Autenticação:** Bearer, papel `BUYER`.
+
+**Corpo da requisição:**
+
+```json
+{
+  "items": [
+    { "productId": "6a4f2e10-...", "quantity": 4 }
+  ]
+}
+```
+
+| Campo | Tipo | Obrigatório | Restrições |
+|---|---|---|---|
+| `items` | array | Sim | Não vazio, no máximo 50 itens; `productId` não pode se repetir no mesmo pedido |
+| `items[].productId` | string (UUID) | Sim | — |
+| `items[].quantity` | integer | Sim | Positivo (`> 0`), no máximo 1000000 |
+
+**Resposta `201 Created`** (header `Location: /orders/{id}`; contrato completo, `id` sempre o
+primeiro campo):
+
+```json
+{
+  "id": "3f7b1c2a-...",
+  "companyId": "9a21e4d0-...",
+  "status": "APPROVED",
+  "total": 400.00,
+  "createdBy": "8c793e97-...",
+  "createdAt": "2026-09-25T14:32:00Z",
+  "decidedBy": "SYSTEM",
+  "decidedAt": "2026-09-25T14:32:00Z",
+  "reason": null,
+  "items": [
+    {
+      "lineNumber": 1,
+      "productId": "6a4f2e10-...",
+      "sku": "SKU-001",
+      "name": "Caixa de parafusos M4",
+      "unitPrice": 100.00,
+      "quantity": 4,
+      "subtotal": 400.00
+    }
+  ]
+}
+```
+
+`status` é `APPROVED` ou `PENDING_APPROVAL` — nunca outro valor nesta resposta, já que a criação
+sempre decide entre esses dois. `decidedBy`/`decidedAt`/`reason` só são preenchidos quando o pedido
+já nasce `APPROVED` (decisão automática, `decidedBy: "SYSTEM"`, `reason: null`); num pedido
+`PENDING_APPROVAL`, os três campos vêm nulos até a decisão manual (ver
+`POST /orders/{orderId}/approve`/`reject` abaixo).
+
+**Erros possíveis:** `400 validation_failed` (lista vazia/ausente, mais de 50 itens, `productId`
+nulo, `quantity` nula/`<= 0`/acima de 1000000, `productId` repetido), `400 malformed_request` (corpo
+não é JSON válido), `401 unauthorized`, `403 forbidden` (papel diferente de `BUYER`),
+`422 invalid_order_items` (item inexistente ou `DISCONTINUED` no catálogo),
+`422 order_total_out_of_range` (total não cabe em `NUMERIC(19,2)`),
+`503 catalog_service_unavailable`, `503 auth_service_unavailable`.
+
+---
+
+## `GET /api/orders`
+
+Lista pedidos, paginado (`page`, `size` — máximo 100 — e `sort`, parâmetros padrão do Spring),
+sempre do pedido mais recente para o mais antigo.
+
+**Autenticação:** Bearer, qualquer papel autenticado.
+
+`BUYER` vê apenas os pedidos da própria empresa (derivada do claim `company_id` do token, nunca de
+um parâmetro de query); `SELLER_ADMIN` vê os pedidos de todas as empresas. O filtro opcional
+`?status=` vale para os dois papéis igualmente.
+
+**Resposta `200 OK`:**
+
+```json
+{
+  "content": [
+    {
+      "id": "3f7b1c2a-...",
+      "companyId": "9a21e4d0-...",
+      "status": "APPROVED",
+      "total": 400.00,
+      "createdBy": "8c793e97-...",
+      "createdAt": "2026-09-25T14:32:00Z",
+      "decidedBy": "SYSTEM",
+      "decidedAt": "2026-09-25T14:32:00Z",
+      "reason": null
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "size": 20,
+  "number": 0
+}
+```
+
+O resumo de cada pedido na listagem não inclui os itens — só `GET /orders/{orderId}` traz o
+detalhe item a item.
+
+**Erros possíveis:** `401 unauthorized`.
+
+---
+
+## `GET /api/orders/{orderId}`
+
+Consulta o detalhe completo de um pedido pelo id, incluindo os itens.
+
+**Autenticação:** Bearer, qualquer papel autenticado.
+
+`BUYER` só enxerga pedidos da própria empresa — um pedido de outra empresa devolve `404
+order_not_found`, o mesmo erro de um id inexistente (nunca `403`), para não revelar que o pedido
+existe. `SELLER_ADMIN` consulta qualquer pedido, de qualquer empresa.
+
+**Resposta `200 OK`:** mesmo formato completo de `POST /orders` (ORDER_RESPONSE_CONTRACT), com
+`items` incluído.
+
+**Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
+`401 unauthorized`, `404 order_not_found` (id inexistente, ou pedido de outra empresa visto por um
+`BUYER`).
+
+---
+
+## `POST /api/orders/{orderId}/approve`
+
+Aprova manualmente um pedido `PENDING_APPROVAL`. A aprovação manual não reavalia o limite de
+crédito — mesmo que a soma resultante ultrapasse o limite da empresa, o pedido é aprovado e passa a
+consumir crédito normalmente a partir desse momento (nenhuma chamada ao `auth-service` acontece
+nesta decisão).
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN`.
+
+**Corpo da requisição** (opcional):
+
+```json
+{
+  "reason": "cliente estratégico"
+}
+```
+
+| Campo | Tipo | Obrigatório | Restrições |
+|---|---|---|---|
+| `reason` | string | Não | Até 500 caracteres; em branco é gravado como `null` |
+
+**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "APPROVED"`,
+`decidedBy` igual ao `sub` do JWT do vendedor (nunca do corpo), `decidedAt` preenchido e `reason`
+igual ao motivo enviado (ou `null`).
+
+**Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
+`400 validation_failed` (`reason` acima de 500 caracteres), `401 unauthorized`,
+`403 forbidden` (papel diferente de `SELLER_ADMIN`, incluindo o próprio `BUYER` dono do pedido),
+`404 order_not_found`, `409 order_not_pending` (pedido não está em `PENDING_APPROVAL` — decisão
+anterior permanece inalterada).
+
+---
+
+## `POST /api/orders/{orderId}/reject`
+
+Rejeita um pedido `PENDING_APPROVAL`. Pedido rejeitado nunca consome crédito.
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN`.
+
+**Corpo da requisição** (obrigatório, ao contrário de `approve`):
+
+```json
+{
+  "reason": "limite excedido"
+}
+```
+
+| Campo | Tipo | Obrigatório | Restrições |
+|---|---|---|---|
+| `reason` | string | Sim | Não vazio, até 500 caracteres |
+
+**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "REJECTED"`,
+`decidedBy` igual ao `sub` do JWT do vendedor, `decidedAt` preenchido e `reason` igual ao motivo
+enviado.
+
+**Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
+`400 malformed_request` (sem corpo), `400 validation_failed` (`reason` vazio, em branco ou acima de
+500 caracteres), `401 unauthorized`, `403 forbidden` (papel diferente de `SELLER_ADMIN`),
+`404 order_not_found`, `409 order_not_pending`.
 
 ---
 

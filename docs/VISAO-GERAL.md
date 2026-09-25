@@ -17,21 +17,26 @@ arquitetura de microsserviços orientada a eventos — não é um produto comerc
 
 **Valor central do projeto:** o fluxo de pedido (criação → aprovação por limite de crédito →
 reserva de estoque → confirmação) funcionando entre microsserviços via orquestração por eventos
-(padrão saga). Esse fluxo completo ainda depende de um serviço que não existe no repositório —
-**order-service** (orquestração da saga e aprovação por limite de crédito). A Fase 3 já entrega a
-primeira integração assíncrona real do projeto: o **notification-service** consome eventos de
-ajuste de estoque via SQS e mantém um histórico consultável em DynamoDB, provando o encanamento de
-mensageria que a saga da Fase 5 vai reutilizar. Ver "Estado atual" abaixo para o que já funciona
-hoje.
+(padrão saga). A Fase 4 já entrega o núcleo da criação e aprovação por limite de crédito no
+**order-service** — a decisão automática/manual funciona de ponta a ponta pelo Gateway; a reserva de
+estoque e a orquestração por saga (eventos via SQS, Transactional Outbox) ainda dependem da Fase 5.
+A Fase 3 já entrega a primeira integração assíncrona real do projeto: o **notification-service**
+consome eventos de ajuste de estoque via SQS e mantém um histórico consultável em DynamoDB,
+provando o encanamento de mensageria que a saga da Fase 5 vai reutilizar. Ver "Estado atual" abaixo
+para o que já funciona hoje.
 
 ## Estado atual (o que já existe e funciona)
 
 O repositório já expõe, de ponta a ponta e através do Gateway, autenticação, gestão de empresas
-compradoras, catálogo de produtos, controle de estoque com reserva protegida contra concorrência, e
-um histórico de notificações assíncrono: um ajuste de estoque publica um evento `STOCK_ADJUSTED`
+compradoras, catálogo de produtos, controle de estoque com reserva protegida contra concorrência,
+um histórico de notificações assíncrono — um ajuste de estoque publica um evento `STOCK_ADJUSTED`
 numa fila SQS real (LocalStack) que o `notification-service` consome e grava no DynamoDB, sem
-nenhuma chamada HTTP entre os dois serviços. O `order-service` — o núcleo do fluxo de saga descrito
-acima — ainda não foi implementado.
+nenhuma chamada HTTP entre os dois serviços — e a criação de pedidos com decisão de crédito: um
+comprador cria um pedido a partir do catálogo e, dentro do limite de crédito da empresa, ele é
+aprovado automaticamente; acima do limite, o pedido espera a decisão manual do vendedor
+(aprovação ou rejeição, com auditoria de quem/quando/por quê). `APPROVED` ainda é o estado final
+desta fase — nenhuma reserva de estoque acontece e o pedido não avança para `CONFIRMED`/`CANCELLED`
+até a saga da Fase 5.
 
 | Serviço | Papel | Porta | Exposto externamente |
 |---|---|---|---|
@@ -40,15 +45,18 @@ acima — ainda não foi implementado.
 | `catalog-service` | Catálogo de produtos do vendedor (criação, atualização, ativação/descontinuação) | 8082 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `inventory-service` | Estoque por produto: quantidade em mãos, reserva e liberação, com proteção contra overselling concorrente; publica `STOCK_ADJUSTED` na fila SQS depois de cada ajuste | 8083 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `notification-service` | Consome eventos de ajuste de estoque da fila SQS e mantém o histórico consultável por produto no DynamoDB | 8084 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
-| `postgres` | Persistência transacional — um schema por serviço (`auth`, `catalog`, `inventory`) na mesma instância | 5432 | Não |
+| `order-service` | Criação de pedidos validados contra o catálogo e decisão de aprovação por limite de crédito (automática ou manual pelo vendedor) | 8085 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `postgres` | Persistência transacional — um schema por serviço (`auth`, `catalog`, `inventory`, `order`) na mesma instância | 5432 | Não |
 | `localstack` | Emulação local de SQS (`notification-events-queue`) e DynamoDB (`notification-history`), provisionados automaticamente na subida pelo init hook | 4566 | Não |
 
 Através do Gateway, um usuário autenticado já consegue, hoje: fazer login e obter um JWT; cadastrar
 e consultar empresas compradoras e limite de crédito; criar, atualizar, listar e
 ativar/descontinuar produtos no catálogo (papel `SELLER_ADMIN`); definir, consultar, reservar e
-liberar estoque por produto — inclusive sob concorrência, sem reservar mais do que o disponível; e
+liberar estoque por produto — inclusive sob concorrência, sem reservar mais do que o disponível;
 consultar o histórico de notificações de um produto, alimentado de forma assíncrona pelos ajustes
-de estoque. Ver [API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
+de estoque; e criar pedidos a partir do catálogo, decididos automaticamente pelo limite de crédito
+da empresa ou, quando acima do limite, aprovados/rejeitados manualmente pelo vendedor. Ver
+[API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
 
 ## Arquitetura em alto nível
 
@@ -70,12 +78,22 @@ Cliente externo
       │                                            │
       │                                            │ consumido de forma assíncrona
       │                                            ▼
-      └── /api/notifications/**             ──▶ notification-service (:8084) ──▶ DynamoDB notification-history (LocalStack)
+      ├── /api/notifications/**             ──▶ notification-service (:8084) ──▶ DynamoDB notification-history (LocalStack)
+      │
+      └── /api/orders/**                    ──▶ order-service (:8085) ──▶ PostgreSQL (schema order)
+                                                   │        │
+                                  GET /products/{id} (por item)   GET /companies/{id}/credit-limit
+                                                   ▼        ▼
+                                          catalog-service (:8082)   auth-service (:8081)
 
 Cada serviço acima valida o JWT localmente (JWKS publicado por auth-service em
 /.well-known/jwks.json) — nenhuma chamada síncrona de volta ao auth-service a cada requisição. A
 ligação entre inventory-service e notification-service é só a fila SQS — nenhum dos dois chama o
-outro por HTTP.
+outro por HTTP. O order-service, ao contrário, faz duas chamadas HTTP síncronas de LEITURA na
+criação do pedido — uma por item ao catalog-service, e uma ao auth-service para o limite de
+crédito — repassando o próprio JWT do comprador; nenhuma dessas chamadas grava dado nos vizinhos, e
+nenhuma mensageria existe ainda no order-service nesta fase (a reserva de estoque via evento chega
+na Fase 5).
 ```
 
 - O Gateway (Spring Cloud Gateway Server WebMVC) apenas roteia por prefixo de caminho — a validação
@@ -106,8 +124,8 @@ fila (Fase 3).
 ## Documentação interativa (Swagger UI)
 
 Além da referência estática em [API.md](API.md), `auth-service`, `catalog-service`,
-`inventory-service` e `notification-service` servem Swagger UI na própria porta direta de cada um —
-**não** pelo Gateway:
+`inventory-service`, `notification-service` e `order-service` servem Swagger UI na própria porta
+direta de cada um — **não** pelo Gateway:
 
 | Serviço | Swagger UI |
 |---|---|
@@ -115,6 +133,7 @@ Além da referência estática em [API.md](API.md), `auth-service`, `catalog-ser
 | `catalog-service` | http://localhost:8082/swagger-ui.html |
 | `inventory-service` | http://localhost:8083/swagger-ui.html |
 | `notification-service` | http://localhost:8084/swagger-ui.html |
+| `order-service` | http://localhost:8085/swagger-ui.html |
 
 A página carrega sem token (é uma ferramenta local de desenvolvimento, deliberadamente aceita —
 ver `SecurityConfig.java` de cada serviço). O botão **Authorize** aceita um JWT colado (obtido em
@@ -127,7 +146,7 @@ aqui).
 
 - **Consumir a API hoje:** [API.md](API.md) — todos os endpoints disponíveis, com autenticação,
   formatos de requisição/resposta e códigos de erro.
-- **Testar no navegador:** as três Swagger UIs acima — visualização e teste rápido sem cliente HTTP.
+- **Testar no navegador:** as cinco Swagger UIs acima — visualização e teste rápido sem cliente HTTP.
 - **Subir o projeto localmente:** [README.md](../README.md) na raiz do repositório — pré-requisitos,
   variáveis de ambiente e o passo a passo de `docker compose up`.
 

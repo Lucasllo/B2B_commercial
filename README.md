@@ -6,12 +6,13 @@ pedidos sujeitos a aprovação por limite de crédito, reserva de estoque, atrib
 transportadora e acompanhamento até a entrega. É um projeto de portfólio técnico voltado a
 demonstrar competências exigidas para uma vaga de Desenvolvedor Java Pleno.
 
-O que já funciona hoje (Fases 1 a 3): autenticação com JWT auto-emitido, gestão de empresas
+O que já funciona hoje (Fases 1 a 4): autenticação com JWT auto-emitido, gestão de empresas
 compradoras e limite de crédito, catálogo de produtos, controle de estoque com reserva protegida
-contra concorrência, e um histórico de notificações assíncrono — um ajuste de estoque publica um
+contra concorrência, um histórico de notificações assíncrono — um ajuste de estoque publica um
 evento numa fila SQS real que o `notification-service` consome e grava no DynamoDB, sem nenhuma
-chamada REST entre os dois serviços — tudo rodando atrás de um API Gateway com a stack inteira
-subindo localmente via `docker compose`.
+chamada REST entre os dois serviços — e a criação de pedidos com aprovação automática ou manual por
+limite de crédito, o núcleo do valor B2B do projeto: tudo rodando atrás de um API Gateway com a
+stack inteira subindo localmente via `docker compose`.
 
 ## Pré-requisitos
 
@@ -42,11 +43,11 @@ repositório e baixa a distribuição correta sob demanda.
 docker compose up -d --wait
 ```
 
-Esse comando sobe os sete serviços (`postgres`, `localstack`, `auth-service`, `catalog-service`,
-`inventory-service`, `notification-service`, `gateway`) e só retorna quando todos estiverem
-`healthy`. A fila `notification-events-queue` e a tabela `notification-history` nascem sozinhas
-nessa subida, provisionadas pelo init hook do LocalStack (`localstack-init/ready.d/`) — nenhum
-passo manual é necessário. Confira com:
+Esse comando sobe os oito serviços (`postgres`, `localstack`, `auth-service`, `catalog-service`,
+`inventory-service`, `notification-service`, `order-service`, `gateway`) e só retorna quando todos
+estiverem `healthy`. A fila `notification-events-queue` e a tabela `notification-history` nascem
+sozinhas nessa subida, provisionadas pelo init hook do LocalStack (`localstack-init/ready.d/`) —
+nenhum passo manual é necessário. Confira com:
 
 ```
 docker compose ps
@@ -61,12 +62,12 @@ docker compose down -v
 ## Build e testes
 
 ```
-./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service test
+./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service,order-service test
 ```
 Testes unitários, sem necessidade de Docker.
 
 ```
-./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service verify
+./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service,order-service verify
 ```
 Suíte completa, incluindo testes de integração com Testcontainers — exige o Docker em execução.
 As suítes de integração do `inventory-service` e do `notification-service` sobem um LocalStack
@@ -103,6 +104,7 @@ serviço — não através do Gateway:
 - `http://localhost:8082/swagger-ui.html` (catalog-service)
 - `http://localhost:8083/swagger-ui.html` (inventory-service)
 - `http://localhost:8084/swagger-ui.html` (notification-service)
+- `http://localhost:8085/swagger-ui.html` (order-service)
 
 Como essas páginas são servidas na porta direta de cada serviço, e não pelo Gateway, os caminhos
 mostrados ali aparecem **sem** o prefixo `/api` que o Gateway acrescenta (`StripPrefix=1`): o que
@@ -200,6 +202,48 @@ reentrega sem duplicação e ajustes distintos acumulando —, rode:
 bash scripts/smoke-notification-flow.sh
 ```
 
+### Pedidos (Fase 4 — papel exigido entre parênteses)
+
+- `POST /api/orders` (BUYER) — cria um pedido a partir de itens do catálogo (`productId`,
+  `quantity`); a empresa dona do pedido vem sempre do claim `company_id` do próprio token, nunca do
+  corpo da requisição.
+- `GET /api/orders` (qualquer autenticado) — `BUYER` vê apenas os pedidos da própria empresa;
+  `SELLER_ADMIN` vê todos os pedidos. Filtro opcional `?status=`, paginação (`page`, `size`, até
+  100), sempre do pedido mais recente para o mais antigo.
+- `GET /api/orders/{orderId}` (qualquer autenticado) — pedido de outra empresa responde `404`,
+  idêntico ao de um id inexistente (nunca `403`) — um `BUYER` não descobre que um pedido alheio
+  existe.
+- `POST /api/orders/{orderId}/approve` e `POST /api/orders/{orderId}/reject` (SELLER_ADMIN) —
+  decisão manual sobre um pedido `PENDING_APPROVAL`; a rejeição exige motivo (`reason`), a
+  aprovação aceita motivo opcional; decidir um pedido fora de `PENDING_APPROVAL` devolve `409`.
+
+### Como a aprovação por crédito funciona
+
+Ao criar um pedido, o `order-service` soma o total do pedido novo à exposição de crédito atual da
+empresa — a soma ao vivo dos totais de todos os pedidos dessa empresa em `APPROVED`, `CONFIRMED`,
+`SHIPPED` e `DELIVERED` (nunca um saldo pré-calculado). Se `exposição + total <= limite`, o pedido
+nasce `APPROVED` automaticamente (`decidedBy: "SYSTEM"`); caso contrário, nasce `PENDING_APPROVAL`
+e espera a decisão manual do vendedor. Um pedido aprovado manualmente pelo vendedor passa a
+consumir crédito da mesma forma que um aprovado automaticamente, mesmo que a soma resultante
+ultrapasse o limite — a aprovação manual não reavalia o limite, é uma decisão de negócio deliberada
+que pode exceder a regra automática.
+
+A ordem das chamadas na criação é sempre a mesma: primeiro o catálogo, um item por vez (`GET
+/products/{id}` no `catalog-service`, para validar e precificar cada item); depois o limite de
+crédito (`GET /companies/{id}/credit-limit` no `auth-service`); só então a transação que decide e
+grava o pedido, sob uma trava por empresa (`company_credit_lock`, `PESSIMISTIC_WRITE`) que serializa
+a decisão sem fazer nenhuma chamada de rede dentro da transação — essa trava é o que garante que
+pedidos simultâneos da mesma empresa nunca aprovem, juntos, mais do que o limite permite (Success
+Criteria 5 do ROADMAP).
+
+Para provar o fluxo de ponta a ponta na stack real, pelo Gateway e com auth-service/catalog-service
+reais — pedido aprovado e pendente pelo crédito, decisão do vendedor, recusa de produto
+descontinuado e isolamento por empresa —, rode:
+
+```bash
+bash scripts/smoke-order-flow.sh
+```
+
 ### Fluxo de demonstração completo
 
 Comandos copiáveis, executados em sequência (`jq` é opcional, só para extrair campos do JSON;
@@ -255,6 +299,31 @@ curl -s http://localhost:8080/api/notifications/$PRODUCT_ID -H "Authorization: B
 4. **Fila padrão, sem ordem garantida de entrega** — o SQS padrão (não FIFO) não garante que as
    mensagens cheguem na ordem em que foram publicadas; o histórico é reordenado por `occurredAt` no
    momento da leitura, não na gravação.
+
+## Limitações conhecidas (Fase 4)
+
+1. **`APPROVED` não é confirmado nem reserva estoque** — nesta fase, `APPROVED` é o estado final da
+   linha do tempo do pedido: nenhuma reserva de estoque é feita no `inventory-service`, e o pedido
+   não avança para `CONFIRMED`, `SHIPPED` ou `CANCELLED`. A saga que orquestra a reserva de estoque
+   e as transições seguintes chega na Fase 5.
+2. **Uma chamada ao catálogo por item, em sequência** — cada item do pedido gera uma chamada
+   síncrona separada a `GET /products/{id}`; um endpoint de validação em lote é uma melhoria adiada.
+3. **Sem circuit breaker** — as chamadas a `auth-service`/`catalog-service` têm apenas timeouts
+   explícitos de conexão e leitura (D-41); um padrão de circuit breaker (Resilience4j) fica para o
+   endurecimento da Fase 7.
+4. **Espera pela trava de crédito sem timeout** — a trava por empresa (`company_credit_lock`)
+   espera indefinidamente por design (D-41: nada que segura a trava faz I/O de rede), mas não tem
+   um `lock_timeout` configurado — revisitar se uma fase futura acrescentar trabalho lento dentro da
+   mesma transação.
+5. **`order-service` repassa o JWT do comprador, sem identidade de serviço própria** — as chamadas a
+   `auth-service`/`catalog-service` usam o mesmo token do comprador que criou o pedido; uma
+   identidade de serviço dedicada é introduzida em fase futura.
+6. **Produto descontinuado e produto inexistente aparecem iguais na recusa** — os dois casos
+   devolvem o mesmo `422 invalid_order_items` com o id do produto, sem distinguir a causa no corpo
+   da resposta.
+7. **O vendedor não filtra a listagem por empresa** — `GET /orders` para `SELLER_ADMIN` sempre
+   devolve pedidos de todas as empresas; um filtro por empresa na visão do vendedor não existe
+   nesta fase.
 
 ## Arquitetura
 
