@@ -1,7 +1,9 @@
 package com.orderflow.order.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -9,9 +11,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code order-service} é apenas resource server — nunca emite token, só valida o que o
@@ -43,8 +48,28 @@ public class SecurityConfig {
         return converter;
     }
 
+    /**
+     * Rejeição de JWT (assinatura de outra chave, {@code exp} no passado, {@code iss} diferente,
+     * ausência de token) acontece no filtro de segurança, ANTES do {@code DispatcherServlet} — o
+     * {@code GlobalExceptionHandler} (um {@code @RestControllerAdvice}) nunca vê essa exceção, e
+     * sem este ponto de entrada customizado o corpo do 401 sai vazio, quebrando o mesmo envelope
+     * uniforme ({@code {"error","message"}}) usado por todo o resto do serviço (04-02 Task 2).
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter)
+    public AuthenticationEntryPoint authenticationEntryPoint(ObjectMapper objectMapper) {
+        return (request, response, authException) -> {
+            response.setStatus(org.springframework.http.HttpStatus.UNAUTHORIZED.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("error", "unauthorized");
+            body.put("message", "Authentication is required");
+            objectMapper.writeValue(response.getWriter(), body);
+        };
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter,
+                                                     AuthenticationEntryPoint authenticationEntryPoint)
             throws Exception {
         return http
                 // API stateless, sem cookie de sessão — não há estado de sessão para um token
@@ -60,7 +85,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint(authenticationEntryPoint))
                 .build();
     }
 }

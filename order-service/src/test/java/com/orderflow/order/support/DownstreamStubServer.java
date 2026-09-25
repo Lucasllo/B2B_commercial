@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +36,18 @@ import java.util.regex.Pattern;
  */
 public final class DownstreamStubServer {
 
+    /**
+     * Modos de falha de vizinho (04-02 Task 2): {@code SERVER_ERROR} devolve 500;
+     * {@code SLOW} dorme 3 s antes de responder normalmente — mais que o timeout de leitura de 1 s
+     * do perfil de teste ({@code application-test.yml}); {@code MALFORMED_BODY} devolve 200 com um
+     * corpo que não é JSON válido; {@code WRONG_COMPANY} só se aplica à consulta de limite de
+     * crédito — 200 com um {@code companyId} diferente do pedido, tratado como resposta não
+     * confiável pelo cliente (D-39).
+     */
+    public enum Failure {
+        SERVER_ERROR, SLOW, MALFORMED_BODY, WRONG_COMPANY
+    }
+
     private record ProductRecord(UUID id, String sku, String name, BigDecimal price, String status) {
     }
 
@@ -58,6 +71,12 @@ public final class DownstreamStubServer {
     private final Map<UUID, CreditLimitRecord> creditLimits = new ConcurrentHashMap<>();
     private final List<RecordedRequest> recordedRequests = new CopyOnWriteArrayList<>();
 
+    // Lidos a cada requisição (Task 2 <action>) — voláteis, nunca sincronizados, porque cada
+    // requisição de teste roda numa thread virtual própria e o pior caso é uma corrida benigna
+    // entre a chamada de setup e a primeira requisição HTTP do próprio teste.
+    private volatile Failure catalogFailure;
+    private volatile Failure authFailure;
+
     public DownstreamStubServer() {
         try {
             this.httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -76,6 +95,32 @@ public final class DownstreamStubServer {
 
     public void registerCreditLimit(UUID companyId, BigDecimal creditLimit) {
         creditLimits.put(companyId, new CreditLimitRecord(companyId, creditLimit));
+    }
+
+    /**
+     * Atualiza nome e preço de um produto já registrado, mantendo {@code sku}/{@code status} —
+     * usado para provar que o pedido já criado não muda quando o catálogo muda depois (D-43).
+     */
+    public void updateProduct(UUID id, String name, BigDecimal price) {
+        ProductRecord existing = products.get(id);
+        if (existing == null) {
+            throw new IllegalStateException("Product not registered: " + id);
+        }
+        products.put(id, new ProductRecord(id, existing.sku(), name, price, existing.status()));
+    }
+
+    public void failCatalogWith(Failure failure) {
+        this.catalogFailure = failure;
+    }
+
+    public void failAuthWith(Failure failure) {
+        this.authFailure = failure;
+    }
+
+    /** Chamado num {@code @AfterEach} — nenhum modo de falha vaza de um teste para o próximo. */
+    public void clearFailures() {
+        this.catalogFailure = null;
+        this.authFailure = null;
     }
 
     public List<RecordedRequest> requests() {
@@ -100,6 +145,9 @@ public final class DownstreamStubServer {
 
     private void handleProducts(HttpExchange exchange) throws IOException {
         record(exchange);
+        if (applyGenericFailure(exchange, catalogFailure)) {
+            return;
+        }
         Matcher matcher = PRODUCT_PATH.matcher(exchange.getRequestURI().getPath());
         if (!matcher.matches()) {
             sendJson(exchange, 404, Map.of("error", "product_not_found", "message", "Product not found"));
@@ -127,12 +175,26 @@ public final class DownstreamStubServer {
 
     private void handleCompanies(HttpExchange exchange) throws IOException {
         record(exchange);
+        if (applyGenericFailure(exchange, authFailure)) {
+            return;
+        }
         Matcher matcher = CREDIT_LIMIT_PATH.matcher(exchange.getRequestURI().getPath());
         if (!matcher.matches()) {
             sendJson(exchange, 404, Map.of("error", "company_not_found", "message", "Company not found"));
             return;
         }
         UUID companyId = UUID.fromString(matcher.group(1));
+
+        if (authFailure == Failure.WRONG_COMPANY) {
+            // Resposta 200 estruturalmente válida, mas para uma empresa diferente da pedida — o
+            // cliente deve tratar como resposta não confiável, nunca como o limite real (D-39).
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("companyId", UUID.randomUUID().toString());
+            body.put("creditLimit", new BigDecimal("999999.99"));
+            sendJson(exchange, 200, body);
+            return;
+        }
+
         CreditLimitRecord creditLimit = creditLimits.get(companyId);
         if (creditLimit == null) {
             sendJson(exchange, 404, Map.of("error", "company_not_found", "message", "Company not found"));
@@ -145,6 +207,38 @@ public final class DownstreamStubServer {
         sendJson(exchange, 200, body);
     }
 
+    /**
+     * Aplica {@code SERVER_ERROR}/{@code SLOW}/{@code MALFORMED_BODY} (comuns aos dois vizinhos).
+     * {@code WRONG_COMPANY} não é genérico (só se aplica ao limite de crédito) e é tratado em
+     * {@link #handleCompanies}. Devolve {@code true} quando a resposta já foi enviada — o chamador
+     * não deve continuar o processamento normal.
+     */
+    private boolean applyGenericFailure(HttpExchange exchange, Failure failure) throws IOException {
+        if (failure == Failure.SLOW) {
+            sleepBeyondReadTimeout();
+            return false;
+        }
+        if (failure == Failure.SERVER_ERROR) {
+            sendJson(exchange, 500, Map.of("error", "internal_error", "message", "Simulated downstream failure"));
+            return true;
+        }
+        if (failure == Failure.MALFORMED_BODY) {
+            sendRaw(exchange, 200, "{not json");
+            return true;
+        }
+        return false;
+    }
+
+    private void sleepBeyondReadTimeout() {
+        try {
+            // 3s > o timeout de leitura de 1s do perfil de teste (application-test.yml) — força o
+            // cliente a estourar por timeout, nunca por resposta lenta-mas-dentro-do-prazo.
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void record(HttpExchange exchange) {
         String authorization = exchange.getRequestHeaders().getFirst("Authorization");
         recordedRequests.add(new RecordedRequest(
@@ -153,6 +247,16 @@ public final class DownstreamStubServer {
 
     private void sendJson(HttpExchange exchange, int statusCode, Object body) throws IOException {
         byte[] payload = OBJECT_MAPPER.writeValueAsBytes(body);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(statusCode, payload.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(payload);
+        }
+    }
+
+    /** {@code MALFORMED_BODY}: corpo literal, não passado pelo Jackson — não é JSON válido de propósito. */
+    private void sendRaw(HttpExchange exchange, int statusCode, String rawBody) throws IOException {
+        byte[] payload = rawBody.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(statusCode, payload.length);
         try (OutputStream os = exchange.getResponseBody()) {

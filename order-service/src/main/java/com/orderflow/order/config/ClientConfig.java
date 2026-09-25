@@ -33,7 +33,13 @@ public class ClientConfig {
         return buildRestClient(clientProperties.catalogService());
     }
 
-    private RestClient buildRestClient(Downstream downstream) {
+    /**
+     * Pública (não mais privada, 04-02 Task 2): {@code DownstreamClientsTest} monta o RestClient de
+     * produção a partir desta mesma fábrica — com o mesmo {@link JdkClientHttpRequestFactory} e os
+     * mesmos timeouts explícitos — em vez de uma cópia, para que o teste de porta fechada exercite
+     * exatamente o código que roda em produção, não uma reimplementação que poderia divergir.
+     */
+    public static RestClient buildRestClient(Downstream downstream) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(downstream.connectTimeout())
