@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
-status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-09-25T23:24:45.829Z"
+status: verifying
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-09-25T23:54:46.759Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 04 execution started
-state_head: 6a87f8c14286854b7ec338b6f12fc05860a73287
+state_head: 90647bea6fb679458572c71669e687f7c632c57f
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 
 Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-25 — Phase 04 execution started
 
 Progress: [████░░░░░░] 43%
@@ -67,6 +67,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P02 | 40min | 3 tasks | 13 files |
 | Phase 04 P03 | 35min | 2 tasks | 5 files |
 | Phase 04 P04 | 20min | 3 tasks | 10 files |
+| Phase 04 P05 | 27min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase 04]: GET /orders: ?status= vale para BUYER e SELLER_ADMIN (Open Question 2 resolvida) — Filtro adicional sobre escopo ja resolvido, nao enfraquece isolamento por empresa
 - [Phase 04]: [Phase 04]: OrderDecisionService.decide privado parametrizado por Consumer<Order>, reaproveitado por approve/reject sem auto-invocacao de metodo @Transactional — Evita duplicar busca->trava->releitura->instante entre approve e reject
 - [Phase 04]: [Phase 04]: OrderDecisionController e um segundo @RestController sobre /orders, nao um metodo a mais em OrderController — Evita disputa de arquivo com o plano 04-03 na mesma wave
+- [Phase 04]: [Phase 04]: order-service sem localstack no depends_on do compose — nenhuma mensageria existe neste servico nesta fase (saga com SQS/Outbox chega na Fase 5)
+- [Phase 04]: [Phase 04]: Script de smoke gera sufixo unico (UUID) dentro do container do Gateway para emails/SKUs — permite reexecutar na mesma base sem colidir com dados de execucoes anteriores
 
 ### Pending Todos
 
@@ -129,6 +132,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-25T23:24:45.673Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-09-25T23:54:46.529Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
