@@ -1,0 +1,23 @@
+spring:
+  flyway:
+    schemas: order
+    default-schema: order
+    create-schemas: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: '"order"'
+
+orderflow:
+  clients:
+    # Timeouts baixos nos testes — os cenários de indisponibilidade do stub (parada deliberada)
+    # não podem prender a suíte de testes por segundos.
+    auth-service:
+      connect-timeout: 1s
+      read-timeout: 1s
+    catalog-service:
+      connect-timeout: 1s
+      read-timeout: 1s

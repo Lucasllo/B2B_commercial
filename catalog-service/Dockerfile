@@ -14,6 +14,7 @@ COPY gateway/pom.xml gateway/pom.xml
 COPY catalog-service/pom.xml catalog-service/pom.xml
 COPY inventory-service/pom.xml inventory-service/pom.xml
 COPY notification-service/pom.xml notification-service/pom.xml
+COPY order-service/pom.xml order-service/pom.xml
 RUN chmod +x mvnw && ./mvnw -B -pl catalog-service -am dependency:go-offline
 
 COPY catalog-service/src catalog-service/src

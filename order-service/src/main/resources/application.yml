@@ -1,0 +1,89 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    # D-01: instância Postgres única, um schema por serviço — currentSchema=order isola este
+    # serviço das tabelas de auth/catalog/inventory.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderflow?currentSchema=order}
+    username: ${SPRING_DATASOURCE_USERNAME:orderflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:orderflow}
+  flyway:
+    schemas: order
+    default-schema: order
+    create-schemas: true
+  jpa:
+    # O Flyway é dono do schema; o Hibernate só valida que o mapeamento bate com o schema real —
+    # nunca gera DDL sozinho.
+    hibernate:
+      ddl-auto: validate
+    # A entidade nunca sai do serviço transacional — o DTO de resposta é montado dentro da
+    # transação (OrderService), então a sessão do Hibernate não precisa sobreviver até a
+    # serialização da view.
+    open-in-view: false
+    properties:
+      hibernate:
+        # "order" é palavra reservada do SQL: sem as aspas duplas dentro das aspas simples do
+        # YAML, o Hibernate gera "order.orders" sem qualificação, e o PostgreSQL rejeita com erro
+        # de sintaxe. Flyway e o parâmetro currentSchema do JDBC acima tratam o nome do schema
+        # como texto simples e não precisam desta forma entre aspas.
+        default_schema: '"order"'
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # order-service é apenas resource server — nunca emite token. A validação é local por
+          # chave pública buscada uma vez do JWKS do auth-service (D-03 herdado da Fase 1).
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+          # Com jwk-set-uri também definido, o Boot NÃO faz descoberta OIDC: busca as chaves no
+          # jwk-set-uri e usa o issuer-uri só como o valor esperado do claim iss. O valor não é
+          # uma URL porque o auth-service emite o iss literal orderflow-auth-service, que não
+          # depende de host nem de rede — por isso o docker-compose.yml não ganha variável nova.
+          # Fecha T-03-02/WR-07: sem esta linha, um token assinado pela chave confiável mas com
+          # iss diferente (ou ausente) era aceito, pois só assinatura e exp/nbf eram validados.
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:orderflow-auth-service}
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: false
+
+orderflow:
+  clients:
+    # O RestClient do Spring não tem timeout padrão — um vizinho travado seguraria a thread para
+    # sempre (lição do WR-03 da Fase 3, agora D-41). As URLs são fixas por configuração, nunca
+    # derivadas da requisição.
+    auth-service:
+      base-url: ${ORDERFLOW_AUTH_SERVICE_BASE_URL:http://localhost:8081}
+      connect-timeout: 2s
+      read-timeout: 3s
+    catalog-service:
+      base-url: ${ORDERFLOW_CATALOG_SERVICE_BASE_URL:http://localhost:8082}
+      connect-timeout: 2s
+      read-timeout: 3s
+  openapi:
+    title: "OrderFlow — Order Service API"
+    description: >-
+      Criação de pedidos a partir do catálogo, decisão de aprovação por limite de crédito e
+      consulta de pedidos por empresa.

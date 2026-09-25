@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build multi-stage do auth-service. Tag de patch fixa (eclipse-temurin 21.0.12_8), confirmada
+# Build multi-stage do order-service. Tag de patch fixa (eclipse-temurin 21.0.12_8), confirmada
 # via Docker Hub API em 2026-09-18 — nenhuma tag flutuante (ROADMAP Fase 1, critério 1).
 
 FROM eclipse-temurin:21.0.12_8-jdk-jammy AS build
@@ -15,10 +15,10 @@ COPY catalog-service/pom.xml catalog-service/pom.xml
 COPY inventory-service/pom.xml inventory-service/pom.xml
 COPY notification-service/pom.xml notification-service/pom.xml
 COPY order-service/pom.xml order-service/pom.xml
-RUN chmod +x mvnw && ./mvnw -B -pl auth-service -am dependency:go-offline
+RUN chmod +x mvnw && ./mvnw -B -pl order-service -am dependency:go-offline
 
-COPY auth-service/src auth-service/src
-RUN ./mvnw -B -pl auth-service -am package -DskipTests
+COPY order-service/src order-service/src
+RUN ./mvnw -B -pl order-service -am package -DskipTests
 
 FROM eclipse-temurin:21.0.12_8-jre-jammy AS runtime
 # curl é exigido pelo HEALTHCHECK do docker-compose (plano 01-03)
@@ -30,9 +30,9 @@ RUN groupadd --system orderflow && useradd --system --gid orderflow orderflow
 USER orderflow
 
 WORKDIR /app
-# auth-service-exec.jar (classifier "exec") é o jar gordo executável — auth-service.jar plano
-# (sem classifier) permanece o artefato principal para não confundir o classpath de testes de
-# integração do maven-failsafe-plugin (ver comentário no pom.xml raiz).
-COPY --from=build /workspace/auth-service/target/auth-service-exec.jar app.jar
+# order-service-exec.jar (classifier "exec") é o jar gordo executável — order-service.jar plano
+# permanece o artefato principal (ver comentário no pom.xml raiz sobre o classpath do
+# maven-failsafe-plugin).
+COPY --from=build /workspace/order-service/target/order-service-exec.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
