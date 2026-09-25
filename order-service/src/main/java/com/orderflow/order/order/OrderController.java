@@ -2,7 +2,10 @@ package com.orderflow.order.order;
 
 import com.orderflow.order.order.dto.CreateOrderRequest;
 import com.orderflow.order.order.dto.OrderResponse;
+import com.orderflow.order.order.dto.OrderSummaryResponse;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -56,6 +60,20 @@ public class OrderController {
         boolean sellerView = isSellerAdmin(authentication);
         UUID callerCompanyId = sellerView ? null : requireCompanyId((Jwt) authentication.getPrincipal());
         return orderService.getById(orderId, callerCompanyId, sellerView);
+    }
+
+    /**
+     * {@code GET /orders} (ORD-08/ORD-09) — aberto a qualquer autenticado; nenhum parâmetro escolhe
+     * empresa. O escopo do BUYER vem de {@link #requireCompanyId}, a visão de vendedor vem de
+     * {@link #isSellerAdmin} — o mesmo par de derivações de {@link #getById}. {@code status} vale
+     * para os dois papéis (D-47, 04-RESEARCH.md Open Question 2).
+     */
+    @GetMapping
+    public Page<OrderSummaryResponse> list(@RequestParam(required = false) OrderStatus status,
+                                            Pageable pageable, Authentication authentication) {
+        boolean sellerView = isSellerAdmin(authentication);
+        UUID callerCompanyId = sellerView ? null : requireCompanyId((Jwt) authentication.getPrincipal());
+        return orderService.list(callerCompanyId, sellerView, status, pageable);
     }
 
     /**
