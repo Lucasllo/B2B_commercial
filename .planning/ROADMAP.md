@@ -110,7 +110,25 @@ Plans:
   4. O comprador lista e abre o detalhe apenas dos pedidos da própria empresa; o vendedor lista e abre o detalhe de todos os pedidos.
   5. Dois pedidos concorrentes do mesmo comprador na fronteira do limite de crédito não passam ambos na verificação — checagem transacional com bloqueio comprovada por teste.
 
-**Plans**: TBD
+**Plans:** 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — order-service nasce: o BUYER cria pedido validado por item no catalog-service e decidido contra o limite lido no auth-service (JWT repassado, I/O antes da transação), APPROVED ou PENDING_APPROVAL sob a trava `company_credit_lock`, snapshot dos itens, `GET /orders/{id}` com escopo de empresa, e a prova por socket real do Success Criteria 5 (ORD-01, ORD-02, ORD-08, ORD-09)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — endurecimento da criação: tudo ou nada (repetido 400, itens inválidos 422), falha fechada 503 com vizinho quebrado/lento/inalcançável, limites de entrada, total fora da faixa, tokens adversariais, snapshot congelado e testes unitários da regra de crédito (ORD-01, ORD-02)
+- [ ] 04-03-PLAN.md — `GET /orders` paginado: BUYER só a própria empresa, SELLER_ADMIN todas, `createdAt` decrescente imposto pelo servidor, `?status=` como fila de aprovação (ORD-08, ORD-09)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-04-PLAN.md — o SELLER_ADMIN aprova (motivo opcional) ou rejeita (motivo obrigatório) pedido pendente pela mesma trava, com `decidedBy`/`decidedAt`/`reason`, 409 fora de PENDING_APPROVAL e corridas de decisão provadas (ORD-03, ORD-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-05-PLAN.md — order-service no `docker compose up` e atrás do Gateway, smoke ponta a ponta na stack real (dois pedidos de demonstração, decisão do vendedor, produto descontinuado recusado pelo catálogo real, isolamento), Swagger e documentação da fase (ORD-01, ORD-02, ORD-03, ORD-08, ORD-09)
 
 ### Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 
@@ -169,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
-| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/TBD | Not started | - |
+| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/5 | Planned | - |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
