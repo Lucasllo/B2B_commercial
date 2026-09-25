@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-09-25T23:03:07.882Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-09-25T23:24:45.829Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 04 execution started
-state_head: e3e1f1dd3a3ca1e890eed2fe92763640e356602f
+state_head: 6a87f8c14286854b7ec338b6f12fc05860a73287
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 14
+  completed_plans: 15
   percent: 43
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — EXECUTING
-Plan: 3 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 04 execution started
 
@@ -66,6 +66,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P01 | 48min | 2 tasks | 48 files |
 | Phase 04 P02 | 40min | 3 tasks | 13 files |
 | Phase 04 P03 | 35min | 2 tasks | 5 files |
+| Phase 04 P04 | 20min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,8 @@ Recent decisions affecting current work:
 - [Phase 04]: [Phase 04]: Guarda de total order_total_out_of_range usa precision()-scale() > 17, mesmo criterio do @Digits(integer=17,fraction=2) do auth-service, checada antes do limite de credito
 - [Phase 04]: [Phase 04]: AuthenticationEntryPoint customizado em JSON adicionado a SecurityConfig (Rule 2) — rejeicao de JWT acontece no filtro de seguranca antes do GlobalExceptionHandler, corpo de 401 vazio quebraria o envelope uniforme
 - [Phase 04]: GET /orders: ?status= vale para BUYER e SELLER_ADMIN (Open Question 2 resolvida) — Filtro adicional sobre escopo ja resolvido, nao enfraquece isolamento por empresa
+- [Phase 04]: [Phase 04]: OrderDecisionService.decide privado parametrizado por Consumer<Order>, reaproveitado por approve/reject sem auto-invocacao de metodo @Transactional — Evita duplicar busca->trava->releitura->instante entre approve e reject
+- [Phase 04]: [Phase 04]: OrderDecisionController e um segundo @RestController sobre /orders, nao um metodo a mais em OrderController — Evita disputa de arquivo com o plano 04-03 na mesma wave
 
 ### Pending Todos
 
@@ -126,6 +129,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-25T23:03:07.702Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-09-25T23:24:45.673Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None

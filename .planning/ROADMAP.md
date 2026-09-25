@@ -110,7 +110,7 @@ Plans:
   4. O comprador lista e abre o detalhe apenas dos pedidos da própria empresa; o vendedor lista e abre o detalhe de todos os pedidos.
   5. Dois pedidos concorrentes do mesmo comprador na fronteira do limite de crédito não passam ambos na verificação — checagem transacional com bloqueio comprovada por teste.
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -124,7 +124,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 04-04-PLAN.md — o SELLER_ADMIN aprova (motivo opcional) ou rejeita (motivo obrigatório) pedido pendente pela mesma trava, com `decidedBy`/`decidedAt`/`reason`, 409 fora de PENDING_APPROVAL e corridas de decisão provadas (ORD-03, ORD-02)
+- [x] 04-04-PLAN.md — o SELLER_ADMIN aprova (motivo opcional) ou rejeita (motivo obrigatório) pedido pendente pela mesma trava, com `decidedBy`/`decidedAt`/`reason`, 409 fora de PENDING_APPROVAL e corridas de decisão provadas (ORD-03, ORD-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -187,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
-| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 3/5 | In Progress|  |
+| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 4/5 | In Progress|  |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
