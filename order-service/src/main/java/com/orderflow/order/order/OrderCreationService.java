@@ -6,13 +6,16 @@ import com.orderflow.order.client.dto.CatalogProductResponse;
 import com.orderflow.order.order.dto.CreateOrderRequest;
 import com.orderflow.order.order.dto.OrderItemRequest;
 import com.orderflow.order.order.dto.OrderResponse;
+import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -23,6 +26,12 @@ import java.util.UUID;
  * bean Spring pula o proxy e ignora {@code @Transactional} em silêncio (02-RESEARCH.md Pitfall 2)
  * — é exatamente por isso que a precificação/validação e a decisão transacional vivem em beans
  * diferentes neste serviço.
+ *
+ * <p>Ordem das recusas de {@link #create}, da mais barata para a mais cara: estrutura do corpo
+ * (bean validation, antes deste método ser chamado) → produto repetido no mesmo pedido → itens
+ * inexistentes/indisponíveis no catalog-service → total fora da faixa de {@code NUMERIC(19,2)} →
+ * limite de crédito (a única checagem que faz uma segunda chamada de rede, e só é alcançada depois
+ * que todas as anteriores passaram).
  */
 @Service
 public class OrderCreationService {
@@ -40,6 +49,10 @@ public class OrderCreationService {
     }
 
     public OrderResponse create(UUID companyId, String createdBy, String bearerToken, CreateOrderRequest request) {
+        // Produto repetido é a checagem mais barata (nenhuma rede) e vem antes de qualquer chamada
+        // ao catalog-service (D-44) — reforçado pelo acceptance criteria deste plano.
+        rejectDuplicateProductIds(request.items());
+
         List<PricedItem> pricedItems = new ArrayList<>();
         List<UUID> invalidProductIds = new ArrayList<>();
 
@@ -74,5 +87,14 @@ public class OrderCreationService {
         BigDecimal creditLimit = authServiceClient.getCreditLimit(companyId, bearerToken);
 
         return orderService.createWithCreditCheck(companyId, createdBy, pricedItems, creditLimit);
+    }
+
+    private void rejectDuplicateProductIds(List<OrderItemRequest> items) {
+        Set<UUID> seen = new HashSet<>();
+        for (OrderItemRequest item : items) {
+            if (!seen.add(item.productId())) {
+                throw new DuplicateOrderItemsException();
+            }
+        }
     }
 }

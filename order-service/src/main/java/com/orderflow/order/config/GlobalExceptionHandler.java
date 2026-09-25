@@ -2,6 +2,7 @@ package com.orderflow.order.config;
 
 import com.orderflow.order.client.AuthServiceUnavailableException;
 import com.orderflow.order.client.CatalogServiceUnavailableException;
+import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
 import com.orderflow.order.order.exception.OrderNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleInvalidParameter(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(errorBody("invalid_parameter", "Request parameter is invalid"));
+    }
+
+    /**
+     * Produto repetido sai no mesmo envelope {@code validation_failed} que a validação de bean usa
+     * — {@code fields.items} com o texto fixo da exceção — para o cliente tratar um formato só de
+     * erro 400, em vez de um código novo (D-44).
+     */
+    @ExceptionHandler(DuplicateOrderItemsException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicateItems(DuplicateOrderItemsException ex) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("items", ex.getMessage());
+
+        Map<String, Object> body = errorBody("validation_failed", "One or more fields are invalid");
+        body.put("fields", fields);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(OrderNotFoundException.class)
