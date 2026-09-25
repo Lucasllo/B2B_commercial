@@ -1,5 +1,6 @@
 package com.orderflow.order.order;
 
+import com.orderflow.order.order.exception.OrderNotPendingException;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -105,9 +106,35 @@ public class Order {
         this.status = OrderStatus.PENDING_APPROVAL;
     }
 
+    /**
+     * Aprovação manual do vendedor (ORD-03, D-46) — só a partir de {@code PENDING_APPROVAL};
+     * qualquer outro estado lança {@link OrderNotPendingException} sem tocar em nenhum campo, para
+     * não sobrescrever uma decisão já registrada. Ao contrário de {@link #approveAutomatically},
+     * não reavalia o limite de crédito nem é chamada pela criação — o vendedor assume o risco de
+     * estourar o limite (D-38); a exposição da empresa passa a contar este pedido porque {@code
+     * APPROVED} está em {@link OrderStatus#CREDIT_CONSUMING}. Motivo em branco é gravado como nulo.
+     */
+    public void approveManually(String decidedBy, String reason, OffsetDateTime now) {
+        requirePendingApproval();
+        this.status = OrderStatus.APPROVED;
+        this.decidedBy = decidedBy;
+        this.decidedAt = now;
+        this.reason = blankToNull(reason);
+    }
+
     private void requireCreated() {
         if (this.status != OrderStatus.CREATED) {
             throw new IllegalStateException("Order " + id + " is not CREATED (status=" + status + ")");
         }
+    }
+
+    private void requirePendingApproval() {
+        if (this.status != OrderStatus.PENDING_APPROVAL) {
+            throw new OrderNotPendingException();
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value;
     }
 }

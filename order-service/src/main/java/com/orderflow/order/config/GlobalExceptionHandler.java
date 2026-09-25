@@ -5,6 +5,7 @@ import com.orderflow.order.client.CatalogServiceUnavailableException;
 import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
 import com.orderflow.order.order.exception.OrderNotFoundException;
+import com.orderflow.order.order.exception.OrderNotPendingException;
 import com.orderflow.order.order.exception.OrderTotalOutOfRangeException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -73,6 +74,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(errorBody("order_not_found", "Order not found"));
+    }
+
+    /** Decisão manual (aprovação/rejeição) sobre pedido fora de PENDING_APPROVAL (D-46). */
+    @ExceptionHandler(OrderNotPendingException.class)
+    public ResponseEntity<Map<String, Object>> handleNotPending(OrderNotPendingException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("order_not_pending", "Order is not pending approval"));
     }
 
     /**
