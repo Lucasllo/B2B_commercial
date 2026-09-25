@@ -46,6 +46,17 @@ public class OrderDecisionService {
     }
 
     /**
+     * Mesmo fluxo de {@link #approve} (busca → trava → releitura → instante → transição). A
+     * rejeição não muda a exposição (D-37), mas passa pela trava assim mesmo: é o que serializa
+     * uma aprovação e uma rejeição disparadas juntas no mesmo pedido.
+     */
+    @Transactional
+    public OrderResponse reject(UUID orderId, String sellerId, String reason) {
+        Order order = decide(orderId, o -> o.reject(sellerId, reason, currentInstant()));
+        return OrderResponse.from(order);
+    }
+
+    /**
      * Busca inicial (fora da trava) só serve para descobrir a empresa dona do pedido — a trava e a
      * releitura seguinte garantem que a transição enxergue o estado mais recente, nunca o lido
      * aqui.

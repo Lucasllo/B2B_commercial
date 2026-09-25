@@ -122,6 +122,25 @@ public class Order {
         this.reason = blankToNull(reason);
     }
 
+    /**
+     * Rejeição do vendedor (ORD-03, D-37, D-46) — mesma guarda de {@link #approveManually}: só a
+     * partir de {@code PENDING_APPROVAL}, senão {@link OrderNotPendingException} sem tocar em
+     * nenhum campo. Motivo é obrigatório (nulo ou em branco lança {@link
+     * IllegalArgumentException}) — o agregado se defende mesmo que a validação do DTO falhe.
+     * {@code REJECTED} não está em {@link OrderStatus#CREDIT_CONSUMING}: um pedido rejeitado não
+     * consome crédito (D-37).
+     */
+    public void reject(String decidedBy, String reason, OffsetDateTime now) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("reason must not be blank when rejecting an order");
+        }
+        requirePendingApproval();
+        this.status = OrderStatus.REJECTED;
+        this.decidedBy = decidedBy;
+        this.decidedAt = now;
+        this.reason = reason;
+    }
+
     private void requireCreated() {
         if (this.status != OrderStatus.CREATED) {
             throw new IllegalStateException("Order " + id + " is not CREATED (status=" + status + ")");

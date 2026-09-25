@@ -1,6 +1,7 @@
 package com.orderflow.order.order;
 
 import com.orderflow.order.credit.CreditPolicy;
+import com.orderflow.order.order.exception.OrderNotPendingException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -112,6 +113,65 @@ class OrderDomainTest {
                 OrderStatus.DELIVERED);
         assertThat(OrderStatus.CREDIT_CONSUMING).isEqualTo(Set.of(
                 OrderStatus.APPROVED, OrderStatus.CONFIRMED, OrderStatus.SHIPPED, OrderStatus.DELIVERED));
+    }
+
+    @Test
+    void approveManuallyAndRejectRecordDecisionFieldsOnlyFromPendingApprovalAndThrowOtherwise() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        Order approvedManually = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        approvedManually.holdForApproval();
+        approvedManually.approveManually("seller-1", "motivo", now);
+        assertThat(approvedManually.getStatus()).isEqualTo(OrderStatus.APPROVED);
+        assertThat(approvedManually.getDecidedBy()).isEqualTo("seller-1");
+        assertThat(approvedManually.getDecidedAt()).isEqualTo(now);
+        assertThat(approvedManually.getReason()).isEqualTo("motivo");
+
+        Order rejected = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        rejected.holdForApproval();
+        rejected.reject("seller-2", "sem histórico", now);
+        assertThat(rejected.getStatus()).isEqualTo(OrderStatus.REJECTED);
+        assertThat(rejected.getDecidedBy()).isEqualTo("seller-2");
+        assertThat(rejected.getDecidedAt()).isEqualTo(now);
+        assertThat(rejected.getReason()).isEqualTo("sem histórico");
+
+        // CREATED — nem approveManually nem reject se aplicam antes de PENDING_APPROVAL.
+        Order created = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        assertThatThrownBy(() -> created.approveManually("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThatThrownBy(() -> created.reject("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThat(created.getDecidedBy()).isNull();
+        assertThat(created.getDecidedAt()).isNull();
+        assertThat(created.getReason()).isNull();
+
+        // APPROVED (automático) — decisão já registrada não é sobrescrita.
+        Order approvedAuto = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        approvedAuto.approveAutomatically(now);
+        assertThatThrownBy(() -> approvedAuto.approveManually("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThatThrownBy(() -> approvedAuto.reject("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThat(approvedAuto.getDecidedBy()).isEqualTo(Order.SYSTEM_DECIDER);
+
+        // REJECTED — decisão já registrada não é sobrescrita.
+        assertThatThrownBy(() -> rejected.approveManually("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThatThrownBy(() -> rejected.reject("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThat(rejected.getDecidedBy()).isEqualTo("seller-2");
+    }
+
+    @Test
+    void rejectWithNullOrBlankReasonThrowsIllegalArgumentExceptionEvenIfDtoValidationFails() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order pending = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        pending.holdForApproval();
+
+        assertThatThrownBy(() -> pending.reject("seller-1", null, now)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> pending.reject("seller-1", "   ", now)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(pending.getStatus()).isEqualTo(OrderStatus.PENDING_APPROVAL);
+        assertThat(pending.getDecidedBy()).isNull();
     }
 
     private PricedItem pricedItem() {

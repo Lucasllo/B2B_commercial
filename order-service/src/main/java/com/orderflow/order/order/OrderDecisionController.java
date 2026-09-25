@@ -2,6 +2,7 @@ package com.orderflow.order.order;
 
 import com.orderflow.order.order.dto.ApproveOrderRequest;
 import com.orderflow.order.order.dto.OrderResponse;
+import com.orderflow.order.order.dto.RejectOrderRequest;
 import jakarta.validation.Valid;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,6 +41,15 @@ public class OrderDecisionController {
         String sellerId = requireSellerId(jwt);
         String reason = request == null ? null : request.reason();
         return orderDecisionService.approve(orderId, sellerId, reason);
+    }
+
+    @PostMapping("/{orderId}/reject")
+    @PreAuthorize("hasRole('SELLER_ADMIN')")
+    public OrderResponse reject(@PathVariable UUID orderId,
+                                 @Valid @RequestBody RejectOrderRequest request,
+                                 @AuthenticationPrincipal Jwt jwt) {
+        String sellerId = requireSellerId(jwt);
+        return orderDecisionService.reject(orderId, sellerId, request.reason());
     }
 
     /** Lê o claim {@code sub} do JWT; ausente ou em branco lança {@link AccessDeniedException} (403). */
