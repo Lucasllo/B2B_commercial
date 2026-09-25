@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 04
 current_phase_name: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-25T01:03:26.305Z"
-last_activity: 2026-09-23
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
-state_head: a86e308e76885c433a84050538dca271ea28b807
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-25T02:05:47.900Z"
+last_activity: 2026-09-24
+last_activity_desc: Phase 04 execution started
+state_head: 76e3fb469ed6547074db712129214e0b3d0a2fea
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 11
+  completed_plans: 12
   percent: 43
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-24)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 4 — Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
+**Current focus:** Phase 04 — Núcleo do Pedido — Criação e Aprovação por Limite de Crédito
 
 ## Current Position
 
-Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — READY TO EXECUTE
-Plan: Not started
+Phase: 04 (Núcleo do Pedido — Criação e Aprovação por Limite de Crédito) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-09-23 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-09-24 — Phase 04 execution started
 
 Progress: [████░░░░░░] 43%
 
@@ -63,6 +63,7 @@ Progress: [████░░░░░░] 43%
 | Phase 02 P01 | 26min | 3 tasks | 25 files |
 | Phase 02 P02 | 27min | 3 tasks | 29 files |
 | Phase 03 P03 | 37min | 2 tasks | 8 files |
+| Phase 04 P01 | 48min | 2 tasks | 48 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Reexecução de conflito de lock otimista: maxAttempts=4, backoff delay=25ms multiplier=2 (Spring Retry, @EnableRetry order=LOWEST_PRECEDENCE)
 - [Phase 03]: [Phase 3]: Healthcheck do LocalStack verifica fila e tabela via awslocal (não só o processo) — recurso de negócio precisa existir antes de qualquer serviço dependente subir saudável
 - [Phase 03]: [Phase 3]: Reentrega provada na stack real enviando duas vezes o mesmo eventId direto na fila via awslocal, em vez de derrubar o consumidor no meio do processamento
+- [Phase 04]: ORDER_RESPONSE_CONTRACT=id,companyId,status,total,createdBy,createdAt,decidedBy,decidedAt,reason,items[...] — Contrato consumido pelo smoke do plano 04-05 e pela documentação
+- [Phase 04]: Cláusula de bloqueio Postgres/Hibernate para PESSIMISTIC_WRITE é 'for no key update', não 'for update' — Comportamento padrão do dialeto Postgres do Hibernate 6.6 para entidade sem FK-alvo; ambas as formas se excluem mutuamente, serialização continua válida (comprovado por 3 cenários de concorrência)
+- [Phase 04]: DownstreamStubServer (JDK pura) em vez de MockRestServiceServer para stub de auth-service/catalog-service nos testes — MockRestServiceServer troca a fábrica de requisições do cliente — os timeouts de ClientConfig nunca seriam exercitados e o repasse do header Authorization não passaria por socket real
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-25T00:06:55.509Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-n-cleo-do-pedido-cria-o-e-aprova-o-por-limite-de-cr-dito/04-CONTEXT.md
+Last session: 2026-09-25T02:05:47.693Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None

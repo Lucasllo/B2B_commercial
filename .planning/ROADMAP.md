@@ -110,12 +110,12 @@ Plans:
   4. O comprador lista e abre o detalhe apenas dos pedidos da própria empresa; o vendedor lista e abre o detalhe de todos os pedidos.
   5. Dois pedidos concorrentes do mesmo comprador na fronteira do limite de crédito não passam ambos na verificação — checagem transacional com bloqueio comprovada por teste.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — order-service nasce: o BUYER cria pedido validado por item no catalog-service e decidido contra o limite lido no auth-service (JWT repassado, I/O antes da transação), APPROVED ou PENDING_APPROVAL sob a trava `company_credit_lock`, snapshot dos itens, `GET /orders/{id}` com escopo de empresa, e a prova por socket real do Success Criteria 5 (ORD-01, ORD-02, ORD-08, ORD-09)
+- [x] 04-01-PLAN.md — order-service nasce: o BUYER cria pedido validado por item no catalog-service e decidido contra o limite lido no auth-service (JWT repassado, I/O antes da transação), APPROVED ou PENDING_APPROVAL sob a trava `company_credit_lock`, snapshot dos itens, `GET /orders/{id}` com escopo de empresa, e a prova por socket real do Success Criteria 5 (ORD-01, ORD-02, ORD-08, ORD-09)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -187,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
-| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 0/5 | Planned | - |
+| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 1/5 | In Progress|  |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
