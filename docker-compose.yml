@@ -137,6 +137,35 @@ services:
       retries: 5
       start_period: 40s
 
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderflow?currentSchema=order
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      # O order-service chama auth-service e catalog-service direto pela rede do compose, nunca
+      # pelo Gateway — as URLs abaixo apontam para o nome do serviço, nunca para localhost.
+      ORDERFLOW_AUTH_SERVICE_BASE_URL: http://auth-service:8081
+      ORDERFLOW_CATALOG_SERVICE_BASE_URL: http://catalog-service:8082
+    ports:
+      - "127.0.0.1:8085:8085"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
   gateway:
     build:
       context: .
@@ -149,6 +178,8 @@ services:
       inventory-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      order-service:
         condition: service_healthy
     ports:
       - "8080:8080"

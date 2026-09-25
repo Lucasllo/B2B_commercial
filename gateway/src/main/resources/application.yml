@@ -35,6 +35,12 @@ spring:
                 - Path=/api/notifications/**
               filters:
                 - StripPrefix=1
+            - id: order-service-route
+              uri: http://order-service:8085
+              predicates:
+                - Path=/api/orders/**
+              filters:
+                - StripPrefix=1
 
 management:
   endpoints:
