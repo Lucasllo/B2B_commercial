@@ -2,6 +2,7 @@ package com.orderflow.order.saga.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
+import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -221,6 +222,70 @@ class SagaEventParserTest {
         assertThatThrownBy(() -> parser.parse(body))
                 .isInstanceOf(InvalidSagaMessageException.class)
                 .hasMessageContaining("available");
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Task 2 — StockReserved
+    // -----------------------------------------------------------------------------------------
+
+    private String validReservedBody(UUID eventId, UUID orderId, String reservationId, String itemsJson) {
+        return """
+                {"eventId":"%s","eventType":"StockReserved","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","items":%s}
+                """.formatted(eventId, orderId, reservationId, itemsJson);
+    }
+
+    private String itemJson(UUID productId, int quantity) {
+        return "{\"productId\":\"" + productId + "\",\"quantity\":" + quantity + "}";
+    }
+
+    @Test
+    void validStockReservedParsesIntoEvent() {
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String body = validReservedBody(eventId, orderId, orderId.toString(), "[" + itemJson(productId, 3) + "]");
+
+        Object parsed = parser.parse(body);
+
+        assertThat(parsed).isInstanceOf(StockReservedEvent.class);
+        StockReservedEvent event = (StockReservedEvent) parsed;
+        assertThat(event.eventId()).isEqualTo(eventId);
+        assertThat(event.eventType()).isEqualTo("StockReserved");
+        assertThat(event.orderId()).isEqualTo(orderId);
+        assertThat(event.reservationId()).isEqualTo(orderId.toString());
+        assertThat(event.items()).hasSize(1);
+        assertThat(event.items().get(0).productId()).isEqualTo(productId);
+        assertThat(event.items().get(0).quantity()).isEqualTo(3);
+    }
+
+    @Test
+    void stockReservedWithEmptyItemsIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validReservedBody(UUID.randomUUID(), orderId, orderId.toString(), "[]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("items");
+    }
+
+    @Test
+    void stockReservedWithNullProductIdIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validReservedBody(UUID.randomUUID(), orderId, orderId.toString(),
+                "[{\"productId\":null,\"quantity\":1}]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("productId");
+    }
+
+    @Test
+    void stockReservedWithQuantityBelowOneIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validReservedBody(UUID.randomUUID(), orderId, orderId.toString(),
+                "[" + itemJson(UUID.randomUUID(), 0) + "]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("quantity");
     }
 
     @Test

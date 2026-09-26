@@ -274,6 +274,36 @@ class OrderDomainTest {
         assertThat(reserving.getCancellationReason()).isEqualTo("x");
     }
 
+    @Test
+    void confirmFromReservingRecordsConfirmedAtElseThrowsWithoutChangingState() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        order.approveAutomatically(now);
+        order.startReservation(now.plusSeconds(1));
+
+        OffsetDateTime confirmInstant = now.plusSeconds(2);
+        order.confirm(confirmInstant);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(order.getConfirmedAt()).isEqualTo(confirmInstant);
+        assertThat(order.getCancellationCode()).isNull();
+        assertThat(order.getCancelledAt()).isNull();
+
+        Order created = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        assertThatThrownBy(() -> created.confirm(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(created.getConfirmedAt()).isNull();
+
+        Order cancelled = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        cancelled.approveAutomatically(now);
+        cancelled.startReservation(now.plusSeconds(1));
+        cancelled.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now.plusSeconds(2));
+        assertThatThrownBy(() -> cancelled.confirm(now.plusSeconds(3))).isInstanceOf(IllegalStateException.class);
+        assertThat(cancelled.getConfirmedAt()).isNull();
+
+        assertThatThrownBy(() -> order.confirm(now.plusSeconds(4))).isInstanceOf(IllegalStateException.class);
+        assertThat(order.getConfirmedAt()).isEqualTo(confirmInstant);
+    }
+
     private PricedItem pricedItem() {
         return new PricedItem(1, UUID.randomUUID(), "SKU-1", "Item 1", new BigDecimal("10.00"), 1, new BigDecimal("10.00"));
     }

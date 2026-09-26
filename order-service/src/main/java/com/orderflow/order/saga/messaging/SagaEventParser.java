@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.orderflow.order.saga.messaging.dto.ReservationFailureLine;
+import com.orderflow.order.saga.messaging.dto.ReservationLine;
 import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
+import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -22,9 +24,9 @@ import java.util.UUID;
  * tamanho antes do parse, {@code FAIL_ON_TRAILING_TOKENS}, raiz objeto, todas as regras de campo do
  * contrato, valores externos sempre sanitizados antes de entrar numa mensagem de exceção/log.
  *
- * <p>Despacha por {@code eventType} — nesta task (05-03 Task 1) só {@code StockReservationFailed}
- * é reconhecido; {@code StockReserved} entra na Task 2, quando o retorno passa a poder ser um dos
- * dois tipos (o chamador distingue por {@code instanceof}, sem precisar de uma interface própria).
+ * <p>Despacha por {@code eventType} — {@code StockReservationFailed} (05-03 Task 1) e {@code
+ * StockReserved} (05-03 Task 2); o retorno é um dos dois tipos e o chamador distingue por {@code
+ * instanceof}, sem precisar de uma interface própria (nenhum novo arquivo dto).
  */
 @Component
 public class SagaEventParser {
@@ -62,7 +64,36 @@ public class SagaEventParser {
         if (StockReservationFailedEvent.EVENT_TYPE.equals(eventType)) {
             return parseReservationFailed(tree, eventType);
         }
+        if (StockReservedEvent.EVENT_TYPE.equals(eventType)) {
+            return parseStockReserved(tree, eventType);
+        }
         throw new InvalidSagaMessageException("Tipo de evento nao suportado: " + sanitizeForLog(eventType));
+    }
+
+    private StockReservedEvent parseStockReserved(JsonNode tree, String eventType) {
+        UUID eventId = requireUuid(tree, "eventId");
+        Instant occurredAt = requireInstant(tree, "occurredAt");
+        UUID orderId = requireUuid(tree, "orderId");
+        String reservationId = requireReservationIdMatchingOrderId(tree, orderId);
+        List<ReservationLine> items = requireReservationLines(tree);
+        return new StockReservedEvent(eventId, eventType, occurredAt, orderId, reservationId, items);
+    }
+
+    private List<ReservationLine> requireReservationLines(JsonNode root) {
+        JsonNode itemsNode = root.get("items");
+        if (itemsNode == null || itemsNode.isNull() || !itemsNode.isArray()) {
+            throw new InvalidSagaMessageException("Campo items ausente ou nao e uma lista");
+        }
+        if (itemsNode.isEmpty()) {
+            throw new InvalidSagaMessageException("Campo items nao pode ser vazio");
+        }
+        List<ReservationLine> items = new ArrayList<>(itemsNode.size());
+        for (JsonNode itemNode : itemsNode) {
+            UUID productId = requireUuid(itemNode, "productId");
+            int quantity = requireIntAtLeast(itemNode, "quantity", 1);
+            items.add(new ReservationLine(productId, quantity));
+        }
+        return items;
     }
 
     private StockReservationFailedEvent parseReservationFailed(JsonNode tree, String eventType) {

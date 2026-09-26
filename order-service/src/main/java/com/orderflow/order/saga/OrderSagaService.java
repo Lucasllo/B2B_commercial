@@ -2,9 +2,14 @@ package com.orderflow.order.saga;
 
 import com.orderflow.order.order.CancellationCode;
 import com.orderflow.order.order.Order;
+import com.orderflow.order.order.OrderItem;
 import com.orderflow.order.order.OrderRepository;
 import com.orderflow.order.order.OrderStatus;
+import com.orderflow.order.saga.messaging.InvalidSagaMessageException;
+import com.orderflow.order.saga.messaging.dto.ReleaseStockCommand;
+import com.orderflow.order.saga.messaging.dto.ReservationLine;
 import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
+import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
 import com.orderflow.order.saga.outbox.OutboxWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Aplica o resultado da reserva de estoque ao pedido, guardado pelo ESTADO — nunca por uma tabela
@@ -62,5 +71,62 @@ public class OrderSagaService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
         String reason = CancellationReasons.forFailure(event.reasonCode(), event.failures(), order);
         order.cancel(CancellationCode.valueOf(event.reasonCode()), reason, now);
+    }
+
+    /**
+     * {@code StockReserved} → {@code CONFIRMED} (ORD-05, D-57), só a partir de {@code RESERVING}.
+     * O estoque continua reservado no inventory-service — nada aqui chama o inventory-service (a
+     * baixa física de {@code quantity_on_hand} é da Fase 6).
+     *
+     * <p>{@code STOCK_RESERVED_ITEMS_CHECK}: se os itens do evento diferirem dos itens do pedido
+     * (produto ou quantidade), a mensagem é tratada como INVÁLIDA — {@link
+     * InvalidSagaMessageException} propaga para o listener descartar com log, e a transação não
+     * grava nada (a fila é uma fronteira de confiança; um sucesso forjado não confirma pedido).
+     *
+     * <p>Um {@code StockReserved} tardio para um pedido já {@code CANCELLED} NUNCA é ignorado em
+     * silêncio (D-64): grava, na MESMA transação que leu o pedido cancelado, um {@code
+     * ReleaseStock} no outbox com {@code reason=LATE_RESERVATION} — devolve o estoque em vez de
+     * deixá-lo órfão. A liberação é idempotente no inventory-service (lápide e livro, 05-04), então
+     * emitir um {@code ReleaseStock} a cada entrega duplicada de um sucesso tardio é seguro.
+     * Qualquer outro status (ex.: já {@code CONFIRMED}) é duplicata — ignorada sem alterar nada.
+     */
+    @Transactional
+    public void applyStockReserved(StockReservedEvent event) {
+        Optional<Order> maybeOrder = orderRepository.findByIdForUpdate(event.orderId());
+        if (maybeOrder.isEmpty()) {
+            log.warn("Resultado da saga recebido para pedido inexistente orderId={}", event.orderId());
+            return;
+        }
+        Order order = maybeOrder.get();
+        if (!itemsMatchOrder(event.items(), order)) {
+            throw new InvalidSagaMessageException(
+                    "Campo items do StockReserved nao bate com os itens do pedido orderId=" + order.getId());
+        }
+
+        if (order.getStatus() == OrderStatus.RESERVING) {
+            OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+            order.confirm(now);
+            return;
+        }
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+            UUID eventId = UUID.randomUUID();
+            ReleaseStockCommand command = ReleaseStockCommand.from(
+                    order, eventId, now.toInstant(), ReleaseStockCommand.LATE_RESERVATION);
+            outboxWriter.enqueue(command.eventId(), ReleaseStockCommand.EVENT_TYPE, order.getId().toString(), command);
+            log.info("StockReserved tardio para pedido ja CANCELLED orderId={} - ReleaseStock gravado no outbox",
+                    order.getId());
+            return;
+        }
+        log.info("Resultado de sucesso ignorado (duplicata) orderId={} status={}", order.getId(), order.getStatus());
+    }
+
+    /** Compara por (productId → quantity), independente de ordem — {@code STOCK_RESERVED_ITEMS_CHECK}. */
+    private boolean itemsMatchOrder(List<ReservationLine> eventItems, Order order) {
+        Map<UUID, Integer> expected = order.getItems().stream()
+                .collect(Collectors.toMap(OrderItem::getProductId, OrderItem::getQuantity));
+        Map<UUID, Integer> actual = eventItems.stream()
+                .collect(Collectors.toMap(ReservationLine::productId, ReservationLine::quantity));
+        return expected.equals(actual);
     }
 }

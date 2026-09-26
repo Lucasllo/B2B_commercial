@@ -121,6 +121,27 @@ class ReservationResultListenerIT extends AbstractIntegrationTest {
         return Map.of("productId", productId.toString(), "requested", requested, "available", available);
     }
 
+    private Map<String, Object> stockReservedBody(UUID orderId, List<Map<String, Object>> items) {
+        return Map.of(
+                "eventId", UUID.randomUUID().toString(),
+                "eventType", "StockReserved",
+                "occurredAt", Instant.now().toString(),
+                "orderId", orderId.toString(),
+                "reservationId", orderId.toString(),
+                "items", items);
+    }
+
+    private Map<String, Object> itemLine(UUID productId, int quantity) {
+        return Map.of("productId", productId.toString(), "quantity", quantity);
+    }
+
+    private int outboxRowCount(UUID orderId, String eventType) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = ?",
+                Integer.class, orderId.toString(), eventType);
+        return count == null ? 0 : count;
+    }
+
     // -----------------------------------------------------------------------------------------
     // Task 1 — caminhos de FALHA (D-68/Success Criteria 3: escritos antes do caminho feliz).
     // -----------------------------------------------------------------------------------------
@@ -234,5 +255,111 @@ class ReservationResultListenerIT extends AbstractIntegrationTest {
         JsonNode cancelled = awaitStatus(order.orderId(), "CANCELLED");
         String reason = cancelled.get("cancellationReason").asText();
         assertThat(reason).doesNotContain("Exception").doesNotContain("at com.orderflow").doesNotContain("http://");
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Task 2 — caminho feliz (depois dos de falha, D-68/Success Criteria 3).
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    void stockReservedConfirmsOrderAndConsumesCreditSoNextOrderNeedsApproval() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("600.00"), "SKU-CONF-1");
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1))));
+
+        JsonNode confirmed = awaitStatus(order.orderId(), "CONFIRMED");
+        assertThat(confirmed.get("confirmedAt").isNull()).isFalse();
+        assertThat(confirmed.get("cancellationCode").isNull()).isTrue();
+        assertThat(confirmed.get("cancellationReason").isNull()).isTrue();
+        assertThat(confirmed.get("cancelledAt").isNull()).isTrue();
+
+        // CONFIRMED continua consumindo credito (D-52): novo pedido de 600.00 estoura o limite
+        // de 1000.00 (600 ja confirmado + 600 novo) e nasce PENDING_APPROVAL.
+        UUID secondProductId = UUID.randomUUID();
+        stub().registerProduct(secondProductId, "SKU-CONF-1B", "Produto 2", new BigDecimal("600.00"), "ACTIVE");
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + TestJwt.buyerToken(order.companyId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":"%s","quantity":1}]}
+                                """.formatted(secondProductId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
+    }
+
+    @Test
+    void duplicateStockReservedIsANoOpTheSecondTime() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-CONF-2");
+        Map<String, Object> body = stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1)));
+
+        sagaQueues().publishResult(body);
+        JsonNode first = awaitStatus(order.orderId(), "CONFIRMED");
+        String firstConfirmedAt = first.get("confirmedAt").asText();
+
+        sagaQueues().publishResult(body);
+        Thread.sleep(3000);
+
+        JsonNode second = getOrder(order.orderId());
+        assertThat(second.get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(second.get("confirmedAt").asText()).isEqualTo(firstConfirmedAt);
+        assertThat(outboxRowCount(order.orderId(), "ReleaseStock")).isZero();
+    }
+
+    @Test
+    void lateSuccessForCancelledOrderWritesReleaseStockToOutboxAndSendsCommand() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-CONF-3");
+
+        sagaQueues().publishResult(stockReservationFailedBody(order.orderId(), "INSUFFICIENT_STOCK",
+                List.of(failureLine(order.productId(), 2, 1))));
+        JsonNode cancelled = awaitStatus(order.orderId(), "CANCELLED");
+        String cancellationCode = cancelled.get("cancellationCode").asText();
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1))));
+
+        // Continua CANCELLED com o MESMO codigo — sucesso tardio nunca reabre o pedido (D-64).
+        Thread.sleep(1000);
+        JsonNode stillCancelled = getOrder(order.orderId());
+        assertThat(stillCancelled.get("status").asText()).isEqualTo("CANCELLED");
+        assertThat(stillCancelled.get("cancellationCode").asText()).isEqualTo(cancellationCode);
+
+        assertThat(outboxRowCount(order.orderId(), "ReleaseStock")).isEqualTo(1);
+
+        List<JsonNode> commands = sagaQueues().awaitCommandsForOrder(order.orderId(), "ReleaseStock", 1);
+        assertThat(commands).hasSize(1);
+        JsonNode command = commands.get(0);
+        assertThat(command.get("reason").asText()).isEqualTo("LATE_RESERVATION");
+        assertThat(command.get("reservationId").asText()).isEqualTo(order.orderId().toString());
+        assertThat(command.get("items")).hasSize(1);
+        assertThat(command.get("items").get(0).get("productId").asText()).isEqualTo(order.productId().toString());
+        assertThat(command.get("items").get(0).get("quantity").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void lateFailureAfterConfirmedStaysConfirmed() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-CONF-4");
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1))));
+        awaitStatus(order.orderId(), "CONFIRMED");
+
+        sagaQueues().publishResult(stockReservationFailedBody(order.orderId(), "INSUFFICIENT_STOCK",
+                List.of(failureLine(order.productId(), 2, 1))));
+        Thread.sleep(3000);
+
+        JsonNode stillConfirmed = getOrder(order.orderId());
+        assertThat(stillConfirmed.get("status").asText()).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void stockReservedWithMismatchedQuantityIsDiscardedAndOrderStaysReserving(CapturedOutput output) throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-CONF-5");
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 99))));
+
+        Thread.sleep(3000);
+        JsonNode stillReserving = getOrder(order.orderId());
+        assertThat(stillReserving.get("status").asText()).isEqualTo("RESERVING");
+
+        String combined = output.getOut() + output.getErr();
+        assertThat(combined).contains("descartada");
     }
 }
