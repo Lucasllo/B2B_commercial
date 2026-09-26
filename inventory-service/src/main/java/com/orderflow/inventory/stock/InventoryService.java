@@ -251,8 +251,18 @@ public class InventoryService {
         var existingReservations =
                 stockReservationRepository.findByReservationIdAndProductIdIn(reservationId, productIds);
         if (!existingReservations.isEmpty()) {
-            // TEMP RED-EVIDENCE (Task 2): ramo de replay removido de proposito para provar que
-            // IdempotentReservationIT falha sem ele (TDD RED) — restaurado no commit GREEN.
+            boolean allProductsHaveARow = existingReservations.size() == productIds.size();
+            boolean anyReleased = existingReservations.stream().anyMatch(StockReservation::isReleased);
+            if (allProductsHaveARow && !anyReleased) {
+                // Replay idempotente (D-65): nao toca em inventory nem em stock_reservations, so
+                // reemite o resultado com um eventId novo.
+                Instant replayNow = Instant.now();
+                UUID replayEventId = UUID.randomUUID();
+                StockReservedEvent replayEvent =
+                        StockReservedEvent.of(replayEventId, replayNow, orderId, reservationId, sortedLines);
+                outboxWriter.enqueue(replayEventId, StockReservedEvent.EVENT_TYPE, orderId.toString(), replayEvent);
+                return new ReservationOutcome(true, null, List.of());
+            }
             throw new IllegalStateException(
                     "stock_reservations em estado inconsistente para reservationId=" + reservationId
                             + " (pedido " + orderId + "): livro parcialmente preenchido ou com linha liberada"
@@ -319,11 +329,19 @@ public class InventoryService {
      * chamador (achado durante o teste do livro inconsistente, IdempotentReservationIT). Este
      * metodo apenas relanca a excecao original, preservando a mensagem que cita o {@code orderId}.
      */
-    // TEMP RED-EVIDENCE (Task 2): recover de IllegalStateException removido de proposito —
-    // restaurado no commit GREEN.
-    // @Recover
-    // public ReservationOutcome recoverReserveAllInconsistentBook(IllegalStateException ex, UUID orderId,
-    //                                                              String reservationId, List<ReservationLine> lines) {
-    //     throw ex;
-    // }
+    /**
+     * [Rule 1 - Bug] {@code reserveAll} lanca {@link IllegalStateException} para o livro
+     * inconsistente (anomalia tecnica, nunca retentavel — nao esta em {@code retryFor}), mas o
+     * aspecto de reexecucao do Spring Retry intercepta QUALQUER excecao escapando de um metodo
+     * {@code @Retryable}, nao so as listadas em {@code retryFor}: sem um {@code @Recover} cujo tipo
+     * de parametro corresponda, a excecao real fica soterrada por {@code
+     * ExhaustedRetryException("Cannot locate recovery method")}, escondendo o motivo real do
+     * chamador (achado durante o teste do livro inconsistente, IdempotentReservationIT). Este
+     * metodo apenas relanca a excecao original, preservando a mensagem que cita o {@code orderId}.
+     */
+    @Recover
+    public ReservationOutcome recoverReserveAllInconsistentBook(IllegalStateException ex, UUID orderId,
+                                                                 String reservationId, List<ReservationLine> lines) {
+        throw ex;
+    }
 }
