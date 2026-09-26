@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 5
+current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-09-26T03:08:46.709Z"
-last_activity: 2026-09-25
-last_activity_desc: Phase 4 complete, transitioned to Phase 5
-state_head: de4e384f83c2b9db302aab64088b1ad182bfb188
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-09-26T14:07:48.491Z"
+last_activity: 2026-09-26
+last_activity_desc: Phase 05 execution started
+state_head: eeea85be8904f1830c3d98505552908b3868f840
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 16
+  completed_plans: 17
   percent: 57
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 
 ## Current Position
 
-Phase: 5 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — READY TO EXECUTE
-Plan: Not started
+Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-09-25 — Phase 4 complete, transitioned to Phase 5
+Last activity: 2026-09-26 — Phase 05 execution started
 
 Progress: [██████░░░░] 57%
 
@@ -70,6 +70,7 @@ Progress: [██████░░░░] 57%
 | Phase 04 P03 | 35min | 2 tasks | 5 files |
 | Phase 04 P04 | 20min | 3 tasks | 10 files |
 | Phase 04 P05 | 27min | 2 tasks | 8 files |
+| Phase 05 P01 | 33min | 2 tasks | 32 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Recent decisions affecting current work:
 - [Phase 04]: [Phase 04]: OrderDecisionController e um segundo @RestController sobre /orders, nao um metodo a mais em OrderController — Evita disputa de arquivo com o plano 04-03 na mesma wave
 - [Phase 04]: [Phase 04]: order-service sem localstack no depends_on do compose — nenhuma mensageria existe neste servico nesta fase (saga com SQS/Outbox chega na Fase 5)
 - [Phase 04]: [Phase 04]: Script de smoke gera sufixo unico (UUID) dentro do container do Gateway para emails/SKUs — permite reexecutar na mesma base sem colidir com dados de execucoes anteriores
+- [Phase 05]: [Phase 5]: SAGA_MESSAGE_CONTRACT - envelope plano eventId/eventType/occurredAt + campos do tipo; ReserveStock com reservationId=orderId.toString() e items na ordem de lineNumber
+- [Phase 05]: [Phase 5]: SAGA_TIMEOUT_CLOCK=reservation_started_at - coluna propria gravada na entrada em RESERVING; o job de timeout (05-04) conta a partir dela, nao de decided_at
+- [Phase 05]: [Phase 5]: OUTBOX_RELAY_DEFAULTS=relay-interval 1000ms (200ms em teste), batch-size 20, ordem attempts,created_at,id
 
 ### Pending Todos
 
@@ -135,6 +139,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-26T01:16:26.789Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-saga-de-reserva-de-estoque-outbox-compensa-o-e-confirma-o/05-CONTEXT.md
+Last session: 2026-09-26T14:07:48.314Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
