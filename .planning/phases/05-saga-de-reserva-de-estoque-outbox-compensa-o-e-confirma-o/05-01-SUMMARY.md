@@ -234,3 +234,9 @@ None - nenhuma configuração de serviço externo nova (o `LOCALSTACK_AUTH_TOKEN
 ---
 *Phase: 05-saga-de-reserva-de-estoque-outbox-compensa-o-e-confirma-o*
 *Completed: 2026-09-26*
+
+## Self-Check: PASSED
+
+- Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): migração V2, `ReservationSagaStarter`, `OutboxRelay`, init hook da saga, `ReservationCommandPublishingIT`, `OrderSagaMigrationIT`, `OutboxRelayTest`, este SUMMARY.
+- Todos os 5 commits do plano confirmados em `git log --oneline --all`: `e60a8a7`, `239123c`, `55c2a05`, `eeea85b`, `acc9821`.
+- `./mvnw -B -pl order-service clean verify` re-executado após o commit final: 19 testes unitários + 54 testes de integração, todos verdes.
