@@ -24,7 +24,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * (quem, quando, por quê) e a exposição da empresa passa a contar o pedido aprovado acima do
  * limite — sem a aprovação consultar auth-service ou catalog-service. Task 2 (D-37, D-46): a
  * rejeição exige motivo, e decisão fora de PENDING_APPROVAL ou por quem não é vendedor é recusada
- * sem tocar na trilha de auditoria.
+ * sem tocar na trilha de auditoria. 05-01 Task 2 (D-48): a aprovação manual entra na mesma saga da
+ * automática — o pedido aprovado responde RESERVING com exatamente um comando ReserveStock no
+ * outbox; rejeitar nunca inicia a saga.
  */
 class OrderApprovalIT extends AbstractIntegrationTest {
 
@@ -65,7 +67,7 @@ class OrderApprovalIT extends AbstractIntegrationTest {
                                 {"reason":"cliente estratégico"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.decidedBy").value(sellerId.toString()))
                 .andExpect(jsonPath("$.reason").value("cliente estratégico"))
                 .andExpect(jsonPath("$.decidedAt").exists())
@@ -77,11 +79,18 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         // A aprovação não consultou nem o catalog-service nem o auth-service (D-38).
         assertThat(stub().requests()).isEmpty();
 
+        // Exatamente uma linha ReserveStock no outbox para este pedido (D-48, mesmo ponto de
+        // entrada da saga usado pela aprovação automática).
+        Integer outboxRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ReserveStock'",
+                Integer.class, orderId.toString());
+        assertThat(outboxRows).isEqualTo(1);
+
         // GET /orders/{id} pelo BUYER dono mostra a mesma decisão.
         mockMvc.perform(get("/orders/{orderId}", orderId)
                         .header("Authorization", "Bearer " + buyerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.decidedBy").value(sellerId.toString()))
                 .andExpect(jsonPath("$.reason").value("cliente estratégico"));
 
@@ -114,7 +123,7 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         mockMvc.perform(post("/orders/{orderId}/approve", secondOrderId)
                         .header("Authorization", "Bearer " + sellerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.reason").doesNotExist());
 
         // Aprovar um pedido já aprovado automaticamente -> 409 order_not_pending, decidedBy segue SYSTEM.
@@ -177,6 +186,12 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         JsonNode rejectJson = objectMapper.readTree(rejectResult.getResponse().getContentAsString());
         String rejectedDecidedAt = rejectJson.get("decidedAt").asText();
         String rejectedReason = rejectJson.get("reason").asText();
+
+        // Rejeitar nunca inicia a saga — nenhuma linha no outbox para este pedido.
+        Integer rejectedOutboxRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ?",
+                Integer.class, rejectedOrderId.toString());
+        assertThat(rejectedOutboxRows).isZero();
 
         // O pedido rejeitado não consome crédito: novo pedido de 100.00 cabe exatamente no limite
         // de 100.00 (exposição continua zero) -> RESERVING (Fase 5, D-50: decisão automática

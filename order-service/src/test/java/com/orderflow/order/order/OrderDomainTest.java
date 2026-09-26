@@ -197,6 +197,23 @@ class OrderDomainTest {
     }
 
     @Test
+    void startReservationAfterApproveManuallyPreservesDecidedByDecidedAtAndReason() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        order.holdForApproval();
+        order.approveManually("seller-1", "cliente estratégico", now);
+
+        OffsetDateTime reservationInstant = now.plusSeconds(1);
+        order.startReservation(reservationInstant);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.RESERVING);
+        assertThat(order.getReservationStartedAt()).isEqualTo(reservationInstant);
+        assertThat(order.getDecidedBy()).isEqualTo("seller-1");
+        assertThat(order.getDecidedAt()).isEqualTo(now);
+        assertThat(order.getReason()).isEqualTo("cliente estratégico");
+    }
+
+    @Test
     void rejectWithNullOrBlankReasonThrowsIllegalArgumentExceptionEvenIfDtoValidationFails() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         Order pending = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);

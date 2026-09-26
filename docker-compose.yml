@@ -32,11 +32,15 @@ services:
     # o notification-service, configurado com queue-not-found-strategy=fail, cairia na subida. Por
     # isso o healthcheck verifica os proprios recursos criados pelo init hook
     # (localstack-init/ready.d/01-create-notification-resources.sh), nao apenas o processo.
+    # Fase 5: healthcheck também confere as duas filas da saga de reserva de estoque (D-61,
+    # localstack-init/ready.d/02-create-order-saga-resources.sh) — mesmo motivo das filas da Fase
+    # 3 acima: o order-service depende do localstack saudável para não subir contra uma fila ainda
+    # inexistente (queue-not-found-strategy=fail faria a subida cair, em vez de mascarar o problema).
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history > /dev/null",
+          "awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history > /dev/null && awslocal --region us-east-1 sqs get-queue-url --queue-name inventory-commands-queue > /dev/null && awslocal --region us-east-1 sqs get-queue-url --queue-name order-events-queue > /dev/null",
         ]
       interval: 10s
       timeout: 10s
@@ -148,6 +152,8 @@ services:
         condition: service_healthy
       catalog-service:
         condition: service_healthy
+      localstack:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderflow?currentSchema=order
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?}
@@ -157,6 +163,10 @@ services:
       # pelo Gateway — as URLs abaixo apontam para o nome do serviço, nunca para localhost.
       ORDERFLOW_AUTH_SERVICE_BASE_URL: http://auth-service:8081
       ORDERFLOW_CATALOG_SERVICE_BASE_URL: http://catalog-service:8082
+      # Fase 5: o order-service passa a publicar (relay do outbox) e consumir (05-03) mensagens da
+      # saga de reserva de estoque — nome de serviço do compose, não localhost (default do
+      # application.yml).
+      SPRING_CLOUD_AWS_ENDPOINT: http://localstack:4566
     ports:
       - "127.0.0.1:8085:8085"
     healthcheck:

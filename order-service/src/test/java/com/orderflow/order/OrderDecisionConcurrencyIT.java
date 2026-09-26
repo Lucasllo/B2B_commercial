@@ -90,6 +90,14 @@ class OrderDecisionConcurrencyIT {
             String dbStatus = jdbcTemplate.queryForObject(
                     "SELECT status FROM \"order\".orders WHERE id = ?", String.class, orderId);
             assertThat(dbStatus).as("final DB status for pair %d", i).isEqualTo(winningStatus);
+
+            // D-48: a contagem de linhas ReserveStock no outbox é 1 se a aprovação venceu (o
+            // pedido entrou na saga) e 0 se a rejeição venceu (rejeitar nunca inicia a saga).
+            int expectedOutboxRows = "RESERVING".equals(winningStatus) ? 1 : 0;
+            Integer outboxRows = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ReserveStock'",
+                    Integer.class, orderId.toString());
+            assertThat(outboxRows).as("outbox ReserveStock rows for pair %d", i).isEqualTo(expectedOutboxRows);
         }
     }
 
@@ -130,6 +138,13 @@ class OrderDecisionConcurrencyIT {
         String dbDecidedBy = jdbcTemplate.queryForObject(
                 "SELECT decided_by FROM \"order\".orders WHERE id = ?", String.class, orderId);
         assertThat(dbDecidedBy).isEqualTo(winningSellerId);
+
+        // Dez aprovações simultâneas do mesmo pedido pendente geram exatamente UMA linha
+        // ReserveStock no outbox — nunca uma por tentativa (D-48).
+        Integer outboxRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ReserveStock'",
+                Integer.class, orderId.toString());
+        assertThat(outboxRows).isEqualTo(1);
     }
 
     @Test
