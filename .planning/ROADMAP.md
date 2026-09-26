@@ -144,7 +144,34 @@ Plans:
   4. Reentregar o mesmo comando de reserva duas vezes decrementa o estoque uma única vez — consumidor idempotente comprovado por teste que republica o evento.
   5. Um teste E2E com Testcontainers (PostgreSQL + LocalStack reais) percorre o fluxo completo criar → reservar → confirmar e também o caminho de falha → cancelar, executável por um único comando.
 
-**Plans**: TBD
+**Plans:** 6 plans
+
+Plans:
+*Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano tem testes com LocalStack.*
+
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — order-service: aprovação automática e manual entram na saga pelo mesmo ponto — RESERVING + `ReserveStock` no outbox na mesma transação, relay `SKIP LOCKED` até a `inventory-commands-queue`, filas com DLQ no init hook, pedidos APPROVED legados migrados, compose ligado ao LocalStack (ORD-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md — inventory-service: consome `ReserveStock`, reserva tudo ou nada com `reserveAll` (`@Retryable` + `@Transactional` no próprio método), idempotente pelo livro `stock_reservations`, e responde `StockReserved`/`StockReservationFailed` pelo próprio outbox — falha provada antes do sucesso (ORD-06, ORD-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-03-PLAN.md — order-service: consome o resultado e leva RESERVING a CANCELLED (código + motivo legível, primeiro) ou CONFIRMED, guardado pelo estado, com `ReleaseStock` para sucesso tardio (ORD-05, ORD-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-04-PLAN.md — "nunca preso" e fim do dual-write: job de timeout cancela e compensa com `ReleaseStock`, liberação idempotente com lápide contra a corrida da fila padrão (FK removida), `STOCK_ADJUSTED` pelo outbox do inventory (ORD-05, ORD-06, ORD-04)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 05-05-PLAN.md — módulo `e2e-tests`: os dois serviços reais no mesmo JVM contra Postgres e LocalStack reais, spike de configuração, falha → CANCELLED antes de criar → reservar → confirmar, republicação idempotente e aprovação manual, em `./mvnw -B -pl e2e-tests -am verify` (TEST-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 05-06-PLAN.md — stack real: `scripts/smoke-order-saga.sh` pelo Gateway, `smoke-order-flow.sh` ajustado a RESERVING, e README/docs explicando a saga e as limitações da fase (ORD-04, ORD-05, TEST-03)
 
 ### Phase 6: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 
@@ -188,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
-| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
+| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/6 | Planned | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 
