@@ -19,6 +19,12 @@ import java.time.Duration;
  * <p>A autoconfiguracao do Spring Cloud AWS 3.4.2 usa este bean, quando existe, no
  * {@code SqsTemplate}, e continua aplicando a ele o {@code ObjectMapper} do Spring Boot (que
  * serializa {@code Instant} como texto ISO-8601).
+ *
+ * <p>Fase 5 (D-61): este servico passa a tambem CONSUMIR mensagens ({@code
+ * ReservationCommandListener}, {@code @SqsListener(String payload)}) — {@code
+ * setPayloadTypeMapper(message -> null)} evita que o conversor padrao tente resolver um tipo Java a
+ * partir do atributo de mensagem (ausente, ja que o produtor do outro lado tambem desliga o envio
+ * do atributo), mesmo motivo/tecnica ja usada pelo notification-service (Fase 3).
  */
 @Configuration
 public class SqsMessagingConfig {
@@ -27,6 +33,7 @@ public class SqsMessagingConfig {
     public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
         SqsMessagingMessageConverter converter = new SqsMessagingMessageConverter();
         converter.doNotSendPayloadTypeHeader();
+        converter.setPayloadTypeMapper(message -> null);
         return converter;
     }
 
@@ -37,11 +44,22 @@ public class SqsMessagingConfig {
      * requisicao por 1-2 minutos se o LocalStack/SQS aceitar a conexao mas nao responder (WR-03).
      * Limitar a chamada inteira a poucos segundos garante que a resposta HTTP (que ja reflete um
      * commit real no Postgres) nunca fica presa pelo "melhor esforco" declarado do envio.
+     *
+     * <p>Fase 5 (D-61): este {@code SqsAsyncClient} passa a ser compartilhado tambem pelo container
+     * do {@code ReservationCommandListener} (as dez requisicoes {@code ReceiveMessage} concorrentes
+     * do padrao do Spring Cloud AWS competem pelo mesmo pool de conexoes Netty que esta chamada
+     * sincrona). {@code orderflow.messaging}/{@code spring.cloud.aws.sqs.listener.poll-timeout=0s}
+     * (application.yml) desliga o long polling do listener para que cada {@code ReceiveMessage}
+     * responda na hora em vez de segurar a conexao por ate 20s — sem isso, toda tentativa de
+     * recebimento estouraria {@code apiCallAttemptTimeout} sozinha. Os valores abaixo ganharam
+     * folga (de 1s/3s para 2s/5s) para absorver a contencao dessas dez requisicoes concorrentes sem
+     * enfraquecer o motivo original (a resposta HTTP continua limitada a poucos segundos, nunca a
+     * 1-2 minutos).
      */
     @Bean
     public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
         return builder -> builder.overrideConfiguration(c -> c
-                .apiCallTimeout(Duration.ofSeconds(3))
-                .apiCallAttemptTimeout(Duration.ofSeconds(1)));
+                .apiCallTimeout(Duration.ofSeconds(5))
+                .apiCallAttemptTimeout(Duration.ofSeconds(2)));
     }
 }

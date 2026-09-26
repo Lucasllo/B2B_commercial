@@ -9,3 +9,9 @@ spring:
     properties:
       hibernate:
         default_schema: inventory
+
+orderflow:
+  outbox:
+    # OUTBOX_RELAY_DEFAULTS — relay mais rapido em teste para que os ITs nao esperem o intervalo de
+    # producao (1000ms) a cada asserção assíncrona.
+    relay-interval: 200

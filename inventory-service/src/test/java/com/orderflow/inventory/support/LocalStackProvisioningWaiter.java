@@ -9,6 +9,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * Classe separada de {@link LocalStackTestSupport} de proposito. Awaitility avalia o lambda de
@@ -19,18 +20,18 @@ import java.time.Duration;
  * {@code LocalStackTestSupport} — que ainda esta em {@code <clinit>} na thread principal — e essa
  * thread de background ficaria bloqueada esperando a inicializacao terminar, enquanto a thread
  * principal esta bloqueada esperando o resultado da thread de background: deadlock de
- * inicializacao de classe (mesmo achado registrado em 03-01-SUMMARY.md). Isolar o lambda nesta
- * classe, ja totalmente inicializada antes de o lambda rodar, evita o ciclo.
+ * inicializacao de classe (mesmo achado registrado em 03-01-SUMMARY.md).
  *
- * <p>Ao contrario do equivalente do {@code notification-service}, so espera pela fila — este
- * modulo nao tem o cliente do DynamoDB no classpath.
+ * <p>Fase 5 (05-02): passa a receber uma {@link List} de filas — mesma forma do equivalente do
+ * order-service — porque este servico agora espera pela fila de notificacao (Fase 3) e pelas duas
+ * filas da saga (Fase 5), criadas por hooks de init diferentes.
  */
 final class LocalStackProvisioningWaiter {
 
     private LocalStackProvisioningWaiter() {
     }
 
-    static void awaitProvisioned(LocalStackContainer container, String region, String queueName) {
+    static void awaitProvisioned(LocalStackContainer container, String region, List<String> queueNames) {
         SqsClient sqsClient = SqsClient.builder()
                 .endpointOverride(container.getEndpoint())
                 .region(Region.of(region))
@@ -39,14 +40,18 @@ final class LocalStackProvisioningWaiter {
                 .build();
 
         try {
-            Awaitility.await("init hook do LocalStack criar a fila")
+            Awaitility.await("init hooks do LocalStack criarem as filas")
                     .atMost(Duration.ofSeconds(60))
                     .pollInterval(Duration.ofMillis(500))
-                    .untilAsserted(() -> sqsClient.getQueueUrl(r -> r.queueName(queueName)));
+                    .untilAsserted(() -> {
+                        for (String queueName : queueNames) {
+                            sqsClient.getQueueUrl(r -> r.queueName(queueName));
+                        }
+                    });
         } catch (ConditionTimeoutException e) {
             throw new IllegalStateException(
-                    "A fila '" + queueName + "' nao ficou pronta em 60s — verifique o init hook "
-                            + "localstack-init/ready.d/01-create-notification-resources.sh", e);
+                    "As filas " + queueNames + " nao ficaram prontas em 60s — verifique os init hooks "
+                            + "em localstack-init/ready.d/", e);
         } finally {
             sqsClient.close();
         }

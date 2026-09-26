@@ -1,5 +1,10 @@
 package com.orderflow.inventory.stock;
 
+import com.orderflow.inventory.saga.messaging.dto.ReservationFailureLine;
+import com.orderflow.inventory.saga.messaging.dto.ReservationLine;
+import com.orderflow.inventory.saga.messaging.dto.StockReservationFailedEvent;
+import com.orderflow.inventory.saga.messaging.dto.StockReservedEvent;
+import com.orderflow.inventory.saga.outbox.OutboxWriter;
 import com.orderflow.inventory.stock.dto.StockResponse;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -12,6 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -20,11 +30,14 @@ import java.util.UUID;
  *
  * <p><b>Regra estrutural obrigatoria:</b> {@code reserve} e {@code release} sao chamados apenas
  * de fora deste bean, pelo {@code InventoryController} — exatamente como {@code CompanyController}
- * chama {@code CompanyService} na Fase 1. Nenhum outro metodo desta classe pode chamar
- * {@code reserve} ou {@code release} internamente: uma chamada de um metodo para outro do mesmo
- * bean nao passa pelo proxy Spring, entao nem a reexecucao nem a transacao se aplicam, sem erro de
- * compilacao e sem excecao em tempo de execucao — apenas comportamento errado em silencio
- * (02-RESEARCH.md Pitfall 2).
+ * chama {@code CompanyService} na Fase 1. {@code reserveAll} (Fase 5, D-55) e chamado so pelo
+ * {@code ReservationCommandListener} (outro bean). Nenhum outro metodo desta classe pode chamar
+ * {@code reserve}, {@code release} ou {@code reserveAll} internamente: uma chamada de um metodo
+ * para outro do mesmo bean nao passa pelo proxy Spring, entao nem a reexecucao nem a transacao se
+ * aplicam, sem erro de compilacao e sem excecao em tempo de execucao — apenas comportamento errado
+ * em silencio (02-RESEARCH.md Pitfall 2; reafirmado por 05-RESEARCH.md Pattern 3/Pitfall 1 para
+ * {@code reserveAll}, que por isso e construido contra os repositorios diretamente, nunca compondo
+ * chamadas a {@code reserve}/{@code release}).
  */
 @Service
 public class InventoryService {
@@ -53,11 +66,14 @@ public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
     private final StockReservationRepository stockReservationRepository;
+    private final OutboxWriter outboxWriter;
 
     public InventoryService(InventoryRepository inventoryRepository,
-                             StockReservationRepository stockReservationRepository) {
+                             StockReservationRepository stockReservationRepository,
+                             OutboxWriter outboxWriter) {
         this.inventoryRepository = inventoryRepository;
         this.stockReservationRepository = stockReservationRepository;
+        this.outboxWriter = outboxWriter;
     }
 
     /**
@@ -184,6 +200,97 @@ public class InventoryService {
 
     @Recover
     public StockResponse recoverRelease(DataAccessException ex, UUID productId, String reservationId) {
+        throw new ReservationConflictException();
+    }
+
+    /**
+     * Reserva multi-item tudo-ou-nada (D-55, D-56, D-58) — mesmo par de anotacoes de {@code
+     * reserve}: {@code @Retryable} com as mesmas constantes e o mesmo {@code retryFor}, e
+     * {@code @Transactional} no proprio metodo, para que cada tentativa reexecutada ganhe transacao
+     * nova (mesma garantia de {@code RetryConfig}/{@code InventoryRetryContentionIT}). Nunca chama
+     * {@code reserve}/{@code release} deste bean (auto-invocacao pula o proxy, ver javadoc da
+     * classe) — le e escreve direto pelos repositorios.
+     *
+     * <p>Task 1 (este commit): qualquer linha ja existente em {@code stock_reservations} para o par
+     * ({@code reservationId}, produtos do comando) e tratada como anomalia tecnica —
+     * {@link IllegalStateException}, vai para reentrega e DLQ. O replay idempotente (D-65) e a
+     * distincao entre reserva nova/replay/livro inconsistente chegam na Task 2.
+     *
+     * <p>Passos: ordena as linhas por {@code productId} (ordem estavel de escrita evita deadlock
+     * entre dois pedidos com produtos em comum); avalia TODAS as linhas antes de escrever qualquer
+     * coisa — produto sem linha de estoque falha com {@code available=0} ({@code
+     * PRODUCT_NOT_STOCKED}, D-58), quantidade acima do disponivel falha com o disponivel real
+     * ({@code INSUFFICIENT_STOCK}); se houver qualquer falha, grava {@code
+     * StockReservationFailedEvent} no outbox e devolve o resultado sem tocar em {@code inventory}
+     * nem em {@code stock_reservations} (D-55); se todas as linhas passarem, reserva cada uma
+     * (nunca altera {@code quantity_on_hand}, D-57) e grava {@code StockReservedEvent}.
+     */
+    @Retryable(
+            retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
+    @Transactional
+    public ReservationOutcome reserveAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
+        List<ReservationLine> sortedLines = lines.stream()
+                .sorted(Comparator.comparing(ReservationLine::productId))
+                .toList();
+        List<UUID> productIds = sortedLines.stream().map(ReservationLine::productId).toList();
+
+        var existingReservations =
+                stockReservationRepository.findByReservationIdAndProductIdIn(reservationId, productIds);
+        if (!existingReservations.isEmpty()) {
+            throw new IllegalStateException(
+                    "stock_reservations ja possui linha(s) para reservationId=" + reservationId
+                            + " (pedido " + orderId + ") — reserva nao processada");
+        }
+
+        Map<UUID, Inventory> inventoryByProductId = new HashMap<>();
+        for (Inventory inventory : inventoryRepository.findByProductIdIn(productIds)) {
+            inventoryByProductId.put(inventory.getProductId(), inventory);
+        }
+
+        List<ReservationFailureLine> failures = new ArrayList<>();
+        boolean anyProductNotStocked = false;
+        for (ReservationLine line : sortedLines) {
+            Inventory inventory = inventoryByProductId.get(line.productId());
+            if (inventory == null) {
+                failures.add(new ReservationFailureLine(line.productId(), line.quantity(), 0));
+                anyProductNotStocked = true;
+            } else if (line.quantity() > inventory.availableQuantity()) {
+                failures.add(new ReservationFailureLine(
+                        line.productId(), line.quantity(), inventory.availableQuantity()));
+            }
+        }
+
+        Instant now = Instant.now();
+        if (!failures.isEmpty()) {
+            String reasonCode = anyProductNotStocked
+                    ? StockReservationFailedEvent.PRODUCT_NOT_STOCKED
+                    : StockReservationFailedEvent.INSUFFICIENT_STOCK;
+            UUID eventId = UUID.randomUUID();
+            StockReservationFailedEvent event =
+                    StockReservationFailedEvent.of(eventId, now, orderId, reservationId, reasonCode, failures);
+            outboxWriter.enqueue(eventId, StockReservationFailedEvent.EVENT_TYPE, orderId.toString(), event);
+            return new ReservationOutcome(false, reasonCode, failures);
+        }
+
+        for (ReservationLine line : sortedLines) {
+            Inventory inventory = inventoryByProductId.get(line.productId());
+            stockReservationRepository.save(new StockReservation(line.productId(), reservationId, line.quantity()));
+            inventory.reserve(line.quantity());
+            // saveAndFlush forca o UPDATE versionado dentro desta tentativa — mesma razao de reserve().
+            inventoryRepository.saveAndFlush(inventory);
+        }
+
+        UUID eventId = UUID.randomUUID();
+        StockReservedEvent event = StockReservedEvent.of(eventId, now, orderId, reservationId, sortedLines);
+        outboxWriter.enqueue(eventId, StockReservedEvent.EVENT_TYPE, orderId.toString(), event);
+        return new ReservationOutcome(true, null, List.of());
+    }
+
+    @Recover
+    public ReservationOutcome recoverReserveAll(DataAccessException ex, UUID orderId, String reservationId,
+                                                 List<ReservationLine> lines) {
         throw new ReservationConflictException();
     }
 }

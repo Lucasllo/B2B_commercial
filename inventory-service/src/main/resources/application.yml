@@ -53,6 +53,16 @@ spring:
         # esconderia um init hook do LocalStack quebrado (Success Criteria 4 do ROADMAP). "fail"
         # faz o envio falhar alto em vez de mascarar o problema.
         queue-not-found-strategy: fail
+        listener:
+          # Fase 5 (D-61): o mesmo SqsAsyncClient e compartilhado pelo container do listener e por
+          # qualquer outra chamada (ex.: OutboxRelay, testes) — e o cliente ja tem
+          # apiCallAttemptTimeout=1s (SqsMessagingConfig, WR-03, pensado para a chamada sincrona de
+          # PUT /inventory nao prender a thread HTTP). Long polling padrao do SQS (waitTimeSeconds
+          # ate 20s) estouraria esse teto de 1s por tentativa a cada ciclo de recebimento,
+          # derrubando o listener em erro constante. poll-timeout=0 desliga o long polling
+          # (ReceiveMessage responde na hora, com ou sem mensagem) — cabe folgado no teto de 1s
+          # existente sem afrouxar o motivo original dele.
+          poll-timeout: 0s
 
 # Nenhuma decisao desta fase pede threads virtuais no lado servidor — a flag de threads virtuais
 # do Spring Boot fica deliberadamente ausente deste arquivo (02-RESEARCH.md Pitfall 5 e Open
@@ -83,6 +93,16 @@ orderflow:
     # Fila de fan-out consumida pelo notification-service (03-01) — precisa bater exatamente com o
     # nome criado pelo init hook localstack-init/ready.d/01-create-notification-resources.sh.
     notification-events-queue: notification-events-queue
+    # Fase 5 (D-61): filas da saga de reserva de estoque, criadas pelo init hook
+    # localstack-init/ready.d/02-create-order-saga-resources.sh (unico lugar que as cria — este
+    # servico usa queue-not-found-strategy=fail, nunca cria a fila em silencio).
+    inventory-commands-queue: inventory-commands-queue
+    order-events-queue: order-events-queue
+  outbox:
+    # Fase 5 (D-59, OUTBOX_RELAY_DEFAULTS): intervalo do polling do relay do outbox deste servico
+    # (resultado da reserva, e STOCK_ADJUSTED a partir de 05-04) e tamanho do lote por ciclo.
+    relay-interval: 1000
+    batch-size: 20
   openapi:
     title: "OrderFlow — Inventory Service API"
     description: >-

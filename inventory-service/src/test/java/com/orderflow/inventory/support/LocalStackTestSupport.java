@@ -10,15 +10,20 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Suporte de teste com um container {@link LocalStackContainer} singleton, o token resolvido sem
  * nunca ser impresso, e as propriedades {@code spring.cloud.aws.*} registradas a mao — Spring
  * Cloud AWS nao oferece conexao de servico automatica para o LocalStack (03-RESEARCH.md
- * Pitfall A). Copia do suporte equivalente do {@code notification-service} (03-01); a unica
- * diferenca e que a espera de provisionamento aqui cobre so a fila {@code notification-events-queue}
- * — este modulo nao tem o cliente do DynamoDB no classpath. O container e compartilhado por todas
- * as classes de teste da JVM (mesmo padrao singleton de {@code AbstractIntegrationTest}).
+ * Pitfall A). Copia do suporte equivalente do {@code notification-service} (03-01). O container e
+ * compartilhado por todas as classes de teste da JVM (mesmo padrao singleton de
+ * {@code AbstractIntegrationTest}).
+ *
+ * <p>Fase 5 (05-02): alem do hook de notificacao (Fase 3), copia tambem o hook da saga
+ * ({@code 02-create-order-saga-resources.sh}, criado em 05-01) e espera pelas tres filas
+ * ({@code notification-events-queue}, {@code inventory-commands-queue}, {@code order-events-queue})
+ * — mesma tecnica do equivalente do order-service.
  *
  * <p>A espera pelo provisionamento fica isolada em {@link LocalStackProvisioningWaiter} — ver o
  * javadoc daquela classe para o motivo (deadlock de inicializacao de classe da JVM entre esta
@@ -27,31 +32,35 @@ import java.nio.file.Path;
 public final class LocalStackTestSupport {
 
     private static final String REGION = "us-east-1";
-    private static final String QUEUE_NAME = "notification-events-queue";
+    private static final List<String> QUEUE_NAMES =
+            List.of("notification-events-queue", "inventory-commands-queue", "order-events-queue");
 
-    // Mesma tag de imagem que o docker-compose.yml usa. O init hook copiado abaixo e o mesmo
-    // arquivo usado pelo compose e pelo notification-service — o teste prova o provisionamento
-    // real, nao uma fila criada pelo proprio teste.
+    // Mesma tag de imagem que o docker-compose.yml usa. Os init hooks copiados abaixo sao os
+    // mesmos arquivos usados pelo compose — o teste prova o provisionamento real, nao filas
+    // criadas pelo proprio teste.
     public static final LocalStackContainer CONTAINER = new LocalStackContainer(
             DockerImageName.parse("localstack/localstack:2026.08.3"))
             .withServices(Service.SQS, Service.DYNAMODB)
             .withEnv("LOCALSTACK_AUTH_TOKEN", resolveAuthToken())
             .withCopyFileToContainer(
-                    MountableFile.forHostPath(initHookPath(), 0755),
-                    "/etc/localstack/init/ready.d/01-create-notification-resources.sh");
+                    MountableFile.forHostPath(initHookPath("01-create-notification-resources.sh"), 0755),
+                    "/etc/localstack/init/ready.d/01-create-notification-resources.sh")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(initHookPath("02-create-order-saga-resources.sh"), 0755),
+                    "/etc/localstack/init/ready.d/02-create-order-saga-resources.sh");
 
     static {
         CONTAINER.start();
-        LocalStackProvisioningWaiter.awaitProvisioned(CONTAINER, REGION, QUEUE_NAME);
+        LocalStackProvisioningWaiter.awaitProvisioned(CONTAINER, REGION, QUEUE_NAMES);
     }
 
     private LocalStackTestSupport() {
     }
 
-    private static String initHookPath() {
+    private static String initHookPath(String fileName) {
         // Resolvido a partir do diretorio do modulo (inventory-service) subindo um nivel ate a
         // raiz do repositorio, onde vive localstack-init/.
-        return Path.of("..", "localstack-init", "ready.d", "01-create-notification-resources.sh")
+        return Path.of("..", "localstack-init", "ready.d", fileName)
                 .toAbsolutePath().normalize().toString();
     }
 
