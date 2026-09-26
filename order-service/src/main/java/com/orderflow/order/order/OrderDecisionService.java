@@ -3,6 +3,7 @@ package com.orderflow.order.order;
 import com.orderflow.order.credit.CompanyCreditLocker;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
+import com.orderflow.order.saga.ReservationSagaStarter;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,11 @@ import java.util.function.Consumer;
  * PENDING_APPROVAL}. Depois de adquirir a trava, {@link EntityManager#refresh} relê o pedido — o
  * estado buscado antes da trava pode estar velho se outra decisão acabou de comitar, e sem a
  * releitura a checagem de {@code PENDING_APPROVAL} usaria dado obsoleto.
+ *
+ * <p>A partir da Fase 5 (D-48), aprovar leva o pedido a {@code RESERVING} com o comando {@code
+ * ReserveStock} gravado no outbox, na mesma transação — mesmo ponto de entrada da saga usado pela
+ * aprovação automática ({@link com.orderflow.order.order.OrderService}). A resposta continua 200
+ * com o pedido já em {@code RESERVING} (D-54).
  */
 @Service
 public class OrderDecisionService {
@@ -31,17 +37,25 @@ public class OrderDecisionService {
     private final OrderRepository orderRepository;
     private final CompanyCreditLocker creditLocker;
     private final EntityManager entityManager;
+    private final ReservationSagaStarter sagaStarter;
 
     public OrderDecisionService(OrderRepository orderRepository, CompanyCreditLocker creditLocker,
-                                 EntityManager entityManager) {
+                                 EntityManager entityManager, ReservationSagaStarter sagaStarter) {
         this.orderRepository = orderRepository;
         this.creditLocker = creditLocker;
         this.entityManager = entityManager;
+        this.sagaStarter = sagaStarter;
     }
 
+    /**
+     * Depois de {@code approveManually}, entra na saga (D-48) com o mesmo instante já gravado em
+     * {@code decidedAt} — mesma transação que adquiriu a trava da empresa e fez o {@code refresh}.
+     * {@link #reject} não muda: rejeição nunca inicia a saga.
+     */
     @Transactional
     public OrderResponse approve(UUID orderId, String sellerId, String reason) {
         Order order = decide(orderId, o -> o.approveManually(sellerId, reason, currentInstant()));
+        sagaStarter.start(order, order.getDecidedAt());
         return OrderResponse.from(order);
     }
 
