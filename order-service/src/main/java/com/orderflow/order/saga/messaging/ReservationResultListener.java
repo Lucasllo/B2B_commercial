@@ -41,8 +41,7 @@ public class ReservationResultListener {
             return;
         }
         if (event instanceof StockReservationFailedEvent failed) {
-            // TODO(05-03 Task 1 RED): wiring comentado de proposito para confirmar RED —
-            // restaurado no commit GREEN da mesma task.
+            orderSagaService.applyReservationFailed(failed);
         }
     }
 }

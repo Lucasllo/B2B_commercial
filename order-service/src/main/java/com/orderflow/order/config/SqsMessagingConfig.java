@@ -21,6 +21,13 @@ import java.time.Duration;
  * <p>O mesmo timeout curto de {@code SqsAsyncClient} de inventory-service: sem ele, o relay
  * {@code @Scheduled} poderia ficar preso minutos numa chamada que o LocalStack aceitou mas não
  * respondeu.
+ *
+ * <p>[Rule 1 - Bug, 05-03]: 3s/1s (Fase 3/4, D-41) foi pensado só para a chamada síncrona do
+ * {@code RestClient}. O primeiro {@code @SqsListener} real deste serviço ({@code
+ * ReservationResultListener}, 05-03) some com {@code poll-timeout=0} (application.yml), mas sob a
+ * contenção de dez requisições concorrentes de teste o teto de 1s por tentativa ainda estourava
+ * esporadicamente — a mesma folga de 5s/2s já aplicada ao inventory-service em 05-02 resolve sem
+ * afrouxar o motivo original (evitar prender a thread HTTP para sempre).
  */
 @Configuration
 public class SqsMessagingConfig {
@@ -36,7 +43,7 @@ public class SqsMessagingConfig {
     @Bean
     public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
         return builder -> builder.overrideConfiguration(c -> c
-                .apiCallTimeout(Duration.ofSeconds(3))
-                .apiCallAttemptTimeout(Duration.ofSeconds(1)));
+                .apiCallTimeout(Duration.ofSeconds(5))
+                .apiCallAttemptTimeout(Duration.ofSeconds(2)));
     }
 }

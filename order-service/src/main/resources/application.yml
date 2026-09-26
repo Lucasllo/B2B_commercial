@@ -64,6 +64,15 @@ spring:
         # esconderia um init hook do LocalStack quebrado. "fail" faz o envio falhar alto em vez de
         # mascarar o problema (mesmo motivo do inventory-service).
         queue-not-found-strategy: fail
+        listener:
+          # [Rule 1 - Bug, mesma lição de 05-02/inventory-service]: o mesmo SqsAsyncClient é
+          # compartilhado pelo container do listener e por qualquer outra chamada (relay, testes),
+          # e já tem apiCallAttemptTimeout curto (SqsMessagingConfig, D-41, pensado só para o
+          # RestClient síncrono não prender a thread HTTP). Long polling padrão do SQS
+          # (waitTimeSeconds até 20s) estouraria esse teto a cada ciclo de recebimento do primeiro
+          # @SqsListener real deste serviço (ReservationResultListener, 05-03). poll-timeout=0
+          # desliga o long polling (ReceiveMessage responde na hora, com ou sem mensagem).
+          poll-timeout: 0s
 
 management:
   endpoints:
