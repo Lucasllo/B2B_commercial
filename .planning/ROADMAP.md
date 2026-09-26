@@ -144,7 +144,7 @@ Plans:
   4. Reentregar o mesmo comando de reserva duas vezes decrementa o estoque uma única vez — consumidor idempotente comprovado por teste que republica o evento.
   5. Um teste E2E com Testcontainers (PostgreSQL + LocalStack reais) percorre o fluxo completo criar → reservar → confirmar e também o caminho de falha → cancelar, executável por um único comando.
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano tem testes com LocalStack.*
@@ -159,7 +159,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-03-PLAN.md — order-service: consome o resultado e leva RESERVING a CANCELLED (código + motivo legível, primeiro) ou CONFIRMED, guardado pelo estado, com `ReleaseStock` para sucesso tardio (ORD-05, ORD-06)
+- [x] 05-03-PLAN.md — order-service: consome o resultado e leva RESERVING a CANCELLED (código + motivo legível, primeiro) ou CONFIRMED, guardado pelo estado, com `ReleaseStock` para sucesso tardio (ORD-05, ORD-06)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
-| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 2/6 | In Progress|  |
+| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 3/6 | In Progress|  |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 

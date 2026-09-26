@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-09-26T15:23:49.395Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-09-26T16:03:17.821Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 05 execution started
-state_head: a5c168e3616b0bdaae6a6f6ff608887618c054e7
+state_head: 506811b84f0d57dfaa6c462bb99d02c72a5e81fa
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 57
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 ## Current Position
 
 Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 05 execution started
 
@@ -72,6 +72,7 @@ Progress: [██████░░░░] 57%
 | Phase 04 P05 | 27min | 2 tasks | 8 files |
 | Phase 05 P01 | 33min | 2 tasks | 32 files |
 | Phase 05 P02 | 89min | 2 tasks | 28 files |
+| Phase 05 P03 | 34min | 2 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,10 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 5]: OUTBOX_RELAY_DEFAULTS=relay-interval 1000ms (200ms em teste), batch-size 20, ordem attempts,created_at,id
 - [Phase 05]: [Fase 5]: Livro parcialmente preenchido em stock_reservations e sempre anomalia tecnica (IllegalStateException), nunca reemitido como resultado de negocio
 - [Phase 05]: [Fase 5]: spring.cloud.aws.sqs.listener.poll-timeout=0s no inventory-service - long polling padrao do SQS estourava o apiCallAttemptTimeout compartilhado com a chamada sincrona de PUT /inventory
+- [Phase 05]: [Phase 05]: ORDER_RESPONSE_CONTRACT=id,companyId,status,total,createdBy,createdAt,decidedBy,decidedAt,reason,cancellationCode,cancellationReason,confirmedAt,cancelledAt,items[...] - campos novos entre reason e items
+- [Phase 05]: [Phase 05]: SAGA_RESULT_LOCK=order-row - OrderSagaService trava a linha do pedido (findByIdForUpdate/PESSIMISTIC_WRITE), nao company_credit_lock, para serializar resultado x timeout (05-04) sobre o mesmo pedido
+- [Phase 05]: [Phase 05]: CANCELLATION_REASON_TEMPLATE - texto de cancelamento montado no servidor a partir de modelo fixo por reasonCode, com sku do snapshot do item; truncado em 500 caracteres; nunca texto livre da mensagem
+- [Phase 05]: [Phase 05]: STOCK_RESERVED_ITEMS_CHECK - StockReserved com itens diferentes dos do pedido e mensagem invalida e descartado; a fila e uma fronteira de confianca
 
 ### Pending Todos
 
@@ -142,6 +147,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-26T15:23:49.210Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-09-26T16:03:17.641Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
