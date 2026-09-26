@@ -63,3 +63,8 @@ pasta é para consulta própria durante o aprendizado.
     regra de limite de crédito (`CreditPolicy`), a condição de corrida entre pedidos
     simultâneos da mesma empresa, e como a linha de trava com `SELECT ... FOR UPDATE` e
     `Propagation.MANDATORY` faz os pedidos passarem pela checagem um de cada vez
+22. [Os services de pedido](22-services-de-pedido.md) — `OrderCreationService` (validação
+    "mais barato primeiro" e chamadas HTTP fora da transação), `OrderService` (gravação com
+    checagem de crédito, consulta com 404 para outras empresas e paginação com ordenação fixa)
+    e `OrderDecisionService` (aprovação/rejeição manual com trava + `refresh`), e por que o
+    `@Transactional` exige classes separadas
