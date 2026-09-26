@@ -1,8 +1,9 @@
 # springdoc-openapi (Swagger UI)
 
-Arquivos: `OpenApiConfig.java` em cada serviço (`auth-service`, `catalog-service`,
-`inventory-service`, dentro do respectivo pacote `config/`), mais o bloco `springdoc:` de cada
-`application.yml` e as quatro linhas novas em cada `SecurityConfig.java`.
+Arquivos: `OpenApiConfig.java` em cada um dos cinco serviços (`auth-service`, `catalog-service`,
+`inventory-service`, `notification-service` e `order-service`, dentro do respectivo pacote
+`config/`), mais o bloco `springdoc:` de cada `application.yml` e os quatro caminhos liberados em
+cada um dos cinco `SecurityConfig.java`.
 
 ## O que é OpenAPI e o que é Swagger UI
 
@@ -23,7 +24,8 @@ Swagger UI em cima dele (`/swagger-ui.html`).
 ## Por que cada serviço tem sua própria Swagger UI, e não uma só no Gateway
 
 A Swagger UI de cada serviço roda na **porta direta** dele — `8081` (auth-service), `8082`
-(catalog-service), `8083` (inventory-service) — nunca pelo `gateway` (porta `8080`). Duas razões:
+(catalog-service), `8083` (inventory-service), `8084` (notification-service), `8085`
+(order-service) — nunca pelo `gateway` (porta `8080`). Duas razões:
 
 1. O `gateway` não tem nenhum `@RestController` de negócio próprio (ver
    [10-gateway-application-yml.md](10-gateway-application-yml.md)) — ele só roteia. Não há nada
@@ -63,11 +65,12 @@ Só adicionar a dependência do springdoc no `pom.xml` já seria suficiente para
 funcionando — ela detecta os controllers sozinha. Essa classe existe para resolver dois problemas
 que a dependência sozinha não resolve:
 
-**1. Título e descrição por serviço.** Sem essa classe, as três Swagger UIs teriam o mesmo título
-genérico, e um desenvolvedor com três abas abertas não saberia qual é qual. `@Value("${orderflow.openapi.title}")`
+**1. Título e descrição por serviço.** Sem essa classe, as cinco Swagger UIs teriam o mesmo título
+genérico, e um desenvolvedor com cinco abas abertas não saberia qual é qual. `@Value("${orderflow.openapi.title}")`
 lê a propriedade do `application.yml` daquele serviço específico — é por isso que o título é
-`"OrderFlow — Catalog Service API"` numa aba e `"OrderFlow — Inventory Service API"` na outra,
-mesmo a classe Java sendo estruturalmente idêntica nos três.
+`"OrderFlow — Catalog Service API"` numa aba, `"OrderFlow — Inventory Service API"` na outra, e
+assim por diante (`"OrderFlow — Auth Service API"`, `"OrderFlow — Notification Service API"`,
+`"OrderFlow — Order Service API"`), mesmo a classe Java sendo estruturalmente idêntica nos cinco.
 
 Por que via `@Value` num parâmetro de método, e não uma propriedade `springdoc.info.title` no
 `application.yml`? Porque **essa propriedade não existe** — foi um erro comum de suposição descoberto
@@ -146,7 +149,7 @@ tudo o mais.
 
 O spec OpenAPI revela o **formato** da API — nomes de rota, campos esperados, papéis exigidos —
 nunca dado de negócio real nem segredo algum. Combinado com o fato de que as portas diretas
-(`8081`/`8082`/`8083`) já estão restritas a `127.0.0.1` no `docker-compose.yml` (não alcançáveis de
+(`8081` a `8085`) já estão restritas a `127.0.0.1` no `docker-compose.yml` (não alcançáveis de
 fora da máquina, e não roteadas pelo `gateway`), o risco é tratado como aceitável para um projeto de
 portfólio sem ambiente de produção — com a condição explícita, registrada tanto no comentário do
 `SecurityConfig` quanto no README, de que essa liberação deveria ser fechada se algum dia existir

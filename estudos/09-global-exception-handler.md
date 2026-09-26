@@ -105,3 +105,47 @@ private Map<String, Object> errorBody(String error, String message) {
 Um pequeno atalho para não repetir a mesma criação de `Map` em cada método — centraliza
 a montagem do formato padrão (`error` + `message`) num único lugar, reforçando a
 consistência que essa classe existe para garantir.
+
+## E nos outros serviços?
+
+Tudo acima descreve o `auth-service`, mas **cada serviço tem o seu próprio**
+`config/GlobalExceptionHandler.java` (catalog, inventory, notification e order). Todos
+seguem a mesma receita — `@RestControllerAdvice`, o mesmo formato de corpo (`error` +
+`message`, com o mesmo método `errorBody(...)`) e a mesma regra de nunca vazar detalhe
+técnico. O que muda são os **mapeamentos**: cada serviço traduz as exceções do seu próprio
+domínio. (Os handlers de `403 forbidden` e `401 unauthorized` se repetem em todos.)
+
+| Serviço | Exceção | Resposta |
+| --- | --- | --- |
+| catalog | `MethodArgumentNotValidException` | `400 validation_failed` (com `fields`) |
+| catalog | `HttpMessageNotReadableException` (corpo malformado, ex.: status desconhecido no enum) | `400 malformed_request` |
+| catalog | `SkuAlreadyUsedException` / `DataIntegrityViolationException` | `409 sku_already_used` |
+| catalog | `ProductNotFoundException` | `404 product_not_found` |
+| inventory | `MethodArgumentNotValidException` | `400 validation_failed` (com `fields`) |
+| inventory | `HttpMessageNotReadableException` | `400 malformed_request` |
+| inventory | `InventoryNotFoundException` | `404 inventory_not_found` |
+| inventory | `InsufficientStockException` | `409 insufficient_stock` (com `available` e `requested`) |
+| inventory | `StockBelowReservedException` | `409 stock_below_reserved` |
+| inventory | `ReservationConflictException` | `503 reservation_conflict` |
+| inventory | `DataIntegrityViolationException` | `409 data_conflict` |
+| notification | `MethodArgumentTypeMismatchException` (id que não é UUID) | `400 invalid_identifier` |
+| notification | `SdkException` (falha do SDK da AWS ao falar com o DynamoDB) | `503 notification_store_unavailable` — o motivo real vai só para o log do servidor |
+| order | `MethodArgumentNotValidException` | `400 validation_failed` (com `fields`) |
+| order | `HttpMessageNotReadableException` | `400 malformed_request` |
+| order | `MethodArgumentTypeMismatchException` (ex.: `orderId` que não é UUID) | `400 invalid_parameter` |
+| order | `DuplicateOrderItemsException` | `400 validation_failed` com `fields.items` |
+| order | `OrderNotFoundException` | `404 order_not_found` |
+| order | `OrderNotPendingException` | `409 order_not_pending` |
+| order | `InvalidOrderItemsException` | `422 invalid_order_items` (com `productIds`) |
+| order | `OrderTotalOutOfRangeException` | `422 order_total_out_of_range` |
+| order | `CatalogServiceUnavailableException` / `AuthServiceUnavailableException` | `503 catalog_service_unavailable` / `503 auth_service_unavailable` |
+
+Dois detalhes que valem notar:
+
+- No `inventory-service`, `insufficient_stock` (409) e `reservation_conflict` (503) são
+  **de propósito** códigos diferentes: falta de estoque de verdade é uma recusa definitiva;
+  disputa entre requisições simultâneas que esgotou as tentativas é passageira e vale a pena
+  tentar de novo (ver [14-spring-retry.md](14-spring-retry.md)).
+- No `order-service`, o produto repetido usa o **mesmo envelope** `validation_failed` da
+  validação normal, para o cliente só precisar tratar um formato de erro 400. O contexto de
+  cada erro do pedido está em [22-services-de-pedido.md](22-services-de-pedido.md).

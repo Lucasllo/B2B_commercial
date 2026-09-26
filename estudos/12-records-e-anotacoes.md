@@ -16,7 +16,8 @@ carrega dados, era preciso escrever manualmente: os campos, um construtor, um "g
 para cada campo, e os métodos `equals()`, `hashCode()` e `toString()`. Muito código
 repetitivo para algo tão simples quanto "guardar um nome e um email".
 
-O `record` faz tudo isso **automaticamente**, só com uma linha:
+O `record` faz tudo isso **automaticamente**, só com uma linha (simplificado — no código
+real os campos têm `@NotBlank @Email` e `@NotBlank`, explicadas mais abaixo):
 
 ```java
 public record LoginRequest(
@@ -50,6 +51,10 @@ exato do corpo (`body`) de uma requisição ou resposta HTTP em JSON:
   `CompanyGuard` (ver [11-companyguard.md](11-companyguard.md))
 
 ## Records aninhados (um `record` dentro de outro)
+
+Simplificado — as anotações de validação e o `@JsonIgnoreProperties(ignoreUnknown = true)`
+(que no código real aparece tanto em `CreateCompanyRequest` quanto em `BuyerUser`) foram
+omitidos aqui e são explicados na seção seguinte:
 
 ```java
 public record CreateCompanyRequest(
@@ -147,12 +152,58 @@ Diferente das outras — não é do Bean Validation, é do **Jackson** (bibliote
 converte JSON em objetos Java e vice-versa). Diz: "se o JSON recebido tiver algum campo
 extra que esse `record` não conhece, simplesmente ignore, não dê erro".
 
-Motivo de segurança: sem essa anotação, se um cliente mal-intencionado enviasse um
-campo extra como `"role": "SELLER_ADMIN"` esperando se auto-promover a administrador, o
-Jackson lançaria um erro de parsing, derrubando a requisição inteira. Além disso, o
-campo `role` **nem existe** na declaração do `record` — o servidor sempre decide
+Motivo de segurança: imagine um cliente mal-intencionado enviando um campo extra como
+`"role": "SELLER_ADMIN"`, esperando se auto-promover a administrador. O Jackson "puro",
+na configuração de fábrica, lançaria um erro de parsing e derrubaria a requisição
+inteira. Só que o `ObjectMapper` que o Spring Boot configura automaticamente **já
+desliga** esse comportamento (`FAIL_ON_UNKNOWN_PROPERTIES` desativado) — então, na
+prática, o campo desconhecido já seria ignorado mesmo sem a anotação. O papel da
+anotação é deixar essa garantia **explícita no próprio DTO**, sem depender de uma
+configuração global que alguém poderia mudar no futuro (defesa em profundidade). Além
+disso, o campo `role` **nem existe** na declaração do `record` — o servidor sempre decide
 sozinho, no código (`CompanyService`), que todo usuário criado por esse endpoint é
 `BUYER`. Esse tipo de ataque (enviar campos extras esperando que o servidor os aceite
 sem querer) é chamado de **"mass assignment"**; essa anotação é uma das defesas contra
 ele — o campo malicioso é silenciosamente descartado, sem derrubar a requisição e sem
 nenhum efeito no sistema.
+
+## Records além dos DTOs, e anotações novas no order-service
+
+Nas fases seguintes, os `records` passaram a aparecer também **fora** dos DTOs — sempre
+com a mesma ideia de "pacotinho de dados imutável":
+
+- `order-service/.../order/PricedItem.java` — um item de pedido já validado e com preço
+  vindo do catálogo, que passa de um service para outro sem nada de JPA.
+- `inventory-service/.../stock/StockAdjustmentResult.java` — leva o estoque ajustado, a
+  quantidade anterior e o momento do ajuste (`adjustedAt`) do `InventoryService` para o
+  `InventoryController`, sem expor esses campos na resposta HTTP.
+- `order-service/.../config/ClientProperties.java` — um `record` usado para ler
+  configuração do `application.yml` (ver
+  [20-configuration-properties.md](20-configuration-properties.md)).
+
+E os DTOs do `order-service` trouxeram algumas anotações que não aparecem no
+`auth-service`:
+
+```java
+public record CreateOrderRequest(
+        @NotEmpty @Size(max = MAX_ITEMS_PER_ORDER) List<@Valid @NotNull OrderItemRequest> items) {
+}
+
+public record OrderItemRequest(
+        @NotNull UUID productId,
+        @NotNull @Positive @Max(MAX_QUANTITY_PER_ITEM) Integer quantity) {
+}
+```
+
+- **`@NotEmpty`** — parecido com o `@NotBlank`, mas para listas: rejeita `null` e lista
+  vazia (um pedido sem nenhum item).
+- **`@Size(max = ...)`** na lista — limita a **quantidade de itens** (até 50), e não o
+  comprimento de um texto.
+- **`@Positive`** — o número precisa ser maior que zero (quantidade `0` ou negativa é
+  rejeitada).
+- **`@Max(...)`** — teto para um número inteiro (aqui, 1.000.000 unidades por item).
+- **`@Valid @NotNull` dentro do `< >`** — as anotações estão coladas no **tipo dos
+  elementos** da lista (`List<@Valid @NotNull OrderItemRequest>`), não na lista em si.
+  Isso significa: "nenhum elemento da lista pode ser `null`, e entre dentro de **cada**
+  item para validar as anotações de `OrderItemRequest`". É o mesmo papel do `@Valid` visto
+  acima com `BuyerUser`, só que aplicado a cada elemento de uma lista.

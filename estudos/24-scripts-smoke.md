@@ -23,9 +23,9 @@ O projeto já tem muitos testes em Java (ver [15-testes.md](15-testes.md)). A di
 | | Testes Java (`*Test`, `*IT`) | Scripts de smoke |
 |---|---|---|
 | O que roda | **Um serviço** por vez | **Todos os serviços** juntos |
-| Os outros serviços | Falsos (*stubs*, WireMock) | **Reais** |
+| Os outros serviços | Falsos (*stubs*; no `order-service`, um servidor HTTP do próprio JDK, o `DownstreamStubServer`) | **Reais** |
 | Por onde entra | Direto no serviço | Pelo **Gateway**, como um usuário de verdade |
-| Quando roda | `mvn verify`, no CI | À mão, com o `docker compose` ligado |
+| Quando roda | `mvn verify` (à mão por enquanto; CI só na Fase 7) | À mão, com o `docker compose` ligado |
 
 Um teste Java do `order-service` finge que o `catalog-service` existe. O smoke usa o
 `catalog-service` de verdade. Por isso ele pega erros que só aparecem quando as peças se
@@ -43,7 +43,8 @@ bash scripts/smoke-notification-flow.sh
 bash scripts/smoke-order-flow.sh
 ```
 
-Cada script imprime o progresso (`1/7 ...`, `2/7 ...`) e termina com `SMOKE OK` se tudo passou.
+Cada script imprime o progresso (`1/7 ...`, `2/7 ...` no de notificação; `1/15 ...`, `2/15 ...`
+no de pedidos) e termina com `SMOKE OK` se tudo passou.
 Se algo falhar, para na hora com `SMOKE FALHOU: <o que deu errado>`.
 
 ## 3. O que é um arquivo `.sh`
@@ -112,8 +113,9 @@ de `"200"`, e o teste falharia sem motivo aparente.
 ### O padrão de toda verificação
 
 ```bash
-STATUS=$(exec_gateway curl -s -o /dev/null -w '%{http_code}' "${GATEWAY_URL}/api/notifications/${PRODUCT_ID}")
-[ "$STATUS" = "401" ] || fail "GET sem token devolveu ${STATUS}, esperado 401"
+STATUS_NO_TOKEN=$(exec_gateway curl -s -o /dev/null -w '%{http_code}' \
+    "${GATEWAY_URL}/api/notifications/${PRODUCT_ID}")
+[ "$STATUS_NO_TOKEN" = "401" ] || fail "GET /api/notifications/{id} sem token devolveu ${STATUS_NO_TOKEN}, esperado 401"
 echo "3/7 GET sem token confirma 401"
 ```
 
@@ -244,7 +246,7 @@ e [22-services-de-pedido.md](22-services-de-pedido.md) explicam, só que testado
 | 10 | Comprador A | Tenta **aprovar o próprio** pedido | 403 | Só vendedor decide |
 | 11 | Vendedor | **Aprova** o pedido de R$ 700 | `APPROVED`, `decidedBy` = id do vendedor | Aprovação manual com registro de quem aprovou |
 | 12 | Comprador A | 1 × P1 = **R$ 100** | `PENDING_APPROVAL` | Os R$ 700 aprovados manualmente **contam** na exposição (1100 + 100 > 1000) |
-| 13 | Vendedor | Rejeita **sem motivo**, depois **com motivo**, depois tenta **aprovar** | 400, `REJECTED`, 409 | Rejeição exige motivo; pedido já decidido não pode ser decidido de novo |
+| 13 | Vendedor | Rejeita **sem corpo**, depois **com motivo**, depois tenta **aprovar** | 400, `REJECTED`, 409 | Rejeição exige um corpo com motivo; pedido já decidido não pode ser decidido de novo |
 | 14 | Comprador B | Abre o pedido da empresa A e lista os próprios | 404 e `totalElements=0` | **Isolamento**: B não vê nada de A, nem que o pedido existe |
 | 15 | Comprador A e vendedor | A lista os próprios; vendedor abre o pedido do passo 5 | `totalElements=3` e 200 | A vê só os dele; o vendedor vê tudo |
 

@@ -3,7 +3,9 @@
 Arquivos: `auth-service/src/main/java/com/orderflow/auth/auth/TokenService.java`,
 `inventory-service/src/main/resources/application.yml`,
 `catalog-service/src/main/resources/application.yml`,
-`notification-service/src/main/resources/application.yml`.
+`notification-service/src/main/resources/application.yml`,
+`order-service/src/main/resources/application.yml`,
+`auth-service/src/main/java/com/orderflow/auth/config/JwtIssuerConfig.java`.
 
 Continuação de [06-jwks.md](06-jwks.md) — lá ficou registrada uma lacuna real
 encontrada na revisão da Fase 2: os serviços validavam a assinatura do JWT
@@ -52,8 +54,8 @@ e o resto é descoberto automaticamente.
 ## Como o projeto usa (e não usa) OIDC
 
 O projeto **não faz** essa descoberta automática. O comentário no
-`application.yml` de cada resource server (inventory, catalog, notification)
-explica exatamente por quê:
+`application.yml` de cada um dos quatro resource servers (inventory,
+catalog, notification e order) explica exatamente por quê:
 
 ```yaml
 security:
@@ -105,6 +107,38 @@ de outro sistema, ou simplesmente com o campo ausente), seria **aceito do
 mesmo jeito**. Com o `issuer-uri` configurado, o Spring Security passou a
 **rejeitar** qualquer token cujo `iss` não seja exatamente
 `orderflow-auth-service`.
+
+### Quem tinha a lacuna (e quem nunca teve)
+
+O próprio `auth-service` **nunca** teve essa lacuna. O `JwtDecoder` dele,
+em `JwtIssuerConfig.java`, é montado **na mão**, e já nasceu com o validador
+de emissor:
+
+```java
+decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
+```
+
+(com `ISSUER = "orderflow-auth-service"`). A lacuna existia só nos resource
+servers, cujo decoder é **autoconfigurado** pelo Spring Boot a partir do
+`application.yml` — ali, sem a linha `issuer-uri`, ninguém conferia o
+`iss`. Hoje os quatro resource servers têm `issuer-uri`; o `order-service`
+já nasceu com ele, na Fase 4.
+
+### E nos testes?
+
+Desde a correção, os testes usam o **mesmo decoder de produção**. A classe
+de apoio `TestJwt.Config` (em cada serviço) não cria mais um `JwtDecoder`
+próprio — ela só publica um `JwkSetUriJwtDecoderBuilderCustomizer`, que
+troca apenas a **fonte da chave pública** (uma chave em memória, em vez de
+buscar o JWKS pela rede). Todo o resto — inclusive o validador de emissor
+vindo do `issuer-uri` — continua vindo da configuração real. Por isso
+catalog, inventory e notification têm testes "adversários" que provam a
+correção: um token assinado pela chave confiável, mas com `iss` errado ou
+ausente, recebe **401** (ex.:
+`getProductWithTokenSignedByTrustedKeyButWrongIssuerReturns401` no
+`ProductControllerIT`, `getStockWithTokenSignedByTrustedKeyButWrongIssuerReturns401`
+no `InventoryControllerIT` e `tokenSignedByTrustedKeyButWrongIssuerReturns401`
+no `NotificationControllerIT`).
 
 ## Resumindo com uma analogia
 

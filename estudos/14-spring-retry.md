@@ -100,7 +100,7 @@ public StockResponse reserve(UUID productId, String reservationId, int quantity)
   `maxDelay = 200`ms (nunca espera mais que isso, para o pior caso não ficar lento
   demais).
 
-O comentário do método `setStock` no código explica por que esses valores mudaram
+O comentário Javadoc logo acima das constantes `RETRY_*` em `InventoryService` explica por que esses valores mudaram
 de um `maxAttempts = 4` inicial: um teste de concorrência
 (`InventoryRetryContentionIT`, dez threads reservando 1 unidade cada sobre um
 estoque de dez) mostrou que 4 tentativas não bastavam sob dez gravadores
@@ -132,19 +132,35 @@ quantity`). Se você mudar os parâmetros de `reserve`, precisa mudar
 `recoverReserve` junto — senão o Spring não consegue casar os dois e a aplicação
 falha ao subir.
 
+Além dos parâmetros, o `@Recover` precisa ter o **mesmo tipo de retorno** do método
+original. Um bom exemplo disso é o `setStock`: desde a Fase 3 ele não devolve mais
+`StockResponse`, e sim `StockAdjustmentResult` — um `record` com o estoque, a quantidade
+anterior ao ajuste e o momento do ajuste (`adjustedAt`), tudo capturado **dentro** da
+transação. Por isso o `recoverSetStock` também foi declarado devolvendo
+`StockAdjustmentResult` (mesmo que, na prática, ele só lance uma exceção) — se os tipos
+não batessem, o Spring não reconheceria esse `@Recover` como o plano B do `setStock`.
+
 `InventoryService` tem um `@Recover` para cada método com `@Retryable`
 (`recoverReserve`, `recoverRelease`, `recoverSetStock`), e todos fazem a mesma
 coisa: lançam `ReservationConflictException` — uma exceção de negócio, mapeada
-para um HTTP 409 (Conflict) — em vez de deixar vazar para a API um detalhe de
-implementação (`DataAccessException`, um tipo de exceção de banco de dados). Sem
-o `@Recover`, o cliente da API veria um erro técnico de infraestrutura em vez de
-uma resposta de negócio clara.
+para um HTTP 503 (Service Unavailable) com `error: "reservation_conflict"` — em vez
+de deixar vazar para a API um detalhe de implementação (`DataAccessException`, um
+tipo de exceção de banco de dados). Sem o `@Recover`, o cliente da API veria um erro
+técnico de infraestrutura em vez de uma resposta de negócio clara.
+
+Repare que esse código é **de propósito diferente** do `409 insufficient_stock`
+(ver [09-global-exception-handler.md](09-global-exception-handler.md)): falta de
+estoque de verdade é uma recusa definitiva — tentar de novo não vai mudar nada. Já a
+disputa que esgotou as tentativas é passageira — o estoque existe, só houve briga
+demais pela mesma linha naquele instante, então vale a pena o cliente tentar de novo
+um pouco depois. O `503` comunica exatamente isso.
 
 ## Uma regra estrutural que este projeto documenta explicitamente
 
-O comentário no topo de `InventoryService` deixa um aviso importante: `reserve`,
-`release` e `setStock` só funcionam com retry e transação quando chamados **de
-fora da classe** (pelo `InventoryController`, por exemplo). Se um método dentro de
+O comentário no topo de `InventoryService` deixa um aviso importante: `reserve` e
+`release` (os dois que o Javadoc da classe cita pelo nome — e a mesma regra vale
+para `setStock`) só funcionam com retry e transação quando chamados **de fora da
+classe** (pelo `InventoryController`, por exemplo). Se um método dentro de
 `InventoryService` chamasse `this.reserve(...)` internamente, o Spring **não**
 aplicaria nem o retry nem a transação — porque essas anotações funcionam através
 de um proxy que o Spring cria ao redor do bean, e uma chamada interna
@@ -154,6 +170,17 @@ Isso não gera erro de compilação nem exceção em tempo de execução — é 
 comportamento errado silencioso. Por isso é um cuidado a manter ao adicionar
 código novo nessa classe: qualquer nova lógica que precise reaproveitar
 `reserve`/`release`/`setStock` deve chamá-los de fora, nunca internamente.
+
+Um cuidado parecido aparece desde a Fase 3 com a mensageria: o evento de ajuste de
+estoque no SQS é publicado pelo `InventoryController` **só depois** que `setStock`
+retornou — ou seja, com a transação já commitada —, nunca de dentro do método com
+retry. Se a publicação ficasse lá dentro, uma tentativa que falhasse e fosse
+reexecutada poderia publicar o mesmo evento duas vezes, ou publicar um ajuste que
+nunca chegou a ser gravado (ver [16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md)).
+
+Vale notar também: o Spring Retry continua sendo usado **só no `inventory-service`**.
+O `order-service` resolve a concorrência de outro jeito, com uma trava por empresa
+(ver [21-credito-e-trava-por-empresa.md](21-credito-e-trava-por-empresa.md)).
 
 ## Resumindo o trio
 

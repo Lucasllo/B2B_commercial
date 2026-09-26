@@ -1,6 +1,9 @@
 # SQS, Outbox e mensageria entre serviços
 
 Arquivos: `inventory-service/src/main/java/com/orderflow/inventory/stock/messaging/StockEventPublisher.java`,
+`inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java`,
+`inventory-service/src/main/java/com/orderflow/inventory/stock/StockAdjustmentResult.java`,
+`inventory-service/src/main/java/com/orderflow/inventory/stock/dto/StockAdjustedEvent.java`,
 `inventory-service/src/main/java/com/orderflow/inventory/config/SqsMessagingConfig.java`,
 `notification-service/src/main/java/com/orderflow/notification/config/SqsMessagingConfig.java`,
 `notification-service/src/main/java/com/orderflow/notification/history/messaging/NotificationEventListener.java`,
@@ -47,19 +50,28 @@ O script do LocalStack é comentado explicando uma decisão deliberada: **é o
 fila ou a tabela em tempo de execução. Por isso o `application.yml` do
 notification-service usa `queue-not-found-strategy: fail`: se o init hook
 falhar ou não rodar, a aplicação falha ao subir (erro visível), em vez de
-criar a fila silenciosamente e mascarar o problema.
+criar a fila silenciosamente e mascarar o problema. O `application.yml` do
+inventory-service (o lado que **envia**) também tem
+`queue-not-found-strategy: fail`: se a fila não existir porque o init hook
+quebrou, o envio falha alto em vez de o Spring Cloud AWS criar a fila
+sozinho e esconder o problema.
 
 ### Fluxo real, passo a passo
 
 1. Alguém chama `PUT /inventory/{productId}` para ajustar estoque.
-2. `InventoryController` salva a mudança no Postgres (transação já commitada
-   quando o método retorna).
-3. Depois de salvar, o controller chama
-   `StockEventPublisher.publishStockAdjusted(...)`:
+2. `InventoryController` chama `InventoryService.setStock(...)` (um método
+   `@Transactional` + `@Retryable`). Ele salva a mudança no Postgres e, ainda
+   **dentro** da transação, captura `adjustedAt = Instant.now()`, devolvendo
+   tudo num `StockAdjustmentResult` (o estoque novo, a quantidade anterior e
+   o `adjustedAt`). Quando o método retorna, o proxy do Spring já fez o
+   commit da transação.
+3. Depois disso, o controller chama
+   `StockEventPublisher.publishStockAdjusted(productId, result.previousQuantityOnHand(), result.stock().quantityOnHand(), result.adjustedAt())`:
 
    ```java
-   public void publishStockAdjusted(UUID productId, int previousQuantityOnHand, int newQuantityOnHand) {
-       StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, newQuantityOnHand);
+   public void publishStockAdjusted(UUID productId, int previousQuantityOnHand, int newQuantityOnHand,
+                                     Instant adjustedAt) {
+       StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, newQuantityOnHand, adjustedAt);
        try {
            sqsTemplate.send(to -> to.queue(queueName).payload(event));
        } catch (RuntimeException e) {
@@ -72,10 +84,21 @@ criar a fila silenciosamente e mascarar o problema.
    }
    ```
 
-   Isso monta um `StockAdjustedEvent` e coloca a mensagem na fila SQS.
+   Isso monta um `StockAdjustedEvent` — com um `eventId` novo e o
+   `occurredAt` recebido da transação — e coloca a mensagem na fila SQS.
+
+   Por que o `occurredAt` **não** é gerado aqui, na hora de publicar (WR-04)?
+   Porque este método roda **depois** do commit, fora da transação. Com dois
+   `PUT` concorrentes no mesmo produto, a ordem em que cada um chega ao
+   publicador pode ser o contrário da ordem em que as transações realmente
+   commitaram. Como o histórico do notification-service é ordenado por
+   `occurredAt`, o ajuste mais novo apareceria antes do mais antigo. Capturar
+   o horário dentro da transação que gravou o ajuste faz o `occurredAt`
+   refletir a ordem real.
 4. O `notification-service`, que está sempre escutando essa fila, recebe a
    mensagem via `NotificationEventListener.onMessage(String payload)`.
-5. `NotificationService.record(...)` valida o JSON, monta uma mensagem
+5. `NotificationService.record(...)` primeiro recusa corpos acima de 64 KB
+   (WR-02, `MAX_RAW_PAYLOAD_BYTES = 64 * 1024`), depois valida o JSON, monta uma mensagem
    legível e grava um registro no DynamoDB (tabela `notification-history`).
 
 ## O `SqsTemplate` — o "telefone" que fala com o SQS
@@ -119,17 +142,20 @@ sqsTemplate` no construtor); o Spring entrega a instância já configurada.
 ### Para onde ele manda a mensagem — isso vem da configuração, não do código
 
 O `SqsTemplate` autoconfigurado lê a configuração de AWS do
-`application.yml` do inventory-service:
+`application.yml` do inventory-service (no arquivo real, esse bloco fica
+dentro de `spring:`, ou seja, as propriedades completas são
+`spring.cloud.aws.*`):
 
 ```yaml
-cloud:
-  aws:
-    region:
-      static: us-east-1
-    credentials:
-      access-key: test
-      secret-key: test
-    endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
 ```
 
 - `endpoint: http://localhost:4566` — em vez de falar com a AWS real, ele
@@ -183,7 +209,9 @@ faz essa tradução é um **`MessagingMessageConverter`** — e por padrão o
 Spring Cloud AWS já fornece um, sem você precisar declarar nada. Só que o
 comportamento padrão desse conversor causa um problema específico neste
 projeto, e é isso que os dois `SqsMessagingConfig` (um em cada serviço)
-existem para corrigir.
+existem para corrigir. (O do inventory-service, além disso, também limita
+o tempo de espera das chamadas ao SQS — ver a subseção sobre timeouts logo
+depois do lado do produtor.)
 
 ### O problema que motivou esse bean
 
@@ -227,6 +255,35 @@ public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
 `doNotSendPayloadTypeHeader()` faz o produtor **parar de mandar** o cabeçalho
 `JavaType` desde a origem. A mensagem que chega na fila passa a carregar só o
 JSON do evento, sem nenhum metadado de classe Java grudado nela.
+
+#### Ainda no produtor: um limite de tempo para falar com o SQS (WR-03)
+
+O mesmo `SqsMessagingConfig` do inventory-service declara um segundo bean,
+que não tem nada a ver com conversão:
+
+```java
+@Bean
+public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
+    return builder -> builder.overrideConfiguration(c -> c
+            .apiCallTimeout(Duration.ofSeconds(3))
+            .apiCallAttemptTimeout(Duration.ofSeconds(1)));
+}
+```
+
+O motivo: o `SqsAsyncClient` padrão (baseado em Netty) espera cerca de 30
+segundos por tentativa e faz 3 tentativas. E o `publishStockAdjusted` roda
+**de forma síncrona, na própria thread da requisição HTTP**, depois do
+commit. Se o SQS (LocalStack) aceitasse a conexão mas nunca respondesse, a
+resposta do `PUT` ficaria presa por 1 a 2 minutos — mesmo o ajuste já tendo
+sido gravado de verdade no Postgres.
+
+Com o limite (`apiCallAttemptTimeout` de 1s por tentativa e
+`apiCallTimeout` de 3s para a chamada inteira), o cliente desiste rápido, a
+exceção cai no `catch` do `publishStockAdjusted` e vira a linha `ERROR` de
+evento perdido — e o vendedor recebe a resposta do `PUT` sem esperar.
+
+O `SqsMessagingConfig` do notification-service não tem esse bean — lá só
+existe o ajuste de conversão descrito abaixo.
 
 **Lado do consumidor** (`notification-service/.../config/SqsMessagingConfig.java`):
 
@@ -299,7 +356,9 @@ Isso é uma **decisão deliberada e documentada** para esta fase do projeto
 (D-29: publicar direto no SQS, sem outbox; D-30: aceitar o risco de
 dual-write sem mitigação técnica por enquanto), não um bug esquecido. Cada
 evento perdido deixa uma linha `ERROR` identificável nos logs — nunca falha
-em silêncio.
+em silêncio. Isso vale também para um SQS que simplesmente não responde:
+graças ao limite de tempo do WR-03, a espera fica limitada a 3 segundos e
+termina nessa mesma linha `ERROR`.
 
 O **padrão Outbox** é a forma de fechar essa lacuna de verdade:
 
@@ -316,12 +375,16 @@ O **padrão Outbox** é a forma de fechar essa lacuna de verdade:
 4. Se o poller falhar no meio do caminho, ele simplesmente tenta de novo
    depois — o evento continua na tabela até ser confirmado como publicado.
 
-**Importante**: essa tabela outbox, o poller, e a saga completa de pedido
-(pedido → aprovação de crédito → reserva de estoque → confirmação) **ainda
-não existem no código**. São a Fase 4 e a Fase 5 do `ROADMAP.md`, ainda não
-iniciadas. O que existe hoje (Fase 3) é a versão simplificada — envio direto
-— que já demonstra o SQS funcionando ponta a ponta antes de somar a
-complexidade do outbox.
+**Importante**: essa tabela outbox, o poller (o "relay") e a saga de
+reserva de estoque **ainda não existem no código** — são a Fase 5 do
+`ROADMAP.md`, já planejada mas ainda não implementada. A Fase 4 já está
+concluída: o `order-service` cria pedidos com aprovação por limite de
+crédito (ver [22-services-de-pedido.md](22-services-de-pedido.md)), mas
+ainda **sem saga e sem mensageria** — ele não publica nem consome nada do
+SQS. Por isso, a única mensageria que existe hoje continua sendo a da Fase
+3: o envio direto do `STOCK_ADJUSTED` — a versão simplificada que já
+demonstra o SQS funcionando ponta a ponta antes de somar a complexidade do
+outbox.
 
 ## Consumo idempotente — por que reentrega não é um problema aqui
 
@@ -340,11 +403,15 @@ mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
   captura o erro, loga um aviso e retorna normalmente — isso faz o Spring
   Cloud AWS confirmar a mensagem e apagá-la da fila. É a única defesa contra
   uma mensagem "envenenada" que nunca poderia ser processada (o projeto ainda
-  não tem uma fila de mensagens mortas / DLQ).
+  não tem uma fila de mensagens mortas / DLQ). Isso inclui corpos acima de
+  64 KB (WR-02): sem essa checagem, um item grande demais para o DynamoDB
+  (que recusa itens acima de 400 KB) faria o `putItem` falhar sempre — e,
+  como esse erro não é uma `InvalidNotificationEventException`, a mensagem
+  voltaria para a fila eternamente.
 - Qualquer **outra** exceção (por exemplo, uma falha ao gravar no DynamoDB)
   **não** é capturada — a mensagem não é confirmada, e o SQS a entrega de
   novo depois do timeout de visibilidade. Como a gravação é idempotente, essa
-  reentrega é seguro.
+  reentrega é segura.
 - Na leitura (`NotificationService.history`), os registros são reordenados em
   memória por `occurredAt` — porque a fila não garante ordem de chegada e a
   chave de ordenação do DynamoDB não é cronológica.
@@ -367,7 +434,7 @@ mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
 
 ## Estado atual vs. planejado
 
-| | Hoje (Fase 3) | Planejado (Fase 5) |
+| | Hoje (mecanismo da Fase 3, ainda em uso após a Fase 4) | Planejado (Fase 5) |
 |---|---|---|
 | Quem publica | `StockEventPublisher` chama `sqsTemplate.send` direto | Uma tabela `outbox_events` gravada na mesma transação do domínio |
 | Atomicidade banco+evento | Não — dual-write conhecido (D-30) | Sim — outbox garante atomicidade |

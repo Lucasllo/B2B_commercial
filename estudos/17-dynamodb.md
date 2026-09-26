@@ -60,7 +60,7 @@ Isso define uma chave **composta**, com duas partes:
 - **`sortKey`** (`RANGE` = sort key / chave de ordenação) — dentro da mesma
   "gaveta" (mesmo `productId`), decide a **ordem** e distingue um item do
   outro. No projeto, o valor é montado como `eventType + "#" + eventId`
-  (ex.: `"stock.adjusted#3f2a..."`), em `NotificationService.record()`.
+  (ex.: `"STOCK_ADJUSTED#3f2a..."`), em `NotificationService.record()`.
 
 Pensa numa gaveta de arquivos: `productId` escolhe a gaveta certa, `sortKey`
 é a etiqueta que diferencia cada papel dentro dessa gaveta. **Uma tabela
@@ -117,6 +117,14 @@ Os nomes `productId`/`sortKey` **precisam bater exatamente** com o
 key-schema criado pelo script do LocalStack — se um dos lados mudar sem o
 outro, a aplicação quebra ao tentar ler/gravar.
 
+Um limite importante do DynamoDB: ele **recusa itens maiores que 400 KB**.
+Como o campo `rawPayload` guarda o JSON inteiro do evento, um evento gigante
+(por exemplo, com um campo extra inesperado enorme) falharia **sempre** ao
+gravar — não é um erro passageiro que some numa nova tentativa. Por isso o
+`NotificationService.record()` recusa corpos acima de 64 KB **antes** mesmo
+de interpretar o JSON (WR-02): a mensagem é descartada com um log de aviso,
+em vez de ficar voltando para a fila num laço infinito.
+
 ## Como o Java acessa a tabela — `NotificationRepository`
 
 ```java
@@ -141,14 +149,15 @@ aparece pronto por injeção de dependência, graças à dependência declarada 
 configuram o `SqsTemplate`, apontando para o LocalStack:
 
 ```yaml
-cloud:
-  aws:
-    region:
-      static: us-east-1
-    credentials:
-      access-key: test
-      secret-key: test
-    endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
 orderflow:
   notifications:
     table-name: notification-history
@@ -205,7 +214,10 @@ não tem).
 Como o DynamoDB não garante a ordem "cronológica" dos itens devolvidos (a
 ordem segue a `sortKey`, que começa com o tipo do evento, não com a data), o
 `NotificationService.history()` reordena os resultados em memória, no Java,
-por `occurredAt`.
+por `occurredAt` — e, em caso de empate, pela `sortKey`, como critério de
+desempate. Esse `occurredAt` é capturado **dentro da transação** do ajuste
+no inventory-service (WR-04), então reflete a ordem real em que os ajustes
+foram commitados (ver [16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md)).
 
 ## Resumindo com uma analogia
 

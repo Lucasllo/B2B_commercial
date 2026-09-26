@@ -4,8 +4,8 @@
 
 **Versão: 3.5.16**, fixada em `pom.xml` via BOM (`spring-boot-dependencies`) importado
 no `dependencyManagement` — não via `spring-boot-starter-parent`. O reactor hospeda hoje
-4 microsserviços (`gateway`, `auth-service`, `catalog-service`, `inventory-service` —
-`order-service` e `notification-service` ainda não foram criados, ver
+6 módulos (`gateway`, `auth-service`, `catalog-service`, `inventory-service`,
+`notification-service` e `order-service`, ver
 [01-docker-compose.md](01-docker-compose.md)); importar o BOM manualmente dá controle
 total sobre a árvore de dependências, em vez de herdar tudo do parent padrão do Spring.
 
@@ -27,12 +27,21 @@ isso, `@PathVariable` e SpEL em `@PreAuthorize` quebrariam (bug real encontrado 
 de depurar em projetos Spring Cloud, por isso a versão foi travada e documentada como
 decisão de checkpoint humano.
 
-**Uso concreto**: hoje só o módulo `gateway` consome Spring Cloud, via
+**Uso concreto**: do trem de releases do Spring Cloud (`org.springframework.cloud`),
+hoje só o módulo `gateway` consome algo, via
 `spring-cloud-starter-gateway-server-webmvc`. Essa é a variante **não-reativa**
 (servlet-based) do Spring Cloud Gateway. O motivo: a gateway clássica
 (WebFlux/Project Reactor) obrigaria a equipe a aprender um segundo modelo de
 programação (reativo) só para rotear requisições, sem ganho de demonstração para a
 vaga-alvo — que valoriza domínio de Spring MVC/JPA tradicional, não reactive streams.
+
+**Cuidado com o nome parecido: Spring Cloud AWS.** O `inventory-service`
+(`spring-cloud-aws-starter-sqs`) e o `notification-service` (starters de SQS e de
+DynamoDB) usam o **Spring Cloud AWS** (`io.awspring.cloud`). Apesar do nome, ele é um
+projeto separado, que **não faz parte** do trem 2025.0.3 — tem versão própria
+(**3.4.2**), gerenciada pelo seu próprio BOM (`spring-cloud-aws-dependencies`), também
+importado no `dependencyManagement` do `pom.xml` raiz. A linha 3.4.x foi escolhida
+porque a 4.x já exige Spring Boot 4.
 
 O `auth-service`, por outro lado, **não depende de Spring Cloud** — ele só usa Spring
 Boot puro (Web, Security, OAuth2 Resource Server, JPA, Validation, Actuator) porque seu
@@ -46,6 +55,7 @@ roteamento.
   recém-lançada, mantendo o foco no que a vaga quer ver: arquitetura de microsserviços
   orientada a eventos, não malabarismo de upgrade.
 - **Gateway estático sem service discovery** (Eureka/Consul): com um número pequeno e
-  conhecido de serviços via docker-compose (4 hoje, crescendo fase a fase), service
+  conhecido de serviços via docker-compose (6 módulos hoje, com o gateway roteando para
+os outros 5), service
   discovery seria complexidade desnecessária — rotas estáticas em `application.yml`
   bastam.

@@ -9,6 +9,8 @@ server:
 spring:
   application:
     name: gateway
+  # D-05: o Gateway apenas roteia. Nenhuma configuração de spring.security existe neste arquivo —
+  # cada serviço downstream valida o JWT localmente e de forma independente (AUTH-03).
   cloud:
     gateway:
       server:
@@ -30,6 +32,18 @@ spring:
               uri: http://inventory-service:8083
               predicates:
                 - Path=/api/inventory/**
+              filters:
+                - StripPrefix=1
+            - id: notification-service-route
+              uri: http://notification-service:8084
+              predicates:
+                - Path=/api/notifications/**
+              filters:
+                - StripPrefix=1
+            - id: order-service-route
+              uri: http://order-service:8085
+              predicates:
+                - Path=/api/orders/**
               filters:
                 - StripPrefix=1
 
@@ -57,16 +71,20 @@ informação. Não afeta o comportamento funcional.
 ## Nenhuma configuração de segurança neste arquivo (decisão D-05)
 
 O `gateway` **não** valida tokens JWT. Ele só encaminha (roteia) requisições para o
-serviço certo — quem valida o token é cada serviço de destino (`auth-service`, e
-futuramente catalog/inventory/order), de forma independente. Conecta diretamente com
+serviço certo — quem valida o token é cada um dos cinco serviços de destino (`auth`,
+`catalog`, `inventory`, `notification` e `order`), de forma independente: cada um confere
+a assinatura, a expiração e o claim `iss`, que precisa ser `orderflow-auth-service` (ver
+[18-oidc-claim-iss.md](18-oidc-claim-iss.md)). Conecta diretamente com
 [06-jwks.md](06-jwks.md): cada serviço baixa a chave pública via
-`/.well-known/jwks.json` e valida localmente, sem depender do gateway para isso.
+`/.well-known/jwks.json` e valida localmente, sem depender do gateway para isso — com
+exceção do próprio `auth-service`, que é quem gera o par de chaves e por isso já tem a
+chave pública em memória, sem precisar baixá-la de si mesmo.
 
 ## `spring.cloud.gateway.server.webmvc.routes` — a lista de rotas
 
 A configuração central do gateway: uma lista de regras dizendo "se a requisição parecer
-com X, mande para o serviço Y". Cada item da lista é uma rota. Hoje existem três, uma
-por serviço de negócio — a estrutura é idêntica nas três, só muda `id`, `uri` e o
+com X, mande para o serviço Y". Cada item da lista é uma rota. Hoje existem cinco, uma
+por serviço de negócio — a estrutura é idêntica nas cinco, só muda `id`, `uri` e o
 caminho do `predicates`:
 
 ### `id: auth-service-route`
@@ -78,31 +96,37 @@ Para onde a requisição é encaminhada quando essa rota "casar". O endereço é
 `auth-service`, não `localhost` — dentro da rede interna criada pelo Docker Compose,
 cada serviço enxerga os outros pelo **nome do serviço** definido no
 `docker-compose.yml` como se fosse um endereço de DNS. A porta `8081` é a porta interna
-que o `auth-service` expõe. As duas rotas novas seguem o mesmo padrão:
-`catalog-service-route` aponta para `http://catalog-service:8082`, e
-`inventory-service-route` aponta para `http://inventory-service:8083` — cada uma com a
-porta interna do respectivo serviço.
+que o `auth-service` expõe. As outras quatro rotas seguem o mesmo padrão:
+`catalog-service-route` aponta para `http://catalog-service:8082`,
+`inventory-service-route` para `http://inventory-service:8083`,
+`notification-service-route` para `http://notification-service:8084` e
+`order-service-route` para `http://order-service:8085` — cada uma com a porta interna do
+respectivo serviço.
 
 ### `predicates: - Path=/api/auth/**,/api/companies/**`
 Um **predicate** é a condição que decide se essa rota deve ser usada para uma
 requisição específica. Aqui, a condição é baseada no caminho (`Path`) da URL: se a
 requisição começar com `/api/auth/` ou `/api/companies/` (o `**` significa "qualquer
 coisa depois disso"), essa rota é acionada. Ex: `/api/auth/login` bate nesse predicate.
-As rotas novas usam o mesmo mecanismo com prefixos diferentes:
-`Path=/api/products/**` para o catálogo e `Path=/api/inventory/**` para o estoque — cada
-predicate é específico o bastante para nunca colidir com as outras duas rotas.
+As outras rotas usam o mesmo mecanismo com prefixos diferentes:
+`Path=/api/products/**` para o catálogo, `Path=/api/inventory/**` para o estoque,
+`Path=/api/notifications/**` para as notificações e `Path=/api/orders/**` para os pedidos —
+cada predicate é específico o bastante para nunca colidir com as outras quatro rotas.
 
 ### `filters: - StripPrefix=1`
 Um **filter** modifica a requisição antes (ou depois) de ela ser encaminhada.
 `StripPrefix=1` remove o primeiro segmento do caminho da URL antes de repassar para o
-serviço de destino. As três rotas usam o mesmo filtro.
+serviço de destino. As cinco rotas usam o mesmo filtro.
 
 Na prática: uma requisição que chega no gateway como `/api/auth/login` é reescrita para
 `/auth/login` antes de ser enviada ao `auth-service` — porque o `auth-service` não
 conhece o prefixo `/api`, ele só expõe rotas como `/auth/login` diretamente (como visto
 no `SecurityConfig.java`, que libera exatamente `/auth/login`, sem `/api` na frente). O
-mesmo vale para as rotas novas: `/api/products` vira `/products` no `catalog-service`, e
-`/api/inventory/{id}` vira `/inventory/{id}` no `inventory-service`. O `/api` é uma
+mesmo vale para as outras rotas: `/api/products` vira `/products` no `catalog-service`,
+`/api/inventory/{id}` vira `/inventory/{id}` no `inventory-service`,
+`/api/notifications/{productId}` vira `/notifications/{productId}` no
+`notification-service`, e `/api/orders/{id}/approve` vira `/orders/{id}/approve` no
+`order-service`. O `/api` é uma
 convenção só do lado de fora, para deixar claro para quem consome a API que aquilo é um
 endpoint de backend; o gateway "descasca" esse prefixo antes de repassar.
 

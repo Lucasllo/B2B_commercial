@@ -74,8 +74,13 @@ onde sistemas esperam encontrar metadados públicos de um serviço.
 Essa rota está liberada para todo mundo (ver [05-security-config.md](05-security-config.md)):
 
 ```java
-.requestMatchers("/auth/login", "/.well-known/jwks.json", "/actuator/health/**").permitAll()
+.requestMatchers("/auth/login", "/.well-known/jwks.json", "/actuator/health/**",
+        "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
 ```
+
+(As rotas `swagger-ui`/`v3/api-docs` são da documentação da API — ver
+[05-security-config.md](05-security-config.md). A que importa aqui é
+`/.well-known/jwks.json`.)
 
 Faz sentido: se essa rota exigisse autenticação, seria um paradoxo — ninguém conseguiria
 buscar a chave pública (necessária para *validar* um token) sem já ter um token válido.
@@ -93,20 +98,41 @@ tem o objeto `rsaKey` inteiro (público + privado) em memória, então o `JwtDec
 chave pública diretamente do objeto Java, sem chamada HTTP: "validação local, sem
 chamada em tempo de execução a nenhum serviço".
 
+Além da assinatura e da expiração, esse decoder também exige que o claim `iss` do token
+seja `orderflow-auth-service` (a constante `ISSUER` do `JwtIssuerConfig`):
+
+```java
+decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
+```
+
 ## Para que serve o endpoint JWKS hoje
 
 Na Fase 1, só existiam `auth-service` e `gateway` no projeto, e esta seção previa que os
 próximos microsserviços precisariam validar os JWTs emitidos pelo `auth-service` sem ter
-a chave em memória. Isso já aconteceu: `catalog-service` e `inventory-service` (Fase 2)
-configuram exatamente esse `jwk-set-uri` apontando para
-`http://auth-service:8081/.well-known/jwks.json` no seu `application.yml`, e o Spring
+a chave em memória. Isso já aconteceu: os 4 resource servers — `catalog-service` e
+`inventory-service` (Fase 2), `notification-service` (Fase 3) e `order-service`
+(Fase 4) — configuram exatamente esse `jwk-set-uri` no seu `application.yml`, e no
+docker-compose ele aponta para `http://auth-service:8081/.well-known/jwks.json` (via a
+variável de ambiente `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI`). O Spring
 Security baixa a chave pública de lá automaticamente para conferir a assinatura dos
 tokens recebidos — sem nunca precisar perguntar ativamente "esse token é válido?" ao
-`auth-service` a cada requisição. `order-service` e `notification-service` (fases
-futuras) vão repetir o mesmo padrão.
+`auth-service` a cada requisição.
 
-Uma lacuna real encontrada na revisão de código da Fase 2: os dois serviços novos
-configuram `jwk-set-uri` (valida assinatura e expiração), mas não configuram um
-`issuer-uri` (validação de emissor) — só o decoder usado nos testes faz essa checagem.
-O risco é baixo hoje (só existe um emissor no sistema), mas é uma divergência entre o
-que o registro de ameaças da fase declarava e o que está em produção.
+Uma lacuna real foi encontrada na revisão de código da Fase 2: os serviços novos
+configuravam `jwk-set-uri` (valida assinatura e expiração), mas não configuravam um
+`issuer-uri` (validação de emissor) — só o decoder usado nos testes fazia essa checagem.
+O risco era baixo (só existe um emissor no sistema), mas era uma divergência entre o
+que o registro de ameaças da fase declarava e o que estava em produção.
+
+Essa lacuna **já foi corrigida** (quick task 260923-tj9, que fecha T-03-02/WR-07): hoje
+os 4 resource servers declaram
+
+```yaml
+issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:orderflow-auth-service}
+```
+
+Repare que o valor é um texto literal (`orderflow-auth-service`), não uma URL — igual à
+constante `ISSUER` do `JwtIssuerConfig` do `auth-service`. Como o `jwk-set-uri` também
+está definido, o Spring Boot **não** faz descoberta OIDC (não tenta buscar nada nesse
+"endereço"): ele só usa o `issuer-uri` como o valor esperado do claim `iss` do token.
+Detalhes em [18-oidc-claim-iss.md](18-oidc-claim-iss.md).

@@ -38,6 +38,19 @@ O nome segue uma convenção rígida que o Flyway exige: `V<número>__<descriç�
 `V1`, `V2` definem a **ordem** em que os arquivos devem ser aplicados — como capítulos
 de um livro, não dá para ler o capítulo 2 antes do capítulo 1.
 
+Os outros serviços que usam Postgres seguem exatamente o mesmo padrão — cada um com a
+sua pasta `db/migration/`, no **seu próprio schema** e com a **sua própria**
+`flyway_schema_history` (a "ficha de registro" explicada abaixo):
+
+- **`catalog-service`** — `V1__init_catalog_schema.sql`, cria a tabela `products`
+- **`inventory-service`** — `V1__init_inventory_schema.sql`, cria as tabelas
+  `inventory` e `stock_reservations`
+- **`order-service`** — `V1__init_order_schema.sql`, cria as tabelas `orders`,
+  `order_items` e `company_credit_lock` (essa última é a trava de crédito por empresa,
+  ver [21-credito-e-trava-por-empresa.md](21-credito-e-trava-por-empresa.md))
+
+O `notification-service` não tem migrations: ele não usa Postgres, e sim DynamoDB.
+
 ## Como o Flyway funciona, passo a passo
 
 1. Quando o `auth-service` liga, o Flyway olha para dentro do banco e procura uma
@@ -96,6 +109,13 @@ sozinho — só confere se o que as classes Java esperam bate com o que realment
 no banco (criado pelo Flyway). Se não bater, a aplicação nem liga, avisando o
 desenvolvedor do problema. Isso separa claramente as responsabilidades: Flyway comanda
 a estrutura do banco; Hibernate só a usa.
+
+**Curiosidade do `order-service`:** `order` é uma palavra reservada do SQL (a do
+`ORDER BY`). Por isso, no `application.yml` dele, o `default_schema` do Hibernate é
+escrito com aspas duplas dentro das aspas simples do YAML: `default_schema: '"order"'`.
+Sem as aspas duplas, o PostgreSQL leria `order` como o comando e rejeitaria o SQL com
+erro de sintaxe. Já o Flyway (`schemas: order`) e o `currentSchema=order` da URL do
+banco tratam o nome como texto simples e não precisam desse truque.
 
 ## Como isso funciona numa aplicação de produção
 

@@ -1,7 +1,9 @@
 # Docker Compose
 
 O `docker-compose.yml` define os serviços que sobem juntos, localmente, para rodar o
-projeto inteiro. Ele define 6 serviços, com dependências de saúde encadeadas
+projeto inteiro. Ele define 8 serviços (`postgres`, `localstack`, `auth-service`,
+`catalog-service`, `inventory-service`, `notification-service`, `order-service` e
+`gateway`), com dependências de saúde encadeadas
 (`depends_on: condition: service_healthy`) para garantir a ordem correta de subida.
 
 ## 1. `postgres` — banco relacional único
@@ -15,11 +17,23 @@ projeto inteiro. Ele define 6 serviços, com dependências de saúde encadeadas
 
 ## 2. `localstack` — emulação AWS local (SQS + DynamoDB)
 
+- Imagem `localstack/localstack:2026.08.3`
 - Exige `LOCALSTACK_AUTH_TOKEN` (alinhado com a mudança de política da LocalStack desde
   2026.03)
 - `SERVICES=sqs,dynamodb` limita os serviços emulados aos necessários
 - `PERSISTENCE=0` — estado não persiste entre restarts (aceitável para portfólio/dev)
-- Healthcheck no endpoint `/_localstack/health`
+- Exposto apenas em `127.0.0.1:4566`
+- **Init hook:** a pasta `localstack-init/ready.d` é montada em
+  `/etc/localstack/init/ready.d`. Quando o LocalStack fica pronto, ele roda o script
+  `01-create-notification-resources.sh`, que cria a fila SQS `notification-events-queue`
+  e a tabela DynamoDB `notification-history`. Nenhum serviço Java cria esses recursos —
+  esse script é o único lugar que faz isso.
+- **Healthcheck:** não usa só o endpoint `/_localstack/health`, porque ele responde
+  "saudável" *antes* de o init hook terminar (a fila e a tabela podem ainda não existir).
+  Em vez disso, o healthcheck roda
+  `awslocal sqs get-queue-url --queue-name notification-events-queue && awslocal dynamodb describe-table --table-name notification-history`
+  — ou seja, só dá "saudável" quando os recursos de verdade já existem. Assim, quem
+  depende do `localstack` só sobe quando a fila e a tabela estão lá.
 
 ## 3. `auth-service` — primeiro microsserviço da arquitetura
 
@@ -28,7 +42,7 @@ projeto inteiro. Ele define 6 serviços, com dependências de saúde encadeadas
 - Espera `postgres` e `localstack` saudáveis antes de subir
 - Conecta no Postgres usando `currentSchema=auth` — ou seja, é o padrão "schema por
   serviço" dentro de **uma única instância** Postgres
-- Exposto em `8081`, com healthcheck no Actuator
+- Exposto em `127.0.0.1:8081`, com healthcheck no Actuator
 
 ## 4. `catalog-service` — catálogo de produtos
 
@@ -41,28 +55,66 @@ projeto inteiro. Ele define 6 serviços, com dependências de saúde encadeadas
 
 ## 5. `inventory-service` — estoque e reserva atômica
 
-- Idêntico ao `catalog-service` em estrutura: build próprio, depende de `postgres` e
-  `auth-service`, sem depender do `localstack`
+- Parecido com o `catalog-service` em estrutura (build próprio), mas depende de
+  `postgres`, `auth-service` **e** `localstack` — porque, desde a Fase 3, ele publica
+  eventos de estoque numa fila SQS
+- Recebe `SPRING_CLOUD_AWS_ENDPOINT=http://localstack:4566` (nome do serviço no compose,
+  não `localhost`) para achar o LocalStack
 - Conecta no Postgres usando `currentSchema=inventory`
 - Exposto em `127.0.0.1:8083`, com healthcheck no Actuator
 - É o serviço que implementa a reserva de estoque protegida contra concorrência
   (lock otimista + reexecução automática) — ver `StockReservationConcurrencyIT`
 
-## 6. `gateway` — API Gateway
+## 6. `notification-service` — histórico de notificações
 
-- Depende de `auth-service`, `catalog-service` e `inventory-service` estarem
-  saudáveis — a lista cresceu à medida que cada novo serviço ganhou uma rota
+- Build próprio (`notification-service/Dockerfile`, mesmo padrão dos outros)
+- Espera `localstack` e `auth-service` saudáveis
+- **Não usa Postgres** — guarda o histórico no DynamoDB (tabela `notification-history`),
+  por isso não tem `SPRING_DATASOURCE_*`
+- Consome a fila `notification-events-queue` (via `SPRING_CLOUD_AWS_ENDPOINT=http://localstack:4566`)
+- Exposto em `127.0.0.1:8084`, com healthcheck no Actuator
+
+## 7. `order-service` — pedidos
+
+- Build próprio (`order-service/Dockerfile`, mesmo padrão)
+- Espera `postgres`, `auth-service` e `catalog-service` saudáveis
+- Conecta no Postgres usando `currentSchema=order`
+- Chama o `auth-service` e o `catalog-service` **direto pela rede do compose**, nunca pelo
+  gateway. As URLs vêm de variáveis de ambiente que apontam para o nome do serviço (não
+  `localhost`): `ORDERFLOW_AUTH_SERVICE_BASE_URL=http://auth-service:8081` e
+  `ORDERFLOW_CATALOG_SERVICE_BASE_URL=http://catalog-service:8082` — ver
+  [20-configuration-properties.md](20-configuration-properties.md) para como essas
+  variáveis viram propriedades Java
+- Exposto em `127.0.0.1:8085`, com healthcheck no Actuator
+
+## Como os resource servers acham as chaves do JWT
+
+Os 4 resource servers (`catalog-service`, `inventory-service`, `notification-service` e
+`order-service`) recebem a mesma variável
+`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://auth-service:8081/.well-known/jwks.json`
+— é daí que eles baixam a chave pública para validar a assinatura do token (ver
+[06-jwks.md](06-jwks.md)). O `issuer-uri` **não** é definido no compose: vale o valor
+padrão do `application.yml` de cada serviço (`orderflow-auth-service`).
+
+## 8. `gateway` — API Gateway
+
+- Depende de `auth-service`, `catalog-service`, `inventory-service`,
+  `notification-service` e `order-service` estarem saudáveis — a lista cresceu à medida
+  que cada novo serviço ganhou uma rota
 - Único serviço exposto sem bind a `127.0.0.1` (porta `8080` aberta), sendo o ponto de
   entrada externo do sistema
 
 ## Observações sobre o estágio atual do projeto
 
-- `auth-service`, `catalog-service`, `inventory-service` e `gateway` existem hoje —
-  `order` e `notification` ainda não foram adicionados ao compose, coerente com o
-  processo incremental "fase a fase" do projeto.
-- Nenhum dos quatro microsserviços depende do `localstack` para subir — ele está
-  provisionado no compose (SQS + DynamoDB emulados), mas ainda sem nenhum consumidor.
-  A saga (order → inventory → notification) ainda não está representada aqui.
+- Os 6 módulos da aplicação (`auth-service`, `catalog-service`, `inventory-service`,
+  `notification-service`, `order-service` e `gateway`) já estão no compose, todos atrás
+  do gateway — o projeto foi crescendo "fase a fase" até aqui.
+- `auth-service`, `inventory-service` e `notification-service` esperam o `localstack`
+  ficar saudável antes de subir. Já existe um fluxo assíncrono de verdade: o
+  `inventory-service` publica eventos de estoque no SQS e o `notification-service` os
+  consome e grava no DynamoDB. A saga completa (order → inventory → notification) ainda
+  **não** está implementada — esse é o objetivo da Fase 5.
 - A escolha de schema único por Postgres (`orderflow` com schemas separados) é uma
   decisão específica já tomada, diferente da alternativa "um Postgres por serviço" —
-  agora com três schemas em uso (`auth`, `catalog`, `inventory`).
+  agora com quatro schemas em uso (`auth`, `catalog`, `inventory`, `order`). O
+  `notification-service` não usa Postgres.

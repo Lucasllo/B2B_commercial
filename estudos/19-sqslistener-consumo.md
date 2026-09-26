@@ -125,8 +125,10 @@ try {
 }
 ```
 
-- Se `record(payload)` lançar `InvalidNotificationEventException` (JSON
-  malformado, campo obrigatório faltando etc.) — esse erro **é capturado
+- Se `record(payload)` lançar `InvalidNotificationEventException` (corpo
+  acima de 64 KB, JSON malformado ou que não é um objeto / com conteúdo
+  sobrando depois do objeto, campo obrigatório faltando, tipo de evento
+  desconhecido, quantidade negativa) — esse erro **é capturado
   aqui**, só vira um log de aviso, e o método **retorna normalmente**.
   Resultado: a mensagem é confirmada e some da fila. Faz sentido: se a
   mensagem é estruturalmente inválida, tentar de novo nunca vai fazer ela
@@ -138,6 +140,22 @@ try {
   seguro porque a gravação no DynamoDB é idempotente por chave (ver
   [17-dynamodb.md](17-dynamodb.md)): reprocessar a mesma mensagem depois não
   duplica nada.
+
+Esse raciocínio de "deixa voltar para a fila" só vale para falhas
+**passageiras** (o DynamoDB fora do ar por um instante, por exemplo). Uma
+falha **permanente** do DynamoDB — como um item acima de 400 KB, que ele
+sempre vai recusar — faria a mensagem voltar para sempre. É por isso que o
+`NotificationService` checa o limite de 64 KB logo no começo (WR-02): isso
+transforma esse caso num `InvalidNotificationEventException`, ou seja, em
+descarte com log, em vez de um laço infinito.
+
+Um detalhe de segurança sobre o `log.warn`: parte da mensagem da exceção
+pode vir de fora (por exemplo, o tipo de evento desconhecido que chegou no
+JSON). Esse valor externo passa antes por `sanitizeForLog`, no
+`NotificationService`: caracteres de controle (incluindo U+0085, U+2028 e
+U+2029, que muitas ferramentas de log tratam como quebra de linha) viram
+`_`, e o valor é cortado em 64 caracteres. Assim, ninguém consegue mandar
+uma mensagem que "forje" uma linha de log falsa (WR-06).
 
 ## Resumindo com uma analogia
 

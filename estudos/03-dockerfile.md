@@ -1,7 +1,8 @@
 # Dockerfile
 
-Os quatro `Dockerfile` do projeto (`auth-service/Dockerfile`, `gateway/Dockerfile`,
-`catalog-service/Dockerfile` e `inventory-service/Dockerfile`) seguem o mesmo padrão de
+Os seis `Dockerfile` do projeto (`auth-service/Dockerfile`, `gateway/Dockerfile`,
+`catalog-service/Dockerfile`, `inventory-service/Dockerfile`,
+`notification-service/Dockerfile` e `order-service/Dockerfile`) seguem o mesmo padrão de
 **build multi-stage**, já que todos são módulos do mesmo reactor Maven.
 
 ## O que é Docker e por que usar
@@ -54,8 +55,29 @@ versão exata garante builds reproduzíveis.
 Cada linha do Dockerfile cria uma "camada". O Docker reaproveita camadas que não
 mudaram desde o último build, economizando tempo.
 
-Por isso o Dockerfile copia primeiro só o `pom.xml` (lista de dependências) e baixa as
-dependências antes de copiar o código-fonte (`src/`). Baixar dependências é lento; mudar
+Por isso o Dockerfile copia primeiro só o necessário para resolver dependências — a
+pasta `.mvn/`, o `mvnw`, o `pom.xml` raiz e o `pom.xml` de **cada um dos 6 módulos** —,
+roda `dependency:go-offline` (baixa as dependências) e só depois copia o código-fonte
+(`src/`) do módulo. Por que os poms de todos os módulos, e não só o do serviço sendo
+buildado? Porque o `pom.xml` raiz declara os 6 módulos, e o reactor do Maven se recusa a
+rodar se faltar o `pom.xml` de algum módulo declarado.
+
+```dockerfile
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+COPY auth-service/pom.xml auth-service/pom.xml
+COPY gateway/pom.xml gateway/pom.xml
+COPY catalog-service/pom.xml catalog-service/pom.xml
+COPY inventory-service/pom.xml inventory-service/pom.xml
+COPY notification-service/pom.xml notification-service/pom.xml
+COPY order-service/pom.xml order-service/pom.xml
+RUN chmod +x mvnw && ./mvnw -B -pl auth-service -am dependency:go-offline
+
+COPY auth-service/src auth-service/src
+RUN ./mvnw -B -pl auth-service -am package -DskipTests
+```
+
+Baixar dependências é lento; mudar
 uma linha de código é rápido. Com essa ordem, mudar código só refaz a compilação,
 reaproveitando as dependências já baixadas.
 
@@ -64,8 +86,8 @@ reaproveitando as dependências já baixadas.
 **Maven** compila projetos Java e gerencia suas dependências.
 
 Este projeto tem um **Maven multi-módulo** (o "reactor"): um `pom.xml` "pai" na raiz, e
-cada microsserviço (`auth-service`, `gateway`, `catalog-service`, `inventory-service`) é
-um módulo filho com seu próprio `pom.xml`.
+cada microsserviço (`auth-service`, `gateway`, `catalog-service`, `inventory-service`,
+`notification-service`, `order-service`) é um módulo filho com seu próprio `pom.xml`.
 
 `-pl auth-service -am` diz ao Maven: "compile só o módulo `auth-service`, mas também
 compile (`-am` = "also make") qualquer módulo do qual ele dependa" — evita compilar
