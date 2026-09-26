@@ -43,8 +43,7 @@ public class ReservationResultListener {
             if (event instanceof StockReservationFailedEvent failed) {
                 orderSagaService.applyReservationFailed(failed);
             } else if (event instanceof StockReservedEvent reserved) {
-                // TODO(05-03 Task 2 RED): wiring comentado de proposito para confirmar RED —
-                // restaurado no commit GREEN da mesma task.
+                orderSagaService.applyStockReserved(reserved);
             }
         } catch (InvalidSagaMessageException e) {
             log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
