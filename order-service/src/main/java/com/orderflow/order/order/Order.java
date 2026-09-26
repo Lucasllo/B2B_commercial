@@ -76,6 +76,21 @@ public class Order {
     @Column(name = "reservation_started_at")
     private OffsetDateTime reservationStartedAt;
 
+    /** Código de cancelamento (D-53) — nulo até {@link #cancel}, coluna do CHECK da V2. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_code", length = 40)
+    private CancellationCode cancellationCode;
+
+    /** Texto legível montado por {@code CancellationReasons} — nunca texto livre da mensagem (D-56). */
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    @Column(name = "confirmed_at")
+    private OffsetDateTime confirmedAt;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
     private List<OrderItem> items = new ArrayList<>();
@@ -168,9 +183,44 @@ public class Order {
         this.reservationStartedAt = now;
     }
 
+    /**
+     * Aplica o resultado de FALHA da reserva (ORD-05, D-53, D-64) — chamado só por {@link
+     * com.orderflow.order.saga.OrderSagaService#applyReservationFailed}, sob a trava de linha do
+     * pedido ({@code SAGA_RESULT_LOCK}), depois de já ter confirmado {@code status == RESERVING}.
+     * Guarda por estado aqui também, para que um erro de programação (chamada a partir de outro
+     * estado) nunca vire uma resposta ao cliente: {@code decidedBy}/{@code decidedAt}/{@code
+     * reason} nunca são tocados — pertencem à decisão do vendedor/sistema, não ao resultado da
+     * saga (D-53).
+     */
+    public void cancel(CancellationCode code, String reason, OffsetDateTime now) {
+        requireReserving();
+        this.status = OrderStatus.CANCELLED;
+        this.cancellationCode = code;
+        this.cancellationReason = reason;
+        this.cancelledAt = now;
+    }
+
+    /**
+     * Aplica o resultado de SUCESSO da reserva (ORD-05, D-57) — chamado só por {@link
+     * com.orderflow.order.saga.OrderSagaService#applyStockReserved} a partir de {@code RESERVING}.
+     * O estoque continua reservado no inventory-service; a baixa física de {@code quantity_on_hand}
+     * é da Fase 6 (D-57) — nada aqui chama o inventory-service.
+     */
+    public void confirm(OffsetDateTime now) {
+        requireReserving();
+        this.status = OrderStatus.CONFIRMED;
+        this.confirmedAt = now;
+    }
+
     private void requireCreated() {
         if (this.status != OrderStatus.CREATED) {
             throw new IllegalStateException("Order " + id + " is not CREATED (status=" + status + ")");
+        }
+    }
+
+    private void requireReserving() {
+        if (this.status != OrderStatus.RESERVING) {
+            throw new IllegalStateException("Order " + id + " is not RESERVING (status=" + status + ")");
         }
     }
 

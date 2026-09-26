@@ -124,7 +124,7 @@ class OrderCreationServiceTest {
         when(authServiceClient.getCreditLimit(eq(companyId), anyString())).thenReturn(creditLimit);
 
         OrderResponse expectedResponse = new OrderResponse(UUID.randomUUID(), companyId, "APPROVED",
-                new BigDecimal("40.00"), "buyer-1", null, "SYSTEM", null, null, List.of());
+                new BigDecimal("40.00"), "buyer-1", null, "SYSTEM", null, null, null, null, null, null, List.of());
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<PricedItem>> pricedItemsCaptor = ArgumentCaptor.forClass(List.class);
         when(orderService.createWithCreditCheck(eq(companyId), eq("buyer-1"), pricedItemsCaptor.capture(), eq(creditLimit)))

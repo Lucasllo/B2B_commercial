@@ -89,6 +89,9 @@ orderflow:
     # Fila de comandos consumida pelo inventory-service (D-61) — precisa bater exatamente com o
     # nome criado pelo init hook localstack-init/ready.d/02-create-order-saga-resources.sh.
     inventory-commands-queue: inventory-commands-queue
+    # Fila do resultado da reserva (StockReserved/StockReservationFailed), consumida por
+    # ReservationResultListener (05-03, D-61) — mesmo init hook cria as duas filas.
+    order-events-queue: order-events-queue
   outbox:
     # Intervalo do relay @Scheduled do outbox, em milissegundos (D-59, Claude's Discretion). Valor
     # curto nos testes (application-test.yml) para não pagar segundos de espera por teste.

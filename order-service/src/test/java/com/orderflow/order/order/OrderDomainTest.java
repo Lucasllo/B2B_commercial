@@ -225,6 +225,55 @@ class OrderDomainTest {
         assertThat(pending.getDecidedBy()).isNull();
     }
 
+    @Test
+    void cancelFromReservingRecordsCodeReasonAndCancelledAtWithoutTouchingDecisionFields() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        order.approveAutomatically(now);
+        OffsetDateTime reservationInstant = now.plusSeconds(1);
+        order.startReservation(reservationInstant);
+
+        OffsetDateTime cancelInstant = now.plusSeconds(2);
+        order.cancel(CancellationCode.INSUFFICIENT_STOCK, "Estoque insuficiente: produto SKU-1 — disponível 0, solicitado 1",
+                cancelInstant);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(order.getCancellationCode()).isEqualTo(CancellationCode.INSUFFICIENT_STOCK);
+        assertThat(order.getCancellationReason())
+                .isEqualTo("Estoque insuficiente: produto SKU-1 — disponível 0, solicitado 1");
+        assertThat(order.getCancelledAt()).isEqualTo(cancelInstant);
+        assertThat(order.getConfirmedAt()).isNull();
+        // decidedBy/decidedAt/reason pertencem à decisão do sistema/vendedor — a saga nunca os toca (D-53).
+        assertThat(order.getDecidedBy()).isEqualTo(Order.SYSTEM_DECIDER);
+        assertThat(order.getDecidedAt()).isEqualTo(now);
+        assertThat(order.getReason()).isEqualTo(Order.AUTO_APPROVAL_REASON);
+    }
+
+    @Test
+    void cancelFromAnyStatusOtherThanReservingThrowsWithoutChangingState() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        Order created = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        assertThatThrownBy(() -> created.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(created.getStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(created.getCancellationCode()).isNull();
+
+        Order approved = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        approved.approveAutomatically(now);
+        assertThatThrownBy(() -> approved.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(approved.getStatus()).isEqualTo(OrderStatus.APPROVED);
+
+        Order reserving = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        reserving.approveAutomatically(now);
+        reserving.startReservation(now.plusSeconds(1));
+        reserving.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now.plusSeconds(2));
+        assertThatThrownBy(() -> reserving.cancel(CancellationCode.INSUFFICIENT_STOCK, "y", now.plusSeconds(3)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(reserving.getCancellationReason()).isEqualTo("x");
+    }
+
     private PricedItem pricedItem() {
         return new PricedItem(1, UUID.randomUUID(), "SKU-1", "Item 1", new BigDecimal("10.00"), 1, new BigDecimal("10.00"));
     }
