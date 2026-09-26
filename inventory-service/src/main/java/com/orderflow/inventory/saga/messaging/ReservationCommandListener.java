@@ -46,8 +46,6 @@ public class ReservationCommandListener {
             log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
             return;
         }
-        // TEMP RED-EVIDENCE: wiring removida de proposito para provar que
-        // ReservationCommandConsumptionIT falha sem ela (TDD RED) — restaurada no commit GREEN.
-        // inventoryService.reserveAll(command.orderId(), command.reservationId(), command.items());
+        inventoryService.reserveAll(command.orderId(), command.reservationId(), command.items());
     }
 }
