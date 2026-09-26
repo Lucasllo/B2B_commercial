@@ -5,6 +5,7 @@ import com.orderflow.order.credit.CreditPolicy;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.dto.OrderSummaryResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
+import com.orderflow.order.saga.ReservationSagaStarter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,12 +30,21 @@ public class OrderService {
 
     private final CompanyCreditLocker creditLocker;
     private final OrderRepository orderRepository;
+    private final ReservationSagaStarter sagaStarter;
 
-    public OrderService(CompanyCreditLocker creditLocker, OrderRepository orderRepository) {
+    public OrderService(CompanyCreditLocker creditLocker, OrderRepository orderRepository,
+                         ReservationSagaStarter sagaStarter) {
         this.creditLocker = creditLocker;
         this.orderRepository = orderRepository;
+        this.sagaStarter = sagaStarter;
     }
 
+    /**
+     * Dentro do limite: grava o pedido (para ter o id), entra na saga de reserva de estoque
+     * (D-48/D-50) — {@link Order#startReservation} + comando no outbox, mesma transação que
+     * adquiriu a trava — e só então monta a resposta, já em {@code RESERVING} (D-54, sem 202 e sem
+     * requisição bloqueante).
+     */
     @Transactional
     public OrderResponse createWithCreditCheck(UUID companyId, String createdBy, List<PricedItem> pricedItems,
                                                 BigDecimal creditLimit) {
@@ -62,6 +72,9 @@ public class OrderService {
         }
 
         order = orderRepository.save(order);
+        if (order.getStatus() == OrderStatus.APPROVED) {
+            sagaStarter.start(order, now);
+        }
         return OrderResponse.from(order);
     }
 
