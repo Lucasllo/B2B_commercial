@@ -211,14 +211,26 @@ public class InventoryService {
      * {@code reserve}/{@code release} deste bean (auto-invocacao pula o proxy, ver javadoc da
      * classe) — le e escreve direto pelos repositorios.
      *
-     * <p>Task 1 (este commit): qualquer linha ja existente em {@code stock_reservations} para o par
-     * ({@code reservationId}, produtos do comando) e tratada como anomalia tecnica —
-     * {@link IllegalStateException}, vai para reentrega e DLQ. O replay idempotente (D-65) e a
-     * distincao entre reserva nova/replay/livro inconsistente chegam na Task 2.
+     * <p><b>Tres situacoes pelo livro {@code stock_reservations} (D-65):</b> (1) nenhuma linha para
+     * o par ({@code reservationId}, produtos do comando) → reserva nova (avalia tudo antes de
+     * escrever, tudo-ou-nada, D-55); (2) linha para TODOS os produtos do comando e nenhuma liberada
+     * → replay idempotente: nada e alterado em {@code inventory} nem em {@code stock_reservations},
+     * mas um novo {@code StockReservedEvent} (novo {@code eventId}, mesmos {@code items}) e gravado
+     * no outbox e devolvido como sucesso — o comando e reentregue (D-59 entrega pelo menos uma vez)
+     * ou reenviado apos uma falha anterior que nao deixou rastro (nada foi gravado no livro, ver
+     * abaixo), e o consumidor (order-service) precisa do resultado de novo; (3) qualquer outra
+     * combinacao (so parte dos produtos com linha, ou alguma linha ja liberada) e anomalia tecnica —
+     * so acontece se alguem reservar por REST com o id de um pedido — {@link IllegalStateException}
+     * citando o {@code orderId}, vai para reentrega e DLQ. Uma falha de negocio anterior (estoque
+     * insuficiente, produto sem linha) NUNCA e reemitida identica: nada foi gravado no livro nesse
+     * caso, entao o comando cai na situacao (1) e e reavaliado contra o estoque atual — se o
+     * vendedor ajustou o estoque nesse meio-tempo, a resposta pode mudar de falha para sucesso (a
+     * partir de 05-04 o order-service compensa um sucesso tardio para um pedido ja CANCELLED com
+     * {@code ReleaseStock}, D-64).
      *
-     * <p>Passos: ordena as linhas por {@code productId} (ordem estavel de escrita evita deadlock
-     * entre dois pedidos com produtos em comum); avalia TODAS as linhas antes de escrever qualquer
-     * coisa — produto sem linha de estoque falha com {@code available=0} ({@code
+     * <p>Passos da reserva nova: ordena as linhas por {@code productId} (ordem estavel de escrita
+     * evita deadlock entre dois pedidos com produtos em comum); avalia TODAS as linhas antes de
+     * escrever qualquer coisa — produto sem linha de estoque falha com {@code available=0} ({@code
      * PRODUCT_NOT_STOCKED}, D-58), quantidade acima do disponivel falha com o disponivel real
      * ({@code INSUFFICIENT_STOCK}); se houver qualquer falha, grava {@code
      * StockReservationFailedEvent} no outbox e devolve o resultado sem tocar em {@code inventory}
@@ -239,9 +251,12 @@ public class InventoryService {
         var existingReservations =
                 stockReservationRepository.findByReservationIdAndProductIdIn(reservationId, productIds);
         if (!existingReservations.isEmpty()) {
+            // TEMP RED-EVIDENCE (Task 2): ramo de replay removido de proposito para provar que
+            // IdempotentReservationIT falha sem ele (TDD RED) — restaurado no commit GREEN.
             throw new IllegalStateException(
-                    "stock_reservations ja possui linha(s) para reservationId=" + reservationId
-                            + " (pedido " + orderId + ") — reserva nao processada");
+                    "stock_reservations em estado inconsistente para reservationId=" + reservationId
+                            + " (pedido " + orderId + "): livro parcialmente preenchido ou com linha liberada"
+                            + " — reserva nao processada");
         }
 
         Map<UUID, Inventory> inventoryByProductId = new HashMap<>();
@@ -293,4 +308,22 @@ public class InventoryService {
                                                  List<ReservationLine> lines) {
         throw new ReservationConflictException();
     }
+
+    /**
+     * [Rule 1 - Bug] {@code reserveAll} lanca {@link IllegalStateException} para o livro
+     * inconsistente (anomalia tecnica, nunca retentavel — nao esta em {@code retryFor}), mas o
+     * aspecto de reexecucao do Spring Retry intercepta QUALQUER excecao escapando de um metodo
+     * {@code @Retryable}, nao so as listadas em {@code retryFor}: sem um {@code @Recover} cujo tipo
+     * de parametro corresponda, a excecao real fica soterrada por {@code
+     * ExhaustedRetryException("Cannot locate recovery method")}, escondendo o motivo real do
+     * chamador (achado durante o teste do livro inconsistente, IdempotentReservationIT). Este
+     * metodo apenas relanca a excecao original, preservando a mensagem que cita o {@code orderId}.
+     */
+    // TEMP RED-EVIDENCE (Task 2): recover de IllegalStateException removido de proposito —
+    // restaurado no commit GREEN.
+    // @Recover
+    // public ReservationOutcome recoverReserveAllInconsistentBook(IllegalStateException ex, UUID orderId,
+    //                                                              String reservationId, List<ReservationLine> lines) {
+    //     throw ex;
+    // }
 }

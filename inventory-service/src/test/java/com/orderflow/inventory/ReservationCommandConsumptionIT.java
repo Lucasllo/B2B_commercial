@@ -99,6 +99,18 @@ class ReservationCommandConsumptionIT extends AbstractIntegrationTest {
                 Instant.class, orderId.toString(), eventType);
     }
 
+    private int reservationQuantity(String reservationId, UUID productId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT quantity FROM inventory.stock_reservations WHERE reservation_id = ? AND product_id = ?",
+                Integer.class, reservationId, productId);
+    }
+
+    private boolean reservationReleased(String reservationId, UUID productId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT released FROM inventory.stock_reservations WHERE reservation_id = ? AND product_id = ?",
+                Boolean.class, reservationId, productId);
+    }
+
     // -----------------------------------------------------------------------------------------
     // Task 1 — caminhos de falha (D-68/Success Criteria 3: escritos antes do caminho feliz).
     // -----------------------------------------------------------------------------------------
@@ -217,5 +229,57 @@ class ReservationCommandConsumptionIT extends AbstractIntegrationTest {
 
         assertThat(output.getOut() + output.getErr()).contains("WARN").contains("descartada");
         assertThat(outboxRowCount(unknownTypeOrderId)).isZero();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Task 2 — caminho feliz (depois dos de falha, D-68/Success Criteria 3).
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    void sufficientStockReservesEverythingAndRespondsStockReserved() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        setStock(productId, 10);
+
+        sagaQueues().sendCommand(reserveStockCommand(orderId, "[" + itemJson(productId, 3) + "]"));
+
+        List<JsonNode> results = sagaQueues().awaitResultsForOrder(orderId, 1);
+        assertThat(results).hasSize(1);
+        JsonNode event = results.get(0);
+        assertThat(event.get("eventType").asText()).isEqualTo("StockReserved");
+        assertThat(event.get("orderId").asText()).isEqualTo(orderId.toString());
+        assertThat(event.get("reservationId").asText()).isEqualTo(orderId.toString());
+        assertThat(event.get("items")).hasSize(1);
+        assertThat(event.get("items").get(0).get("productId").asText()).isEqualTo(productId.toString());
+        assertThat(event.get("items").get(0).get("quantity").asInt()).isEqualTo(3);
+
+        mockMvc.perform(get("/inventory/" + productId)
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantityOnHand").value(10))
+                .andExpect(jsonPath("$.quantityReserved").value(3))
+                .andExpect(jsonPath("$.quantityAvailable").value(7));
+        assertThat(stockReservationCount(orderId.toString())).isEqualTo(1);
+        assertThat(reservationQuantity(orderId.toString(), productId)).isEqualTo(3);
+        assertThat(reservationReleased(orderId.toString(), productId)).isFalse();
+    }
+
+    @Test
+    void twoItemsWithStockReservesBothWithOneRowEach() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        UUID productId1 = UUID.randomUUID();
+        UUID productId2 = UUID.randomUUID();
+        setStock(productId1, 5);
+        setStock(productId2, 5);
+
+        String items = "[" + itemJson(productId1, 2) + "," + itemJson(productId2, 4) + "]";
+        sagaQueues().sendCommand(reserveStockCommand(orderId, items));
+
+        List<JsonNode> results = sagaQueues().awaitResultsForOrder(orderId, 1);
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).get("eventType").asText()).isEqualTo("StockReserved");
+        assertThat(stockReservationCount(orderId.toString())).isEqualTo(2);
+        assertThat(reservationQuantity(orderId.toString(), productId1)).isEqualTo(2);
+        assertThat(reservationQuantity(orderId.toString(), productId2)).isEqualTo(4);
     }
 }
