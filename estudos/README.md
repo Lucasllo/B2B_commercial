@@ -68,3 +68,7 @@ pasta é para consulta própria durante o aprendizado.
     checagem de crédito, consulta com 404 para outras empresas e paginação com ordenação fixa)
     e `OrderDecisionService` (aprovação/rejeição manual com trava + `refresh`), e por que o
     `@Transactional` exige classes separadas
+23. [Anotações de repository](23-anotacoes-de-repository.md) — consultas derivadas pelo nome
+    do método, `@Query` (JPQL vs. SQL nativo) e `@Param`, `@Modifying` e a memória do JPA,
+    `@Lock` e os tipos de trava pessimista/otimista, e outras como `@Repository`,
+    `@EntityGraph` (problema N+1), `@QueryHints` e `@Procedure`
