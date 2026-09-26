@@ -144,7 +144,7 @@ Plans:
   4. Reentregar o mesmo comando de reserva duas vezes decrementa o estoque uma única vez — consumidor idempotente comprovado por teste que republica o evento.
   5. Um teste E2E com Testcontainers (PostgreSQL + LocalStack reais) percorre o fluxo completo criar → reservar → confirmar e também o caminho de falha → cancelar, executável por um único comando.
 
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano tem testes com LocalStack.*
@@ -155,7 +155,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — inventory-service: consome `ReserveStock`, reserva tudo ou nada com `reserveAll` (`@Retryable` + `@Transactional` no próprio método), idempotente pelo livro `stock_reservations`, e responde `StockReserved`/`StockReservationFailed` pelo próprio outbox — falha provada antes do sucesso (ORD-06, ORD-05)
+- [x] 05-02-PLAN.md — inventory-service: consome `ReserveStock`, reserva tudo ou nada com `reserveAll` (`@Retryable` + `@Transactional` no próprio método), idempotente pelo livro `stock_reservations`, e responde `StockReserved`/`StockReservationFailed` pelo próprio outbox — falha provada antes do sucesso (ORD-06, ORD-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
-| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 1/6 | In Progress|  |
+| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 2/6 | In Progress|  |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 

@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-09-26T14:07:48.491Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-09-26T15:23:49.395Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 05 execution started
-state_head: eeea85be8904f1830c3d98505552908b3868f840
+state_head: a5c168e3616b0bdaae6a6f6ff608887618c054e7
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 57
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 ## Current Position
 
 Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 05 execution started
 
@@ -71,6 +71,7 @@ Progress: [██████░░░░] 57%
 | Phase 04 P04 | 20min | 3 tasks | 10 files |
 | Phase 04 P05 | 27min | 2 tasks | 8 files |
 | Phase 05 P01 | 33min | 2 tasks | 32 files |
+| Phase 05 P02 | 89min | 2 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 5]: SAGA_MESSAGE_CONTRACT - envelope plano eventId/eventType/occurredAt + campos do tipo; ReserveStock com reservationId=orderId.toString() e items na ordem de lineNumber
 - [Phase 05]: [Phase 5]: SAGA_TIMEOUT_CLOCK=reservation_started_at - coluna propria gravada na entrada em RESERVING; o job de timeout (05-04) conta a partir dela, nao de decided_at
 - [Phase 05]: [Phase 5]: OUTBOX_RELAY_DEFAULTS=relay-interval 1000ms (200ms em teste), batch-size 20, ordem attempts,created_at,id
+- [Phase 05]: [Fase 5]: Livro parcialmente preenchido em stock_reservations e sempre anomalia tecnica (IllegalStateException), nunca reemitido como resultado de negocio
+- [Phase 05]: [Fase 5]: spring.cloud.aws.sqs.listener.poll-timeout=0s no inventory-service - long polling padrao do SQS estourava o apiCallAttemptTimeout compartilhado com a chamada sincrona de PUT /inventory
 
 ### Pending Todos
 
@@ -139,6 +142,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-26T14:07:48.314Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-09-26T15:23:49.210Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
