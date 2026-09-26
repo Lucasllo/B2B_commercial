@@ -55,3 +55,11 @@ pasta é para consulta própria durante o aprendizado.
 19. [`@SqsListener` — como o notification-service recebe mensagens](19-sqslistener-consumo.md)
     — o container ouvinte em segundo plano, long polling, por que o parâmetro é `String`, e
     como o retorno (ou exceção) do método decide se a mensagem é confirmada ou volta à fila
+20. [`@ConfigurationProperties` — o `ClientProperties`](20-configuration-properties.md) —
+    como o `order-service` lê do `application.yml` os endereços e timeouts dos serviços que
+    chama, por que `URI`/`Duration` e `@Validated` fazem a aplicação falhar cedo na
+    inicialização, e como o `ClientConfig` transforma isso em `RestClient`
+21. [Crédito e trava por empresa (pasta `credit`)](21-credito-e-trava-por-empresa.md) — a
+    regra de limite de crédito (`CreditPolicy`), a condição de corrida entre pedidos
+    simultâneos da mesma empresa, e como a linha de trava com `SELECT ... FOR UPDATE` e
+    `Propagation.MANDATORY` faz os pedidos passarem pela checagem um de cada vez
