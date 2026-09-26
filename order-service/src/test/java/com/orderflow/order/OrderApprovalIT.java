@@ -123,6 +123,8 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         UUID smallLimitCompanyId = UUID.randomUUID();
         stub().registerCreditLimit(smallLimitCompanyId, new BigDecimal("1000.00"));
         String smallLimitBuyerToken = TestJwt.buyerToken(smallLimitCompanyId);
+        // Fase 5 (D-50, deviation Rule 1 — 05-01-SUMMARY.md): decisão automática dentro do limite
+        // já entra na saga na mesma transação, então o status persistido é RESERVING, não APPROVED.
         MvcResult autoApprovedResult = mockMvc.perform(post("/orders")
                         .header("Authorization", "Bearer " + smallLimitBuyerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +132,7 @@ class OrderApprovalIT extends AbstractIntegrationTest {
                                 {"items":[{"productId":"%s","quantity":1}]}
                                 """.formatted(autoApprovedProductId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.decidedBy").value("SYSTEM"))
                 .andReturn();
         JsonNode autoApprovedJson = objectMapper.readTree(autoApprovedResult.getResponse().getContentAsString());
@@ -177,7 +179,8 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         String rejectedReason = rejectJson.get("reason").asText();
 
         // O pedido rejeitado não consome crédito: novo pedido de 100.00 cabe exatamente no limite
-        // de 100.00 (exposição continua zero) -> APPROVED.
+        // de 100.00 (exposição continua zero) -> RESERVING (Fase 5, D-50: decisão automática
+        // dentro do limite já entra na saga na mesma transação).
         UUID fittingProductId = UUID.randomUUID();
         stub().registerProduct(fittingProductId, "SKU-R2", "Produto R2", new BigDecimal("100.00"), "ACTIVE");
         MvcResult approvedResult = mockMvc.perform(post("/orders")
@@ -187,7 +190,7 @@ class OrderApprovalIT extends AbstractIntegrationTest {
                                 {"items":[{"productId":"%s","quantity":1}]}
                                 """.formatted(fittingProductId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andReturn();
         JsonNode approvedJson = objectMapper.readTree(approvedResult.getResponse().getContentAsString());
         UUID approvedOrderId = UUID.fromString(approvedJson.get("id").asText());

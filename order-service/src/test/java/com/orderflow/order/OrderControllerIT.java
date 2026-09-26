@@ -38,7 +38,8 @@ class OrderControllerIT extends AbstractIntegrationTest {
         stub().registerCreditLimit(companyId, new BigDecimal("1000.00"));
         stub().registerProduct(productId, "SKU-P1", "Parafuso", new BigDecimal("100.00"), "ACTIVE");
 
-        // Pedido 1: 3 unidades a 100.00 = 300.00 — dentro do limite (1000.00) → APPROVED.
+        // Pedido 1: 3 unidades a 100.00 = 300.00 — dentro do limite (1000.00) → RESERVING (Fase 5,
+        // D-50: a decisão automática dentro do limite já entra na saga na mesma transação).
         MvcResult firstResult = mockMvc.perform(post("/orders")
                         .header("Authorization", "Bearer " + buyerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -46,7 +47,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
                                 {"items":[{"productId":"%s","quantity":3}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.companyId").value(companyId.toString()))
                 .andExpect(jsonPath("$.createdBy").value(buyerId.toString()))
                 .andExpect(jsonPath("$.decidedBy").value("SYSTEM"))
@@ -105,7 +106,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.reason").doesNotExist());
 
         // Pedido 3: 7 unidades a 100.00 = 700.00 — o pendente não consome, então
-        // 300.00 + 700.00 = 1000.00 → APPROVED (igualdade aprova, D-36).
+        // 300.00 + 700.00 = 1000.00 → RESERVING (igualdade aprova, D-36).
         mockMvc.perform(post("/orders")
                         .header("Authorization", "Bearer " + buyerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,7 +114,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
                                 {"items":[{"productId":"%s","quantity":7}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
+                .andExpect(jsonPath("$.status").value("RESERVING"));
 
         // Um companyId estranho no corpo é ignorado — o pedido nasce na empresa do JWT, e o stub
         // registra a chamada de limite no caminho da empresa do JWT, nunca no da outra.
@@ -159,7 +160,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + buyerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(orderId.toString()))
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andExpect(jsonPath("$.total").value(50.00))
                 .andExpect(jsonPath("$.decidedBy").value("SYSTEM"))
                 .andExpect(jsonPath("$.items[0].productId").value(productId.toString()));

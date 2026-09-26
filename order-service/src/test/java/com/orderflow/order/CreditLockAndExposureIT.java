@@ -34,19 +34,21 @@ class CreditLockAndExposureIT extends AbstractIntegrationTest {
     @Test
     void sumTotalByCompanyIdAndStatusInSumsExactlyTheCreditConsumingStatuses() {
         UUID companyId = UUID.randomUUID();
-        // Um pedido por estado, na ordem da ORD-10, com totais 1, 2, 4, 8, 16, 32, 64 e 128.
+        // Um pedido por estado, na ordem da ORD-10, com totais 1, 2, 4, 8, 16, 32, 64, 128 e 256
+        // (RESERVING, D-52 — a Fase 5 acrescenta este estado ao conjunto que consome crédito).
         insertOrder(companyId, OrderStatus.CREATED, "1.00");
         insertOrder(companyId, OrderStatus.PENDING_APPROVAL, "2.00");
         insertOrder(companyId, OrderStatus.APPROVED, "4.00");
         insertOrder(companyId, OrderStatus.REJECTED, "8.00");
+        insertOrder(companyId, OrderStatus.RESERVING, "256.00");
         insertOrder(companyId, OrderStatus.CONFIRMED, "16.00");
         insertOrder(companyId, OrderStatus.CANCELLED, "32.00");
         insertOrder(companyId, OrderStatus.SHIPPED, "64.00");
         insertOrder(companyId, OrderStatus.DELIVERED, "128.00");
 
-        // APPROVED + CONFIRMED + SHIPPED + DELIVERED = 4 + 16 + 64 + 128 = 212.
+        // APPROVED + RESERVING + CONFIRMED + SHIPPED + DELIVERED = 4 + 256 + 16 + 64 + 128 = 468.
         BigDecimal exposure = orderRepository.sumTotalByCompanyIdAndStatusIn(companyId, OrderStatus.CREDIT_CONSUMING);
-        assertThat(exposure).isEqualByComparingTo("212.00");
+        assertThat(exposure).isEqualByComparingTo("468.00");
 
         BigDecimal noOrdersExposure = orderRepository.sumTotalByCompanyIdAndStatusIn(
                 UUID.randomUUID(), OrderStatus.CREDIT_CONSUMING);
@@ -54,9 +56,10 @@ class CreditLockAndExposureIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void creditConsumingIsExactlyApprovedConfirmedShippedDelivered() {
+    void creditConsumingIsExactlyApprovedReservingConfirmedShippedDelivered() {
         assertThat(OrderStatus.CREDIT_CONSUMING).containsExactlyInAnyOrder(
-                OrderStatus.APPROVED, OrderStatus.CONFIRMED, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+                OrderStatus.APPROVED, OrderStatus.RESERVING, OrderStatus.CONFIRMED,
+                OrderStatus.SHIPPED, OrderStatus.DELIVERED);
     }
 
     @Test
@@ -106,7 +109,8 @@ class CreditLockAndExposureIT extends AbstractIntegrationTest {
         // Pedido REJECTED de outra empresa — nunca consome, e nunca vaza entre empresas.
         insertOrder(otherCompanyId, OrderStatus.REJECTED, "500.00");
 
-        // 0.00 (REJECTED não consome) + 100.00 = 100.00 → APPROVED (igualdade aprova, D-36).
+        // 0.00 (REJECTED não consome) + 100.00 = 100.00 → RESERVING (igualdade aprova, D-36; Fase
+        // 5, D-50: decisão automática dentro do limite já entra na saga).
         mockMvc.perform(post("/orders")
                         .header("Authorization", "Bearer " + otherBuyerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +118,7 @@ class CreditLockAndExposureIT extends AbstractIntegrationTest {
                                 {"items":[{"productId":"%s","quantity":1}]}
                                 """.formatted(otherProductId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
+                .andExpect(jsonPath("$.status").value("RESERVING"));
     }
 
     private void insertOrder(UUID companyId, OrderStatus status, String total) {

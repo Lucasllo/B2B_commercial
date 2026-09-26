@@ -12,6 +12,10 @@ spring:
         default_schema: '"order"'
 
 orderflow:
+  outbox:
+    # 200ms nos testes (vs. 1000ms em produção) — os testes de saga esperam o relay publicar em
+    # até 15s (Awaitility); um intervalo curto evita que a suíte pague segundos de espera ociosa.
+    relay-interval: 200
   clients:
     # Timeouts baixos nos testes — os cenários de indisponibilidade do stub (parada deliberada)
     # não podem prender a suíte de testes por segundos.

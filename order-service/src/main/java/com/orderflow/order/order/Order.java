@@ -23,11 +23,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Entidade da tabela {@code orders} ({@code V1__init_order_schema.sql}). Nasce sempre {@code
- * CREATED} (fábrica {@link #create}) e transiciona para {@code APPROVED} ou {@code
- * PENDING_APPROVAL} na mesma transação que a cria (D-45) — {@code CREATED} é o estado de origem
- * do domínio, nunca observado pela API desta fase. Transição a partir de outro estado que não
- * {@code CREATED} é erro de programação — {@link IllegalStateException}, nunca resposta ao
+ * Entidade da tabela {@code orders} ({@code V1__init_order_schema.sql}, {@code
+ * V2__order_reservation_saga.sql}). Nasce sempre {@code CREATED} (fábrica {@link #create}) e
+ * transiciona para {@code APPROVED} ou {@code PENDING_APPROVAL} na mesma transação que a cria
+ * (D-45) — {@code CREATED} é o estado de origem do domínio, nunca observado pela API desta fase.
+ * A partir da Fase 5 (D-50), {@code APPROVED} é apenas um passo lógico da decisão: quem chama
+ * {@link #approveAutomatically}/{@code approveManually} chama {@link #startReservation} em
+ * seguida, na mesma transação — nenhum pedido novo repousa persistido em {@code APPROVED}; o
+ * status observável é sempre {@code RESERVING}. Transição a partir de um estado que não satisfaz a
+ * guarda do método é erro de programação — {@link IllegalStateException}, nunca resposta ao
  * cliente.
  */
 @Entity
@@ -69,6 +73,9 @@ public class Order {
     @Column(length = 500)
     private String reason;
 
+    @Column(name = "reservation_started_at")
+    private OffsetDateTime reservationStartedAt;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
     private List<OrderItem> items = new ArrayList<>();
@@ -93,6 +100,12 @@ public class Order {
         return order;
     }
 
+    /**
+     * Decisão automática (D-45): grava {@code decidedBy}/{@code decidedAt}/{@code reason} como
+     * antes da Fase 5. A transição lógica para {@code APPROVED} nunca é observada pela API — quem
+     * chama esta transição em seguida chama {@link #startReservation} na mesma transação (D-50),
+     * então o status persistido de um pedido novo dentro do limite é sempre {@code RESERVING}.
+     */
     public void approveAutomatically(OffsetDateTime now) {
         requireCreated();
         this.status = OrderStatus.APPROVED;
@@ -141,9 +154,29 @@ public class Order {
         this.reason = reason;
     }
 
+    /**
+     * Ponto de entrada único da saga (D-48, chamado só por {@link
+     * com.orderflow.order.saga.ReservationSagaStarter#start}) — exige {@code APPROVED} (o passo
+     * lógico da decisão, D-50); qualquer outro estado é erro de programação, nunca resposta ao
+     * cliente ({@link IllegalStateException}, mesmo estilo de {@link #requireCreated}), porque
+     * {@link com.orderflow.order.saga.ReservationSagaStarter} é sempre chamado logo depois de
+     * {@link #approveAutomatically}/{@code approveManually} dentro da mesma transação.
+     */
+    public void startReservation(OffsetDateTime now) {
+        requireApproved();
+        this.status = OrderStatus.RESERVING;
+        this.reservationStartedAt = now;
+    }
+
     private void requireCreated() {
         if (this.status != OrderStatus.CREATED) {
             throw new IllegalStateException("Order " + id + " is not CREATED (status=" + status + ")");
+        }
+    }
+
+    private void requireApproved() {
+        if (this.status != OrderStatus.APPROVED) {
+            throw new IllegalStateException("Order " + id + " is not APPROVED (status=" + status + ")");
         }
     }
 

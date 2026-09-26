@@ -111,14 +111,16 @@ class CreditLimitBoundaryConcurrencyIT {
         List<ConcurrentRequests.Result> results = ConcurrentRequests.fireTogether(requests);
         assertNoServerErrors(results);
 
-        long approvedCount = results.stream().filter(r -> "APPROVED".equals(bodyStatus(r.body()))).count();
+        // Fase 5 (D-50): a decisão automática dentro do limite já entra na saga na mesma
+        // transação — o status persistido/observável de um pedido novo aprovado é RESERVING.
+        long approvedCount = results.stream().filter(r -> "RESERVING".equals(bodyStatus(r.body()))).count();
         long pendingCount = results.stream().filter(r -> "PENDING_APPROVAL".equals(bodyStatus(r.body()))).count();
-        assertThat(approvedCount).as("exact APPROVED count for limit %s", creditLimit).isEqualTo(expectedApproved);
+        assertThat(approvedCount).as("exact RESERVING count for limit %s", creditLimit).isEqualTo(expectedApproved);
         assertThat(pendingCount).isEqualTo(contenders - expectedApproved);
 
         BigDecimal expectedSum = unitPrice.multiply(BigDecimal.valueOf(expectedApproved));
         BigDecimal actualSum = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(total), 0) FROM \"order\".orders WHERE company_id = ? AND status = 'APPROVED'",
+                "SELECT COALESCE(SUM(total), 0) FROM \"order\".orders WHERE company_id = ? AND status = 'RESERVING'",
                 BigDecimal.class, companyId);
         assertThat(actualSum).isEqualByComparingTo(expectedSum);
 
@@ -126,11 +128,20 @@ class CreditLimitBoundaryConcurrencyIT {
                 "SELECT COUNT(*) FROM \"order\".company_credit_lock WHERE company_id = ?",
                 Integer.class, companyId);
         assertThat(lockRows).isEqualTo(1);
+
+        // Asserção nova (T-05-01): o número de linhas ReserveStock no outbox da empresa é igual ao
+        // número de pedidos RESERVING — nunca pedido avançado sem comando, nem comando sem pedido.
+        Integer outboxRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"order\".outbox_event e "
+                        + "JOIN \"order\".orders o ON e.aggregate_id = o.id::text "
+                        + "WHERE o.company_id = ? AND e.event_type = 'ReserveStock'",
+                Integer.class, companyId);
+        assertThat(outboxRows).isEqualTo(expectedApproved);
     }
 
     private long countApproved(UUID companyId) {
         return jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM \"order\".orders WHERE company_id = ? AND status = 'APPROVED'",
+                "SELECT COUNT(*) FROM \"order\".orders WHERE company_id = ? AND status = 'RESERVING'",
                 Long.class, companyId);
     }
 

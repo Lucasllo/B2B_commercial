@@ -49,6 +49,21 @@ spring:
       pageable:
         default-page-size: 20
         max-page-size: 100
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        # Literais fixos, de propósito não ligados às variáveis AWS_* do ambiente do
+        # desenvolvedor — mesmo motivo já registrado em inventory-service/notification-service.
+        access-key: test
+        secret-key: test
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+      sqs:
+        # O padrão do Spring Cloud AWS é criar a fila ausente quando o cliente a procura — isso
+        # esconderia um init hook do LocalStack quebrado. "fail" faz o envio falhar alto em vez de
+        # mascarar o problema (mesmo motivo do inventory-service).
+        queue-not-found-strategy: fail
 
 management:
   endpoints:
@@ -70,6 +85,16 @@ springdoc:
   show-actuator: false
 
 orderflow:
+  messaging:
+    # Fila de comandos consumida pelo inventory-service (D-61) — precisa bater exatamente com o
+    # nome criado pelo init hook localstack-init/ready.d/02-create-order-saga-resources.sh.
+    inventory-commands-queue: inventory-commands-queue
+  outbox:
+    # Intervalo do relay @Scheduled do outbox, em milissegundos (D-59, Claude's Discretion). Valor
+    # curto nos testes (application-test.yml) para não pagar segundos de espera por teste.
+    relay-interval: 1000
+    # Tamanho do lote travado por tick do relay (SELECT ... FOR UPDATE SKIP LOCKED).
+    batch-size: 20
   clients:
     # O RestClient do Spring não tem timeout padrão — um vizinho travado seguraria a thread para
     # sempre (lição do WR-03 da Fase 3, agora D-41). As URLs são fixas por configuração, nunca

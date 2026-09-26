@@ -101,18 +101,52 @@ class OrderDomainTest {
     }
 
     @Test
-    void orderStatusHasExactlyTheEightStatesOfOrd10InOrder() {
+    void orderStatusHasExactlyTheNineStatesInCheckOrder() {
         assertThat(OrderStatus.values()).containsExactly(
                 OrderStatus.CREATED,
                 OrderStatus.PENDING_APPROVAL,
                 OrderStatus.APPROVED,
                 OrderStatus.REJECTED,
+                OrderStatus.RESERVING,
                 OrderStatus.CONFIRMED,
                 OrderStatus.CANCELLED,
                 OrderStatus.SHIPPED,
                 OrderStatus.DELIVERED);
         assertThat(OrderStatus.CREDIT_CONSUMING).isEqualTo(Set.of(
-                OrderStatus.APPROVED, OrderStatus.CONFIRMED, OrderStatus.SHIPPED, OrderStatus.DELIVERED));
+                OrderStatus.APPROVED, OrderStatus.RESERVING, OrderStatus.CONFIRMED,
+                OrderStatus.SHIPPED, OrderStatus.DELIVERED));
+    }
+
+    @Test
+    void startReservationFromApprovedMovesToReservingAndRecordsTheInstantElseThrowsWithoutChangingState() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order approved = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        approved.approveAutomatically(now);
+
+        OffsetDateTime reservationInstant = now.plusSeconds(1);
+        approved.startReservation(reservationInstant);
+        assertThat(approved.getStatus()).isEqualTo(OrderStatus.RESERVING);
+        assertThat(approved.getReservationStartedAt()).isEqualTo(reservationInstant);
+
+        // A partir de CREATED, PENDING_APPROVAL, REJECTED ou já RESERVING — erro de programação,
+        // nunca resposta ao cliente, sem alterar status nem reservationStartedAt.
+        Order created = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        assertThatThrownBy(() -> created.startReservation(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(created.getReservationStartedAt()).isNull();
+
+        Order pending = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        pending.holdForApproval();
+        assertThatThrownBy(() -> pending.startReservation(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(pending.getReservationStartedAt()).isNull();
+
+        Order rejected = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        rejected.holdForApproval();
+        rejected.reject("seller-1", "sem histórico", now);
+        assertThatThrownBy(() -> rejected.startReservation(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(rejected.getReservationStartedAt()).isNull();
+
+        assertThatThrownBy(() -> approved.startReservation(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(approved.getReservationStartedAt()).isEqualTo(reservationInstant);
     }
 
     @Test

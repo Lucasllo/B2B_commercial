@@ -74,6 +74,16 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!--
+          SqsTemplate (produtor, usado só pelo OutboxRelay) e @SqsListener (consumidor, chega em
+          05-03) para a saga de reserva de estoque (ORD-04). Já provado em inventory-service e
+          notification-service desde a Fase 3 — sem versão, vem do BOM
+          io.awspring.cloud:spring-cloud-aws-dependencies importado no pom raiz.
+        -->
+        <dependency>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-starter-sqs</artifactId>
+        </dependency>
 
         <!-- Dependências de teste -->
         <!-- MockMvc, AssertJ, JUnit 5 e Mockito para os testes de integração -->
@@ -98,6 +108,23 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Container LocalStack real usado por ReservationCommandPublishingIT — Spring Cloud AWS
+          não oferece @ServiceConnection para LocalStack (03-RESEARCH.md Pitfall A), as
+          propriedades são registradas à mão via @DynamicPropertySource, mesmo padrão já provado em
+          inventory-service/notification-service.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>localstack</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Asserções assíncronas de espera de provisionamento do LocalStack e leitura da fila -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
