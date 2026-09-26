@@ -72,3 +72,7 @@ pasta é para consulta própria durante o aprendizado.
     do método, `@Query` (JPQL vs. SQL nativo) e `@Param`, `@Modifying` e a memória do JPA,
     `@Lock` e os tipos de trava pessimista/otimista, e outras como `@Repository`,
     `@EntityGraph` (problema N+1), `@QueryHints` e `@Procedure`
+24. [Pasta `scripts` — testes de fumaça](24-scripts-smoke.md) — o que é um smoke test e como
+    ele difere dos testes Java, o "modo rigoroso" do Bash, como os scripts rodam `curl` dentro
+    do container do Gateway, e o que cada passo de `smoke-notification-flow.sh` e
+    `smoke-order-flow.sh` prova sobre o sistema ligado de verdade
