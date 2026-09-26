@@ -116,7 +116,7 @@ escrever a palavra `Bearer` — a UI acrescenta o prefixo sozinha) e então use 
 qualquer operação.
 
 A UI e o spec JSON (`/v3/api-docs`) são deliberadamente acessíveis sem token — é uma ferramenta
-local de desenvolvimento, e as portas 8081/8082/8083/8084 estão ligadas apenas a `127.0.0.1` no
+local de desenvolvimento, e as portas 8081/8082/8083/8084/8085 estão ligadas apenas a `127.0.0.1` no
 `docker-compose.yml`. Essa liberação deveria ser fechada num eventual profile de produção.
 
 ### Autenticação e empresas (Fase 1)
