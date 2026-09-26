@@ -20,10 +20,10 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - [ ] Empresa compradora é uma entidade própria (nome, limite de crédito) com usuários vinculados — não é só um atributo do usuário
 - [ ] Vendedor gerencia catálogo de produtos (criar/atualizar produtos e preços)
 - [ ] Vendedor gerencia níveis de estoque por produto
-- [ ] Empresa compradora cria pedido selecionando produtos do catálogo
-- [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação
-- [ ] Vendedor aprova ou rejeita pedidos pendentes de aprovação
-- [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos
+- [ ] Empresa compradora cria pedido selecionando produtos do catálogo — *entregue na Fase 4 (order-service, itens validados e precificados pelo catalog-service, snapshot gravado)*
+- [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação — *regra de exposição acumulada entregue na Fase 4 (APPROVED automático sob trava pessimista por empresa); a confirmação via reserva de estoque chega na Fase 5*
+- [ ] Vendedor aprova ou rejeita pedidos pendentes de aprovação — *entregue na Fase 4 (decidedBy/decidedAt/reason, 409 fora de PENDING_APPROVAL)*
+- [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos — *entregue na Fase 4 (escopo por `company_id` do JWT, 404 idêntico para pedido de outra empresa)*
 - [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação)
 - [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade
 - [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada)
@@ -82,6 +82,9 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | Fase 3 publica direto (dual-write) do inventory-service, após o commit, e adia o Outbox para a Fase 5 (D-29/D-30) | Isola o encanamento SQS/DynamoDB antes da saga; a perda de evento fica observável em log ERROR e declarada no README | ✓ Aceito temporariamente — Fase 3 |
 | Idempotência do histórico pela chave `productId` + `STOCK_ADJUSTED#<eventId>` com `putItem` sem condição | Reentrega do SQS sobrescreve em vez de duplicar, sem precisar de tabela de deduplicação | ✓ Good — Fase 3 (IT + smoke na stack real) |
 | Resource servers validam o `iss` do JWT (`issuer-uri` junto de `jwk-set-uri`) e os testes usam o decoder de produção | Fecha a ameaça T-03-02; testes que trocam o decoder inteiro escondiam a falta da checagem | ✓ Good — quick 260923-tj9 |
+| Decisão de crédito serializada por empresa: linha `company_credit_lock` com `PESSIMISTIC_WRITE` antes da soma da exposição, na mesma transação do INSERT/decisão; toda chamada HTTP a vizinhos acontece antes da transação | Evita dois pedidos simultâneos aprovados além do limite sem segurar a trava durante I/O de rede | ✓ Good — Fase 4 (concorrência por socket real) |
+| order-service falha fechado (503) quando catálogo ou auth-service não respondem, e não aprova por omissão | Sem limite confiável não há decisão; aprovação fail-open seria elevação de privilégio | ✓ Good — Fase 4 |
+| Estado APPROVED não reserva estoque nem confirma o pedido nesta fase | Reserva assíncrona com Outbox é o escopo isolado da Fase 5; limitação declarada no README | ✓ Aceito temporariamente — Fase 4 |
 
 ## Evolution
 
@@ -101,4 +104,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-09-24 após a Fase 3*
+*Última atualização: 2026-09-25 após a Fase 4*

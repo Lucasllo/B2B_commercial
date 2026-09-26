@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Esqueleto Vertical — Infraestrutura, Autenticação e Empresas** - Todo o sistema sobe com um comando e um usuário real se autentica pelo Gateway recebendo um JWT com papel e empresa (completed 2026-09-19)
 - [x] **Phase 2: Catálogo e Estoque** - O vendedor mantém produtos e níveis de estoque, o comprador enxerga o catálogo, e a reserva já é atômica contra concorrência (completed 2026-09-20)
 - [x] **Phase 3: Primeira Integração Assíncrona — Histórico de Notificações** - Um evento publicado no SQS vira registro consultável no DynamoDB, provando o encanamento antes da saga (completed 2026-09-23)
-- [ ] **Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito** - O comprador cria pedidos do catálogo e a regra de aprovação por crédito funciona, ainda sem saga
+- [x] **Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito** - O comprador cria pedidos do catálogo e a regra de aprovação por crédito funciona, ainda sem saga (completed 2026-09-25)
 - [ ] **Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação** - O Core Value: reserva assíncrona com Transactional Outbox terminando sempre em CONFIRMED ou CANCELLED
 - [ ] **Phase 6: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido** - Transportadora simulada, rastreio, SHIPPED/DELIVERED e a linha do tempo completa nas notificações
 - [ ] **Phase 7: Endurecimento, Observabilidade e Entrega** - OpenAPI por serviço, Correlation-ID nos logs, testes completos, pipeline de CI verde e ADRs em português
@@ -110,7 +110,7 @@ Plans:
   4. O comprador lista e abre o detalhe apenas dos pedidos da própria empresa; o vendedor lista e abre o detalhe de todos os pedidos.
   5. Dois pedidos concorrentes do mesmo comprador na fronteira do limite de crédito não passam ambos na verificação — checagem transacional com bloqueio comprovada por teste.
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -187,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Esqueleto Vertical — Infraestrutura, Autenticação e Empresas | 5/5 | Complete    | 2026-09-19 |
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
-| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | In Progress|  |
+| 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 0/TBD | Not started | - |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |

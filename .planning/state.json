@@ -21,7 +21,7 @@
     {
       "number": "4",
       "name": "Núcleo do Pedido — Criação e Aprovação por Limite de Crédito",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "5",
@@ -41,8 +41,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 04 of 7 · 43% · ready to verify"
+    "label": "Advance to the next step (plan phase 5)",
+    "reason": "Phase 5 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-25T23:54:17.159Z"
+  "updated_at": "2026-09-26T00:34:17.150Z"
 }

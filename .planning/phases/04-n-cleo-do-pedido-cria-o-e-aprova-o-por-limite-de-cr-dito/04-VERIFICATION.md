@@ -1,9 +1,10 @@
 ---
 phase: 04-n-cleo-do-pedido-cria-o-e-aprova-o-por-limite-de-cr-dito
 verified: 2026-09-25T22:30:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 covered_files:
+
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/04-n-cleo-do-pedido-cria-o-e-aprova-o-por-limite-de-cr-dito/04-01-PLAN.md"
   - ".planning/phases/04-n-cleo-do-pedido-cria-o-e-aprova-o-por-limite-de-cr-dito/04-01-SUMMARY.md"
@@ -32,10 +33,12 @@ covered_files:
   - "order-service/src/main/java/com/orderflow/order/order/OrderService.java"
   - "order-service/src/main/java/com/orderflow/order/order/OrderStatus.java"
   - "scripts/smoke-order-flow.sh"
+
 covered_digest: "v1:sha256:72888a082ae3f15426366c0c686bdbe6808655435ca7177c54c87ea2fb462ade"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Com a stack no ar (`docker compose up -d --wait`), abrir `http://localhost:8085/swagger-ui.html`, clicar em Authorize com um token de BUYER (gerado pelo `scripts/smoke-order-flow.sh`), executar `POST /orders` e `GET /orders` via Try it out; depois ler as seções \"Como a aprovação por crédito funciona\" e \"Limitações conhecidas (Fase 4)\" do README.md; ao terminar, `docker compose down`."
     expected: "Os cinco endpoints de pedido aparecem com o cadeado (bearerAuth); o Try it out com token funciona e sem token devolve 401; o README explica com clareza a regra de exposição acumulada e diz explicitamente que APPROVED ainda não reserva estoque nem confirma o pedido."
     why_human: "Legibilidade da Swagger UI e clareza do texto para um avaliador externo não são verificáveis por grep — item deferido pelo planner de `checkpoint:human-verify` para o fim da fase (04-05-PLAN.md Task 2 `<human-check>`, harvested em 04-05-SUMMARY.md linha 226)."
@@ -129,6 +132,7 @@ Nenhum requisito órfão: `.planning/REQUIREMENTS.md` mapeia ORD-01, ORD-02, ORD
 Nenhum marcador de dívida (`TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER`) encontrado em `order-service/src/main/java`. Nenhum stub, handler vazio ou dado estático hardcoded identificado nos arquivos de produção revisados.
 
 `04-REVIEW.md` (revisão de código já concluída, 67 arquivos, 0 critical, 2 warning, 4 info) foi lido e suas conclusões conferem com a leitura independente desta verificação:
+
 - **WR-01** (info arquitetural, não bloqueante): `GET /orders` serializa `Page<T>` cru — risco de contrato de API instável entre versões do Spring Data, não um bug funcional hoje.
 - **WR-02** (info, não bloqueante): `AuthenticationEntryPoint` não define charset explícito no 401 — risco latente só se uma mensagem com acentuação for adicionada a esse handler específico.
 - **IN-01 a IN-04**: código morto, soma duplicada por conveniência, Dockerfiles repetidos, ausência de guarda para limite de crédito negativo vindo do auth-service — todos de manutenibilidade, nenhum bloqueia o objetivo da fase.
