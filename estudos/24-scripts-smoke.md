@@ -253,6 +253,13 @@ e [22-services-de-pedido.md](22-services-de-pedido.md) explicam, só que testado
 Os valores foram **escolhidos a dedo** para testar a fronteira do limite: R$ 400 cabe, R$ 700 a
 mais não cabe, e depois da aprovação manual até R$ 100 já não cabe.
 
+> **Atenção (27/09/2026):** este script foi escrito na Fase 4 e ainda não foi atualizado para a
+> Fase 5. Desde a saga de reserva (ver [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md)),
+> aprovar um pedido, automática ou manualmente, devolve **`RESERVING`** em vez de `APPROVED`. Os
+> passos **5 e 11** ainda conferem `APPROVED`, então o script deve falhar no passo 5 se rodar
+> hoje. A regra de crédito da tabela continua valendo, porque `RESERVING` também consome
+> crédito. O que muda é só o status esperado.
+
 ### A função `do_request`: uma requisição, duas informações
 
 ```bash

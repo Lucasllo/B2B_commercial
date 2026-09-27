@@ -201,6 +201,14 @@ Recebe os itens já precificados e o limite já lido. Em detalhes na nota 21, ma
 3. Soma quanto a empresa já deve (a exposição)
 4. Cabe no limite? **Aprova automaticamente.** Não cabe? **Fica pendente** para o vendedor
 5. Salva no banco
+6. Se foi aprovado, **entra na saga**: `sagaStarter.start(order, now)` muda o status para
+   `RESERVING` e grava o comando `ReserveStock` no outbox, **na mesma transação** (Fase 5, ver
+   [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md))
+
+Por isso um pedido dentro do limite **responde `RESERVING`**, não `APPROVED`. A aprovação
+continua registrada (`decidedBy = SYSTEM`, `decidedAt`), mas `APPROVED` virou só um passo
+dentro da transação, nunca o status gravado. O comprador recebe o 201 antes de o estoque ser
+tocado; o resultado da reserva chega depois, por fila.
 
 Quem muda o status não é o service: é o próprio pedido, com `order.approveAutomatically(now)`
 e `order.holdForApproval()`. O service decide **qual** transição chamar, e a classe `Order`
@@ -278,6 +286,7 @@ Quando um pedido estoura o limite, ele fica `PENDING_APPROVAL`. Um vendedor (pap
 @Transactional
 public OrderResponse approve(UUID orderId, String sellerId, String reason) {
     Order order = decide(orderId, o -> o.approveManually(sellerId, reason, currentInstant()));
+    sagaStarter.start(order, order.getDecidedAt());   // Fase 5: RESERVING + ReserveStock no outbox
     return OrderResponse.from(order);
 }
 
@@ -288,7 +297,12 @@ public OrderResponse reject(UUID orderId, String sellerId, String reason) {
 }
 ```
 
-Os dois métodos são quase iguais. A única diferença é **qual ação** fazer no pedido. Em vez
+Desde a Fase 5, o `approve` tem uma linha a mais: a aprovação manual entra na **mesma saga** da
+aprovação automática, pelo mesmo `ReservationSagaStarter`, e responde 200 com o pedido já em
+`RESERVING`. A rejeição não muda: pedido rejeitado nunca pede estoque.
+
+Tirando essa linha, os dois métodos são quase iguais. A única diferença é **qual ação** fazer no
+pedido. Em vez
 de repetir o código, os dois chamam um método comum, `decide`, e passam a ação como
 parâmetro.
 
@@ -352,14 +366,20 @@ sujeira": um objeto alterado está "sujo" e precisa ser gravado).
 Comprador: POST /orders
    → OrderController           (exige papel BUYER, lê company_id e sub do JWT)
    → OrderCreationService      (sem transação: duplicados → catálogo → total → limite)
-   → OrderService              (com transação: trava → exposição → APPROVED ou PENDING_APPROVAL)
+   → OrderService              (com transação: trava → exposição → RESERVING ou PENDING_APPROVAL)
    ← 201 Created
 
 Se ficou PENDING_APPROVAL:
 Vendedor: GET /orders?status=PENDING_APPROVAL   → OrderService.list  (a fila de aprovação)
 Vendedor: POST /orders/{id}/approve ou /reject  → OrderDecisionController (exige SELLER_ADMIN)
-   → OrderDecisionService      (trava → relê → aprova/rejeita)
+   → OrderDecisionService      (trava → relê → aprova (→ RESERVING) ou rejeita (→ REJECTED))
+
+Se ficou RESERVING (Fase 5, assíncrono):
+   OutboxRelay → inventory-commands-queue → inventory-service reserva
+   → order-events-queue → OrderSagaService → CONFIRMED ou CANCELLED
 ```
+
+A última parte está em [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
 
 ## Resumindo com uma analogia
 

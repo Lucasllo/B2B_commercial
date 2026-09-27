@@ -39,8 +39,12 @@ Em português: **"o que a empresa já deve + o valor deste pedido novo é menor 
 limite?"**
 
 - **`exposure`** (exposição): a soma dos pedidos da empresa que já estão consumindo
-  crédito. São os pedidos com status `APPROVED`, `CONFIRMED`, `SHIPPED` ou `DELIVERED`, lista
-  definida num lugar só, em `OrderStatus.CREDIT_CONSUMING`.
+  crédito. São os pedidos com status `APPROVED`, `RESERVING`, `CONFIRMED`, `SHIPPED` ou
+  `DELIVERED`, lista definida num lugar só, em `OrderStatus.CREDIT_CONSUMING`. Desde a Fase 5,
+  um pedido aprovado passa direto para `RESERVING` (ver
+  [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md)); `APPROVED` fica na lista
+  só por compatibilidade. Um pedido `CANCELLED` pela saga sai da lista, então **devolve o
+  crédito**.
 - **`orderTotal`**: o valor do pedido novo.
 - **`creditLimit`**: o limite da empresa, que vem do `auth-service`.
 

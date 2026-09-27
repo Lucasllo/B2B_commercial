@@ -132,8 +132,9 @@ try {
   aqui**, só vira um log de aviso, e o método **retorna normalmente**.
   Resultado: a mensagem é confirmada e some da fila. Faz sentido: se a
   mensagem é estruturalmente inválida, tentar de novo nunca vai fazer ela
-  ficar válida — ela ficaria voltando para sempre, e o projeto ainda não tem
-  uma fila de mensagens mortas (DLQ) para isolar esse caso.
+  ficar válida — ela ficaria voltando para sempre, e a
+  `notification-events-queue` ainda não tem uma fila de mensagens mortas
+  (DLQ) para isolar esse caso (as filas da saga, da seção 5, já têm).
 - Qualquer **outra** exceção (por exemplo, uma falha ao gravar no DynamoDB)
   **não é capturada aqui** — ela sobe, o método não termina normalmente, a
   mensagem **não** é confirmada, e o SQS a entrega de novo mais tarde. Isso é
@@ -156,6 +157,45 @@ JSON). Esse valor externo passa antes por `sanitizeForLog`, no
 U+2029, que muitas ferramentas de log tratam como quebra de linha) viram
 `_`, e o valor é cortado em 64 caracteres. Assim, ninguém consegue mandar
 uma mensagem que "forje" uma linha de log falsa (WR-06).
+
+## 5. Os outros dois listeners (Fase 5)
+
+Com a saga de reserva (ver [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md)),
+o projeto passou a ter **três** métodos `@SqsListener`, todos com a mesma forma: parâmetro
+`String`, um *parser* que valida o texto, e descarte com `WARN` quando a mensagem é
+estruturalmente inválida.
+
+| Listener | Serviço | Fila | Chama |
+|---|---|---|---|
+| `NotificationEventListener` | `notification-service` | `notification-events-queue` | `NotificationService.record` |
+| `ReservationCommandListener` | `inventory-service` | `inventory-commands-queue` | `InventoryService.reserveAll` |
+| `ReservationResultListener` | `order-service` | `order-events-queue` | `OrderSagaService.applyStockReserved` / `applyReservationFailed` |
+
+Duas diferenças em relação ao que foi explicado acima.
+
+**1. Uma resposta "não" não é erro.** No `inventory-service`, "estoque insuficiente" **não** vira
+exceção. O `reserveAll` grava a falha no outbox e retorna normalmente, então a mensagem é
+confirmada. Se virasse exceção, o SQS entregaria o mesmo comando de novo, ele falharia de novo,
+e o `order-service` nunca saberia a resposta. Só falhas **técnicas** (banco fora, conflito que
+não se resolveu) escapam do método e fazem a mensagem voltar.
+
+**2. Aqui existe DLQ.** As duas filas da saga foram criadas com uma DLQ e
+`maxReceiveCount: 3`: depois da terceira entrega sem confirmação, o SQS tira a mensagem da fila
+principal e a guarda na DLQ. Uma mensagem com problema técnico permanente não volta para
+sempre.
+
+**Um detalhe de configuração: sem long polling.** No `order-service` e no `inventory-service`,
+o `application.yml` tem:
+
+```yaml
+spring.cloud.aws.sqs.listener.poll-timeout: 0s
+```
+
+O cliente SQS desses serviços é o mesmo usado nas chamadas rápidas (o relay) e tem um limite
+de tempo curto por chamada (WR-03). O long polling padrão espera até 20 s por mensagem, então
+estouraria esse limite a cada ciclo. Com `0s`, cada pergunta à fila responde na hora, com ou sem
+mensagem. O `notification-service` não tem esse problema e continua com o long polling da
+seção 2.
 
 ## Resumindo com uma analogia
 

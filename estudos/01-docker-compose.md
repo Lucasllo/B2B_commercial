@@ -109,11 +109,17 @@ padrão do `application.yml` de cada serviço (`orderflow-auth-service`).
 - Os 6 módulos da aplicação (`auth-service`, `catalog-service`, `inventory-service`,
   `notification-service`, `order-service` e `gateway`) já estão no compose, todos atrás
   do gateway — o projeto foi crescendo "fase a fase" até aqui.
-- `auth-service`, `inventory-service` e `notification-service` esperam o `localstack`
-  ficar saudável antes de subir. Já existe um fluxo assíncrono de verdade: o
-  `inventory-service` publica eventos de estoque no SQS e o `notification-service` os
-  consome e grava no DynamoDB. A saga completa (order → inventory → notification) ainda
-  **não** está implementada — esse é o objetivo da Fase 5.
+- `auth-service`, `inventory-service`, `notification-service` e `order-service` esperam o
+  `localstack` ficar saudável antes de subir. Existem dois fluxos assíncronos de verdade:
+  - o `inventory-service` publica ajustes de estoque na `notification-events-queue`, e o
+    `notification-service` os grava no DynamoDB (Fase 3);
+  - a **saga de reserva** (Fase 5): o `order-service` manda `ReserveStock` pela
+    `inventory-commands-queue` e recebe a resposta pela `order-events-queue` (ver
+    [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md)).
+- As filas são criadas pelos scripts de `localstack-init/ready.d/`, que o LocalStack roda
+  quando fica pronto: `01-create-notification-resources.sh` (fila e tabela das notificações) e
+  `02-create-order-saga-resources.sh` (as duas filas da saga e suas DLQs). Nenhum serviço Java
+  cria fila.
 - A escolha de schema único por Postgres (`orderflow` com schemas separados) é uma
   decisão específica já tomada, diferente da alternativa "um Postgres por serviço" —
   agora com quatro schemas em uso (`auth`, `catalog`, `inventory`, `order`). O

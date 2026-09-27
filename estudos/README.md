@@ -50,8 +50,8 @@ pasta é para consulta própria durante o aprendizado.
     `inventory-service` publica eventos no SQS (LocalStack) e o `notification-service` os
     consome de forma idempotente para o DynamoDB, onde o `occurredAt` é capturado (dentro
     da transação, WR-04), o limite de tempo do cliente SQS (WR-03), o limite de tamanho do
-    corpo da mensagem (WR-02), e o problema de dual-write que o padrão Transactional Outbox
-    (ainda não implementado) vai resolver na Fase 5
+    corpo da mensagem (WR-02), o problema de dual-write e a ideia do padrão Transactional
+    Outbox (já usado pela saga da Fase 5; o `STOCK_ADJUSTED` passa a usá-lo no 05-04)
 17. [DynamoDB](17-dynamodb.md) — o banco NoSQL do `notification-service`, partition key e
     sort key da tabela `notification-history`, `@DynamoDbBean`/Enhanced Client, e como isso
     se compara ao Postgres/JPA usado nos demais serviços
@@ -61,7 +61,8 @@ pasta é para consulta própria durante o aprendizado.
     (catalog, inventory, notification, order)
 19. [`@SqsListener` — como o notification-service recebe mensagens](19-sqslistener-consumo.md)
     — o container ouvinte em segundo plano, long polling, por que o parâmetro é `String`, e
-    como o retorno (ou exceção) do método decide se a mensagem é confirmada ou volta à fila
+    como o retorno (ou exceção) do método decide se a mensagem é confirmada ou volta à fila,
+    e os dois listeners da saga (falha de negócio vs. técnica, DLQ, `poll-timeout: 0s`)
 20. [`@ConfigurationProperties` — o `ClientProperties`](20-configuration-properties.md) —
     como o `order-service` lê do `application.yml` os endereços e timeouts dos serviços que
     chama, por que `URI`/`Duration` e `@Validated` fazem a aplicação falhar cedo na
@@ -82,4 +83,14 @@ pasta é para consulta própria durante o aprendizado.
 24. [Pasta `scripts` — testes de fumaça](24-scripts-smoke.md) — o que é um smoke test e como
     ele difere dos testes Java, o "modo rigoroso" do Bash, como os scripts rodam `curl` dentro
     do container do Gateway, e o que cada passo de `smoke-notification-flow.sh` e
-    `smoke-order-flow.sh` prova sobre o sistema ligado de verdade
+    `smoke-order-flow.sh` prova sobre o sistema ligado de verdade (o segundo ainda espera
+    `APPROVED` e precisa ser atualizado para a Fase 5)
+25. [Visão geral da arquitetura](25-visao-geral-da-arquitetura.md) — o mapa do projeto: o que
+    cada um dos seis módulos faz, o que `BUYER` e `SELLER_ADMIN` podem fazer, quem chama quem
+    (HTTP ou SQS), em que momento e por qual endpoint ou fila, e os estados do pedido. Tem
+    [versão com diagramas](https://claude.ai/code/artifact/28ba7064-135a-4a8e-bb53-df77ba32c987)
+26. [A saga de reserva de estoque](26-saga-de-reserva-de-estoque.md) — como um pedido
+    aprovado vira `RESERVING` e termina `CONFIRMED` ou `CANCELLED`: `ReservationSagaStarter`,
+    a tabela `outbox_event` e o relay com `FOR UPDATE SKIP LOCKED`, as filas com DLQ, a
+    reserva tudo-ou-nada do `inventory-service`, a idempotência pelo estado do pedido, a
+    compensação com `ReleaseStock` e o que ainda falta no plano 05-04

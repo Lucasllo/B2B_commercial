@@ -117,6 +117,28 @@ Sem as aspas duplas, o PostgreSQL leria `order` como o comando e rejeitaria o SQ
 erro de sintaxe. Já o Flyway (`schemas: order`) e o `currentSchema=order` da URL do
 banco tratam o nome como texto simples e não precisam desse truque.
 
+## Um exemplo real de `V2`: a migration da saga
+
+Na Fase 5, o `order-service` ganhou `V2__order_reservation_saga.sql` e o `inventory-service`
+ganhou `V2__outbox_event.sql`. A `V1` de cada um **não foi tocada**: a mudança entrou como
+arquivo novo, seguindo a regra de ouro acima. A `V2` do `order-service` mostra quatro coisas
+que uma migration pode fazer:
+
+1. **Trocar uma regra de validação.** Remove o `CHECK` antigo de `status` e cria outro com o
+   valor novo `RESERVING`.
+2. **Acrescentar colunas**, como `reservation_started_at`, `cancellation_code` e
+   `confirmed_at`. Todas aceitam `NULL`, então as linhas antigas continuam válidas.
+3. **Criar uma tabela nova**, a `outbox_event`, com um índice parcial
+   (`WHERE published_at IS NULL`) que só indexa as linhas ainda pendentes.
+4. **Migrar dados, não só estrutura.** Todo pedido que estava `APPROVED` ganha uma linha no
+   outbox e passa para `RESERVING`, em SQL puro, antes de a aplicação subir. Assim nenhum
+   pedido antigo fica fora da saga.
+
+Um detalhe de técnica: o `CHECK` de `status` e o de `cancellation_code` já listam **todos** os
+valores que a fase vai usar, até os que só entram no plano seguinte (`RESERVATION_TIMEOUT`). Assim
+os próximos planos não precisam de outra migration só para acrescentar um valor.
+Detalhes em [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
+
 ## Como isso funciona numa aplicação de produção
 
 A ideia central não muda entre o computador local e produção — é exatamente a mesma

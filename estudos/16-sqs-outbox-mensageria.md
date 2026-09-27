@@ -331,7 +331,7 @@ payload** — nada de metadado de classe Java atravessando a fronteira entre
 serviços, o que é exatamente o que se espera de dois microsserviços que não
 compartilham código de domínio.
 
-## O que é o padrão Transactional Outbox (e por que ainda não existe aqui)
+## O que é o padrão Transactional Outbox (e onde ele já existe)
 
 Aqui está o ponto mais sutil, e o motivo de comentários como "D-29"/"D-30"
 aparecerem no código.
@@ -375,16 +375,20 @@ O **padrão Outbox** é a forma de fechar essa lacuna de verdade:
 4. Se o poller falhar no meio do caminho, ele simplesmente tenta de novo
    depois — o evento continua na tabela até ser confirmado como publicado.
 
-**Importante**: essa tabela outbox, o poller (o "relay") e a saga de
-reserva de estoque **ainda não existem no código** — são a Fase 5 do
-`ROADMAP.md`, já planejada mas ainda não implementada. A Fase 4 já está
-concluída: o `order-service` cria pedidos com aprovação por limite de
-crédito (ver [22-services-de-pedido.md](22-services-de-pedido.md)), mas
-ainda **sem saga e sem mensageria** — ele não publica nem consome nada do
-SQS. Por isso, a única mensageria que existe hoje continua sendo a da Fase
-3: o envio direto do `STOCK_ADJUSTED` — a versão simplificada que já
-demonstra o SQS funcionando ponta a ponta antes de somar a complexidade do
-outbox.
+**Onde isso está hoje (Fase 5, planos 05-01 a 05-03):** a tabela
+`outbox_event`, o relay e a saga de reserva de estoque **já existem**, no
+`order-service` e no `inventory-service`. Aprovar um pedido grava o status
+`RESERVING` e o comando `ReserveStock` na mesma transação, e o
+`inventory-service` responde pelo mesmo mecanismo. Os detalhes (tabela,
+`SELECT ... FOR UPDATE SKIP LOCKED`, filas, DLQ, idempotência) estão em
+[26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
+
+O que **ainda não mudou** é o evento desta nota: o `STOCK_ADJUSTED` continua
+saindo pelo `StockEventPublisher`, direto no SQS, com o dual-write descrito
+acima. O relay do `inventory-service` já sabe enviar `STOCK_ADJUSTED` para a
+`notification-events-queue`, mas o `InventoryController` só passa a gravar no
+outbox no plano 05-04. Até lá, o fluxo desta nota continua sendo a versão
+simplificada da Fase 3.
 
 ## Consumo idempotente — por que reentrega não é um problema aqui
 
@@ -402,8 +406,8 @@ mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
 - Se o JSON for inválido (`InvalidNotificationEventException`), o listener
   captura o erro, loga um aviso e retorna normalmente — isso faz o Spring
   Cloud AWS confirmar a mensagem e apagá-la da fila. É a única defesa contra
-  uma mensagem "envenenada" que nunca poderia ser processada (o projeto ainda
-  não tem uma fila de mensagens mortas / DLQ). Isso inclui corpos acima de
+  uma mensagem "envenenada" que nunca poderia ser processada (a `notification-events-queue`
+  ainda não tem fila de mensagens mortas / DLQ; só as filas da saga têm). Isso inclui corpos acima de
   64 KB (WR-02): sem essa checagem, um item grande demais para o DynamoDB
   (que recusa itens acima de 400 KB) faria o `putItem` falhar sempre — e,
   como esse erro não é uma `InvalidNotificationEventException`, a mensagem
@@ -432,11 +436,12 @@ mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
   duas vezes por engano, ela vai pro mesmo escaninho e substitui a cópia
   anterior — não vira duas entradas duplicadas no seu arquivo.
 
-## Estado atual vs. planejado
+## Estado atual
 
-| | Hoje (mecanismo da Fase 3, ainda em uso após a Fase 4) | Planejado (Fase 5) |
+| | `STOCK_ADJUSTED` (Fase 3, até o 05-04) | Saga de reserva (Fase 5, já implementada) |
 |---|---|---|
-| Quem publica | `StockEventPublisher` chama `sqsTemplate.send` direto | Uma tabela `outbox_events` gravada na mesma transação do domínio |
-| Atomicidade banco+evento | Não — dual-write conhecido (D-30) | Sim — outbox garante atomicidade |
-| Se o SQS falhar | Evento se perde, fica só um log `ERROR` | Evento permanece na tabela até um poller confirmar a publicação |
-| Escopo do evento | Só ajuste de estoque → notificação | Saga completa: pedido → crédito → reserva de estoque → confirmação |
+| Quem publica | `StockEventPublisher` chama `sqsTemplate.send` direto | `OutboxWriter` grava em `outbox_event`; `OutboxRelay` envia a cada 1 s |
+| Atomicidade banco+evento | Não — dual-write conhecido (D-30) | Sim — dado e evento na mesma transação |
+| Se o SQS falhar | Evento se perde, fica só um log `ERROR` | Evento continua na tabela; `attempts` sobe e o relay tenta de novo |
+| Filas | `notification-events-queue` | `inventory-commands-queue` e `order-events-queue`, cada uma com DLQ |
+| Escopo | Ajuste de estoque → notificação | Pedido aprovado → reserva de estoque → `CONFIRMED` ou `CANCELLED` |
