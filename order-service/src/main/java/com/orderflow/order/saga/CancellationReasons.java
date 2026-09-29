@@ -45,6 +45,15 @@ public final class CancellationReasons {
         return truncate(text);
     }
 
+    /**
+     * Texto fixo do cancelamento por timeout da saga (D-63, {@code SAGA_TIMEOUT_DEFAULTS}) — não
+     * depende de {@code failures} (não existe nenhuma: o estoque simplesmente não respondeu a
+     * tempo), por isso não passa por {@link #truncate(String)} (já é curto o bastante).
+     */
+    public static String forTimeout() {
+        return "Reserva de estoque não confirmada dentro do prazo — pedido cancelado por tempo esgotado";
+    }
+
     private static String describeFailures(List<ReservationFailureLine> failures, Order order) {
         Map<UUID, String> skuByProductId = order.getItems().stream()
                 .collect(Collectors.toMap(OrderItem::getProductId, OrderItem::getSku, (first, second) -> first));

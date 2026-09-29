@@ -16,6 +16,15 @@ orderflow:
     # 200ms nos testes (vs. 1000ms em produção) — os testes de saga esperam o relay publicar em
     # até 15s (Awaitility); um intervalo curto evita que a suíte pague segundos de espera ociosa.
     relay-interval: 200
+  saga:
+    # SAGA_TIMEOUT_DEFAULTS: prazo longo (10m, bem acima da duração de qualquer suíte) evita que o
+    # job de timeout — rodando num contexto Spring em cache, compartilhado por várias classes *IT —
+    # cancele pedidos criados por OUTRAS classes de teste; SagaTimeoutIT recua
+    # reservation_started_at do próprio pedido via JDBC em vez de esperar o prazo real.
+    # timeout-check-interval curto (500ms, vs. 10000ms em produção) para que o teste de timeout não
+    # precise esperar o intervalo de produção entre ciclos do job.
+    reservation-timeout: 10m
+    timeout-check-interval: 500
   clients:
     # Timeouts baixos nos testes — os cenários de indisponibilidade do stub (parada deliberada)
     # não podem prender a suíte de testes por segundos.

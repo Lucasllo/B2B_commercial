@@ -107,6 +107,14 @@ orderflow:
     relay-interval: 1000
     # Tamanho do lote travado por tick do relay (SELECT ... FOR UPDATE SKIP LOCKED).
     batch-size: 20
+  saga:
+    # Fase 5 (D-63, SAGA_TIMEOUT_DEFAULTS): garantia de código do "nunca preso" — um pedido preso
+    # em RESERVING há mais tempo que reservation-timeout é cancelado pelo SagaTimeoutJob, mesmo que
+    # o resultado da reserva nunca chegue. timeout-check-interval é o intervalo (ms) entre ciclos do
+    # job; timeout-batch-size limita quantos pedidos vencidos são processados por ciclo.
+    reservation-timeout: 2m
+    timeout-check-interval: 10000
+    timeout-batch-size: 50
   clients:
     # O RestClient do Spring não tem timeout padrão — um vizinho travado seguraria a thread para
     # sempre (lição do WR-03 da Fase 3, agora D-41). As URLs são fixas por configuração, nunca

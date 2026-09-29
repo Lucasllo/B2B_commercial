@@ -87,6 +87,14 @@ class CancellationReasonsTest {
     }
 
     @Test
+    void forTimeoutReturnsFixedTimeoutTextRegardlessOfOrder() {
+        String reason = CancellationReasons.forTimeout();
+
+        assertThat(reason)
+                .isEqualTo("Reserva de estoque não confirmada dentro do prazo — pedido cancelado por tempo esgotado");
+    }
+
+    @Test
     void textLongerThan500CharsIsTruncatedWithEllipsis() {
         UUID productId = UUID.randomUUID();
         Order order = orderWithItem(productId, "SKU-" + "X".repeat(600));

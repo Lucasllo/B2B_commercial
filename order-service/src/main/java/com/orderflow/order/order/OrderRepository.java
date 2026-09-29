@@ -9,7 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,4 +44,18 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     /** Visão do SELLER_ADMIN filtrada por status — sem filtro nenhum, o vendedor usa o {@code findAll} herdado. */
     Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+
+    /**
+     * Ids de pedidos presos em {@code status} há mais tempo que {@code cutoff} (D-63, garantia de
+     * código do "nunca preso") — usa o índice {@code idx_orders_status_reservation_started_at}
+     * (V2, {@code SAGA_TIMEOUT_CLOCK}). Ordenado do mais antigo para o mais novo, para que {@code
+     * SagaTimeoutJob} processe primeiro quem está preso há mais tempo. Sem trava aqui — a consulta
+     * roda fora de transação; {@code OrderSagaService#expireReservation} reavalia status/prazo sob
+     * {@link #findByIdForUpdate} antes de qualquer transição.
+     */
+    @Query("SELECT o.id FROM Order o WHERE o.status = :status AND o.reservationStartedAt < :cutoff "
+            + "ORDER BY o.reservationStartedAt ASC")
+    List<UUID> findExpiredReservationIds(@Param("status") OrderStatus status,
+                                          @Param("cutoff") OffsetDateTime cutoff,
+                                          Pageable pageable);
 }

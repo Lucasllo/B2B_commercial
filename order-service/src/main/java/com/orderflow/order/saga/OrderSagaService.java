@@ -121,6 +121,41 @@ public class OrderSagaService {
         log.info("Resultado de sucesso ignorado (duplicata) orderId={} status={}", order.getId(), order.getStatus());
     }
 
+    /**
+     * Garantia de CÓDIGO do "nunca preso" (D-63, Goal do ROADMAP) — chamado só por {@link
+     * com.orderflow.order.saga.SagaTimeoutJob#run}, uma vez por pedido vencido, cada um na sua
+     * PRÓPRIA transação. Trava a linha do pedido (mesma trava de {@link #applyReservationFailed}/
+     * {@link #applyStockReserved}, {@code SAGA_RESULT_LOCK=order-row}) e reavalia status e prazo
+     * SOB a trava — o resultado da reserva pode ter chegado entre a consulta do job (fora de
+     * transação) e esta transação; se o pedido não estiver mais em {@code RESERVING} ou já não
+     * satisfizer mais o {@code cutoff}, é no-op. Pedido ausente também é no-op.
+     *
+     * <p>Cancela com {@link CancellationCode#RESERVATION_TIMEOUT} e grava, na MESMA transação, um
+     * {@code ReleaseStock} no outbox — compensa uma reserva que possa ter acontecido tarde (se não
+     * aconteceu, vira lápide no inventory-service, D-66, 05-04 Task 2).
+     */
+    @Transactional
+    public void expireReservation(UUID orderId, OffsetDateTime cutoff) {
+        Optional<Order> maybeOrder = orderRepository.findByIdForUpdate(orderId);
+        if (maybeOrder.isEmpty()) {
+            return;
+        }
+        Order order = maybeOrder.get();
+        if (order.getStatus() != OrderStatus.RESERVING
+                || order.getReservationStartedAt() == null
+                || !order.getReservationStartedAt().isBefore(cutoff)) {
+            return;
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+        order.cancel(CancellationCode.RESERVATION_TIMEOUT, CancellationReasons.forTimeout(), now);
+
+        UUID eventId = UUID.randomUUID();
+        ReleaseStockCommand command = ReleaseStockCommand.from(
+                order, eventId, now.toInstant(), ReleaseStockCommand.RESERVATION_TIMEOUT);
+        outboxWriter.enqueue(command.eventId(), ReleaseStockCommand.EVENT_TYPE, order.getId().toString(), command);
+    }
+
     /** Compara por (productId → quantity), independente de ordem — {@code STOCK_RESERVED_ITEMS_CHECK}. */
     private boolean itemsMatchOrder(List<ReservationLine> eventItems, Order order) {
         Map<UUID, Integer> expected = order.getItems().stream()
