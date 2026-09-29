@@ -52,8 +52,15 @@ public class SagaTimeoutJob {
 
     @Scheduled(fixedDelayString = "${orderflow.saga.timeout-check-interval}")
     public void run() {
-        // [RED scaffolding 05-04 Task 1] Corpo temporariamente desativado para provar que
-        // SagaTimeoutIT/SagaTimeoutJobTest falham pelo motivo certo (pedido nunca cancelado /
-        // repositório nunca consultado) antes de restaurar a wiring real no commit GREEN.
+        OffsetDateTime cutoff = OffsetDateTime.now(ZoneOffset.UTC).minus(reservationTimeout);
+        Pageable page = PageRequest.of(0, batchSize);
+        List<UUID> expiredOrderIds = orderRepository.findExpiredReservationIds(OrderStatus.RESERVING, cutoff, page);
+        for (UUID orderId : expiredOrderIds) {
+            try {
+                orderSagaService.expireReservation(orderId, cutoff);
+            } catch (RuntimeException e) {
+                log.error("Falha ao expirar reserva do pedido orderId={} - job segue para os demais", orderId, e);
+            }
+        }
     }
 }
