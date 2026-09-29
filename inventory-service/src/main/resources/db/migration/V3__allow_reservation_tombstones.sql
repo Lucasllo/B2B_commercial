@@ -1,0 +1,33 @@
+-- Fase 5 (05-04, D-66): permite que uma lápide de ReleaseStock exista para um produto SEM linha
+-- de estoque cadastrada — decisão do planejador registrada em 05-04-PLAN.md como
+-- TOMBSTONE_FK=dropped (Claude's Discretion, resolve a Option A/B deixada em aberto por
+-- 05-CONTEXT.md D-66).
+--
+-- Contexto: um ReleaseStock pode chegar ANTES do ReserveStock correspondente (fila SQS padrão,
+-- sem ordem garantida) — quando isso acontece para um produto que NUNCA teve estoque cadastrado
+-- (D-58: PRODUCT_NOT_STOCKED também é possível), a lápide (StockReservation.tombstone) ainda
+-- precisa ser gravada para esse produto, senão o ReserveStock tardio não encontraria lápide
+-- nenhuma para aquele produto e reservaria estoque que nunca deveria existir (ou falharia de outra
+-- forma inconsistente). A FK original (V1__init_inventory_schema.sql) exigia que
+-- stock_reservations.product_id referenciasse uma linha existente em inventory(product_id) —
+-- incompatível com uma lápide "órfã".
+--
+-- Decisão: DROP da FK. product_id em stock_reservations passa a ser referência OPACA (mesmo
+-- espírito de D-15 — product_id como referência opaca ao catalog-service), nunca validada contra
+-- inventory. Reservas VIVAS continuam nascendo só depois de o código ler a linha de estoque
+-- (InventoryService#reserve/#reserveAll) — a ausência da FK não abre nenhum caminho novo para
+-- reservar estoque inexistente, só permite que uma lápide exista sem uma linha de inventory
+-- correspondente. Linhas de inventory nunca são apagadas; só lápides podem ficar "órfãs" (sem
+-- estoque correspondente), e são inertes — nunca decrementam quantity_on_hand/quantity_reserved.
+--
+-- Alternativa rejeitada (Option B, 05-RESEARCH.md Pattern 4): criar uma linha de inventory zerada
+-- para todo produto tombstoneado. Rejeitada porque faria GET /inventory/{productId} deixar de
+-- responder 404 para um produto nunca estocado (D-18), confundindo "sem estoque cadastrado" com
+-- "estoque zero" — mudança de contrato observável sem necessidade.
+--
+-- Reversibilidade (custosa, D-66): recriar a FK exige antes apagar (ou realocar) toda lápide órfã
+-- sem linha de inventory correspondente — não é um ALTER simples de reverter.
+--
+-- O índice idx_stock_reservations_product_id e a constraint UNIQUE (product_id, reservation_id)
+-- (ambos da V1) permanecem intocados — a garantia de idempotência não depende da FK removida aqui.
+ALTER TABLE stock_reservations DROP CONSTRAINT stock_reservations_product_id_fkey;

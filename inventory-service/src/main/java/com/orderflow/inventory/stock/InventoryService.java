@@ -211,22 +211,26 @@ public class InventoryService {
      * {@code reserve}/{@code release} deste bean (auto-invocacao pula o proxy, ver javadoc da
      * classe) — le e escreve direto pelos repositorios.
      *
-     * <p><b>Tres situacoes pelo livro {@code stock_reservations} (D-65):</b> (1) nenhuma linha para
-     * o par ({@code reservationId}, produtos do comando) → reserva nova (avalia tudo antes de
-     * escrever, tudo-ou-nada, D-55); (2) linha para TODOS os produtos do comando e nenhuma liberada
+     * <p><b>Quatro situacoes pelo livro {@code stock_reservations} (D-65, D-66):</b> (1) nenhuma
+     * linha para o par ({@code reservationId}, produtos do comando) → reserva nova (avalia tudo
+     * antes de escrever, tudo-ou-nada, D-55); (2) ALGUMA linha do livro para o {@code
+     * reservationId} entre os produtos do comando ja esta liberada (LAPIDE, D-66 — um {@code
+     * ReleaseStock} chegou antes ou junto deste {@code ReserveStock}, corrida da fila padrao sem
+     * ordem garantida) → grava {@code StockReservationFailedEvent} com {@code reasonCode}
+     * {@code RESERVATION_CANCELLED} e {@code failures} vazio, sem tocar em {@code inventory} nem
+     * em {@code stock_reservations}; (3) linha para TODOS os produtos do comando e NENHUMA liberada
      * → replay idempotente: nada e alterado em {@code inventory} nem em {@code stock_reservations},
      * mas um novo {@code StockReservedEvent} (novo {@code eventId}, mesmos {@code items}) e gravado
      * no outbox e devolvido como sucesso — o comando e reentregue (D-59 entrega pelo menos uma vez)
      * ou reenviado apos uma falha anterior que nao deixou rastro (nada foi gravado no livro, ver
-     * abaixo), e o consumidor (order-service) precisa do resultado de novo; (3) qualquer outra
-     * combinacao (so parte dos produtos com linha, ou alguma linha ja liberada) e anomalia tecnica —
-     * so acontece se alguem reservar por REST com o id de um pedido — {@link IllegalStateException}
-     * citando o {@code orderId}, vai para reentrega e DLQ. Uma falha de negocio anterior (estoque
-     * insuficiente, produto sem linha) NUNCA e reemitida identica: nada foi gravado no livro nesse
-     * caso, entao o comando cai na situacao (1) e e reavaliado contra o estoque atual — se o
-     * vendedor ajustou o estoque nesse meio-tempo, a resposta pode mudar de falha para sucesso (a
-     * partir de 05-04 o order-service compensa um sucesso tardio para um pedido ja CANCELLED com
-     * {@code ReleaseStock}, D-64).
+     * abaixo), e o consumidor (order-service) precisa do resultado de novo; (4) so parte dos
+     * produtos com linha (e nenhuma liberada) e anomalia tecnica — so acontece se alguem reservar
+     * por REST com o id de um pedido — {@link IllegalStateException} citando o {@code orderId}, vai
+     * para reentrega e DLQ. Uma falha de negocio anterior (estoque insuficiente, produto sem linha)
+     * NUNCA e reemitida identica: nada foi gravado no livro nesse caso, entao o comando cai na
+     * situacao (1) e e reavaliado contra o estoque atual — se o vendedor ajustou o estoque nesse
+     * meio-tempo, a resposta pode mudar de falha para sucesso (a partir de 05-04 o order-service
+     * compensa um sucesso tardio para um pedido ja CANCELLED com {@code ReleaseStock}, D-64).
      *
      * <p>Passos da reserva nova: ordena as linhas por {@code productId} (ordem estavel de escrita
      * evita deadlock entre dois pedidos com produtos em comum); avalia TODAS as linhas antes de
@@ -253,7 +257,20 @@ public class InventoryService {
         if (!existingReservations.isEmpty()) {
             boolean allProductsHaveARow = existingReservations.size() == productIds.size();
             boolean anyReleased = existingReservations.stream().anyMatch(StockReservation::isReleased);
-            if (allProductsHaveARow && !anyReleased) {
+            if (anyReleased) {
+                // Lápide encontrada (D-66) — um ReleaseStock chegou antes (ou junto) deste
+                // ReserveStock para pelo menos um produto do comando. Resposta é sempre falha,
+                // nunca reserva nada, independente de quantos produtos têm linha: a corrida da
+                // fila padrão (sem ordem garantida) termina sempre com "nada reservado" para este
+                // reservationId, em qualquer ordem de chegada.
+                UUID eventId = UUID.randomUUID();
+                Instant now = Instant.now();
+                StockReservationFailedEvent event = StockReservationFailedEvent.of(eventId, now, orderId,
+                        reservationId, StockReservationFailedEvent.RESERVATION_CANCELLED, List.of());
+                outboxWriter.enqueue(eventId, StockReservationFailedEvent.EVENT_TYPE, orderId.toString(), event);
+                return new ReservationOutcome(false, StockReservationFailedEvent.RESERVATION_CANCELLED, List.of());
+            }
+            if (allProductsHaveARow) {
                 // Replay idempotente (D-65): nao toca em inventory nem em stock_reservations, so
                 // reemite o resultado com um eventId novo.
                 Instant replayNow = Instant.now();
@@ -265,8 +282,7 @@ public class InventoryService {
             }
             throw new IllegalStateException(
                     "stock_reservations em estado inconsistente para reservationId=" + reservationId
-                            + " (pedido " + orderId + "): livro parcialmente preenchido ou com linha liberada"
-                            + " — reserva nao processada");
+                            + " (pedido " + orderId + "): livro parcialmente preenchido — reserva nao processada");
         }
 
         Map<UUID, Inventory> inventoryByProductId = new HashMap<>();
@@ -343,5 +359,70 @@ public class InventoryService {
     public ReservationOutcome recoverReserveAllInconsistentBook(IllegalStateException ex, UUID orderId,
                                                                  String reservationId, List<ReservationLine> lines) {
         throw ex;
+    }
+
+    /**
+     * Compensacao do {@code ReleaseStock} (D-63, D-66, 05-04) — mesmo par de anotacoes de {@code
+     * reserveAll}: {@code @Retryable} com as mesmas constantes/{@code retryFor}, e {@code
+     * @Transactional} no proprio metodo. Nunca chama {@code reserve}/{@code release}/{@code
+     * reserveAll} deste bean (auto-invocacao pula o proxy, javadoc da classe) — le e escreve direto
+     * pelos repositorios, uma linha por vez, ordenadas por {@code productId} (mesma ordem estavel
+     * de {@code reserveAll}, evita deadlock entre comandos com produtos em comum).
+     *
+     * <p>Por linha: sem linha no livro para o par ({@code reservationId}, {@code productId}) →
+     * grava uma LAPIDE ({@link StockReservation#tombstone}) com a quantidade pedida pelo comando —
+     * inclusive para produto sem linha de {@code inventory} (D-58, {@code TOMBSTONE_FK=dropped},
+     * V3); linha existente e JA liberada → nada (idempotente, D-14 estendido pela lapide); linha
+     * existente e AINDA viva → devolve a quantidade ({@code inventory.release}, linha de {@code
+     * inventory} ausente aqui e anomalia tecnica — {@link IllegalStateException}, nunca deveria
+     * acontecer: uma reserva viva so nasce depois de ler a linha de estoque) e marca a linha
+     * liberada. {@code saveAndFlush} em cada escrita forca o INSERT/UPDATE a acontecer DENTRO desta
+     * tentativa — o que permite a reexecucao capturar tanto o conflito de versao do {@code
+     * inventory} quanto a violacao de unicidade de uma lapide colidindo com um {@code ReserveStock}
+     * concorrente no mesmo {@code (product_id, reservation_id)} (D-66: em qualquer ordem de
+     * chegada, o resultado final e sempre "nada reservado" — {@code reserveAll} responde
+     * {@code RESERVATION_CANCELLED} para qualquer linha ja liberada que encontrar).
+     *
+     * <p>Nenhum evento de resposta e gravado no outbox — o order-service nao espera resultado da
+     * compensacao (05-04-PLAN.md, interfaces {@code SAGA_MESSAGE_CONTRACT}).
+     */
+    @Retryable(
+            retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
+    @Transactional
+    public void releaseAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
+        List<ReservationLine> sortedLines = lines.stream()
+                .sorted(Comparator.comparing(ReservationLine::productId))
+                .toList();
+
+        for (ReservationLine line : sortedLines) {
+            var existing = stockReservationRepository.findByProductIdAndReservationId(line.productId(), reservationId);
+            if (existing.isPresent()) {
+                StockReservation reservation = existing.get();
+                if (reservation.isReleased()) {
+                    continue;
+                }
+                Inventory inventory = inventoryRepository.findByProductId(line.productId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Inventory ausente para produto com reserva viva productId=" + line.productId()
+                                        + " reservationId=" + reservationId + " (pedido " + orderId + ")"));
+                inventory.release(reservation.getQuantity());
+                reservation.markReleased(OffsetDateTime.now());
+                // saveAndFlush forca as escritas versionadas/unicas DENTRO desta tentativa — mesma
+                // razao de reserveAll.
+                inventoryRepository.saveAndFlush(inventory);
+                stockReservationRepository.saveAndFlush(reservation);
+            } else {
+                stockReservationRepository.saveAndFlush(
+                        StockReservation.tombstone(line.productId(), reservationId, line.quantity(), OffsetDateTime.now()));
+            }
+        }
+    }
+
+    @Recover
+    public void recoverReleaseAll(DataAccessException ex, UUID orderId, String reservationId,
+                                   List<ReservationLine> lines) {
+        throw new ReservationConflictException();
     }
 }

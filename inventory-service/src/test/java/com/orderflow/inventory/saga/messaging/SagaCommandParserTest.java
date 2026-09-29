@@ -1,6 +1,7 @@
 package com.orderflow.inventory.saga.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +39,7 @@ class SagaCommandParserTest {
         UUID productId = UUID.randomUUID();
         String body = validCommand(eventId, orderId, orderId.toString(), productId, 3);
 
-        ReserveStockCommand command = parser.parse(body);
+        ReserveStockCommand command = (ReserveStockCommand) parser.parse(body);
 
         assertThat(command.eventId()).isEqualTo(eventId);
         assertThat(command.eventType()).isEqualTo("ReserveStock");
@@ -263,7 +264,7 @@ class SagaCommandParserTest {
                 "orderId":"%s","reservationId":"%s","items":[{"productId":"%s","quantity":1000000}]}
                 """.formatted(UUID.randomUUID(), orderId, orderId, UUID.randomUUID());
 
-        ReserveStockCommand command = parser.parse(body);
+        ReserveStockCommand command = (ReserveStockCommand) parser.parse(body);
 
         assertThat(command.items().get(0).quantity()).isEqualTo(1_000_000);
     }
@@ -284,5 +285,92 @@ class SagaCommandParserTest {
 
         assertThat(ex.getMessage()).doesNotContainPattern("\\p{Cntrl}");
         assertThat(ex.getMessage().length()).isLessThan(150);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // ReleaseStock (05-04 Task 2, D-63/D-66) — mesmo envelope do ReserveStock, campo reason a mais.
+    // -----------------------------------------------------------------------------------------
+
+    private String validReleaseCommand(UUID eventId, UUID orderId, String reason, UUID productId, int quantity) {
+        return """
+                {"eventId":"%s","eventType":"ReleaseStock","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","reason":"%s",\
+                "items":[{"productId":"%s","quantity":%d}]}
+                """.formatted(eventId, orderId, orderId, reason, productId, quantity);
+    }
+
+    @Test
+    void validReleaseStockWithTimeoutReasonParsesIntoCommand() {
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String body = validReleaseCommand(eventId, orderId, "RESERVATION_TIMEOUT", productId, 2);
+
+        ReleaseStockCommand command = (ReleaseStockCommand) parser.parse(body);
+
+        assertThat(command.eventId()).isEqualTo(eventId);
+        assertThat(command.eventType()).isEqualTo("ReleaseStock");
+        assertThat(command.orderId()).isEqualTo(orderId);
+        assertThat(command.reservationId()).isEqualTo(orderId.toString());
+        assertThat(command.reason()).isEqualTo("RESERVATION_TIMEOUT");
+        assertThat(command.items()).hasSize(1);
+        assertThat(command.items().get(0).productId()).isEqualTo(productId);
+        assertThat(command.items().get(0).quantity()).isEqualTo(2);
+    }
+
+    @Test
+    void validReleaseStockWithLateReservationReasonParsesIntoCommand() {
+        UUID orderId = UUID.randomUUID();
+        String body = validReleaseCommand(UUID.randomUUID(), orderId, "LATE_RESERVATION", UUID.randomUUID(), 1);
+
+        ReleaseStockCommand command = (ReleaseStockCommand) parser.parse(body);
+
+        assertThat(command.reason()).isEqualTo("LATE_RESERVATION");
+    }
+
+    @Test
+    void releaseStockWithMissingReasonIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = """
+                {"eventId":"%s","eventType":"ReleaseStock","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","items":[{"productId":"%s","quantity":1}]}
+                """.formatted(UUID.randomUUID(), orderId, orderId, UUID.randomUUID());
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("reason");
+    }
+
+    @Test
+    void releaseStockWithUnknownReasonIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validReleaseCommand(UUID.randomUUID(), orderId, "SOMETHING_ELSE", UUID.randomUUID(), 1);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("reason");
+    }
+
+    @Test
+    void releaseStockReservationIdDifferentFromOrderIdIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = """
+                {"eventId":"%s","eventType":"ReleaseStock","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","reason":"RESERVATION_TIMEOUT",\
+                "items":[{"productId":"%s","quantity":1}]}
+                """.formatted(UUID.randomUUID(), orderId, UUID.randomUUID(), UUID.randomUUID());
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("reservationId");
+    }
+
+    @Test
+    void releaseStockWithEmptyItemsIsRejectedSameRuleAsReserveStock() {
+        UUID orderId = UUID.randomUUID();
+        String body = """
+                {"eventId":"%s","eventType":"ReleaseStock","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","reason":"RESERVATION_TIMEOUT","items":[]}
+                """.formatted(UUID.randomUUID(), orderId, orderId);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("items");
     }
 }

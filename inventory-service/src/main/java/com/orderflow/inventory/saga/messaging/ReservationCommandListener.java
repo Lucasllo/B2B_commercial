@@ -1,5 +1,6 @@
 package com.orderflow.inventory.saga.messaging;
 
+import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
 import com.orderflow.inventory.stock.InventoryService;
 import io.awspring.cloud.sqs.annotation.SqsListener;
@@ -12,6 +13,9 @@ import org.springframework.stereotype.Component;
  * Consumidor da {@code inventory-commands-queue} (D-61) — mesma forma de {@code
  * NotificationEventListener} (Fase 3): parâmetro {@code String} para que o corpo chegue verbatim, e
  * a decisão de como interpretar/validar fica na camada de serviço ({@link SagaCommandParser}).
+ * Despacha para {@link InventoryService#reserveAll} ou {@link InventoryService#releaseAll}
+ * conforme o tipo devolvido pelo parser (D-63, D-66, 05-04) — {@code ReleaseStock} não gera
+ * nenhuma resposta (o order-service não espera resultado da compensação).
  *
  * <p>Diverge de {@code NotificationEventListener} num ponto central (D-67): mensagem malformada
  * (falha de {@link SagaCommandParser}) é descartada com log WARN, mas uma falha de <b>negócio</b>
@@ -39,13 +43,21 @@ public class ReservationCommandListener {
 
     @SqsListener("${orderflow.messaging.inventory-commands-queue}")
     public void onMessage(String payload) {
-        ReserveStockCommand command;
+        Object command;
         try {
             command = sagaCommandParser.parse(payload);
         } catch (InvalidSagaMessageException e) {
             log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
             return;
         }
-        inventoryService.reserveAll(command.orderId(), command.reservationId(), command.items());
+        if (command instanceof ReserveStockCommand reserveStock) {
+            inventoryService.reserveAll(reserveStock.orderId(), reserveStock.reservationId(), reserveStock.items());
+            return;
+        }
+        if (command instanceof ReleaseStockCommand releaseStock) {
+            // [RED scaffolding 05-04 Task 2] Despacho temporariamente desativado para provar que
+            // TombstoneReleaseIT falha pelo motivo certo (estoque nunca devolvido / lapide nunca
+            // gravada) antes de restaurar no commit GREEN.
+        }
     }
 }

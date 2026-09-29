@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
+import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReservationLine;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
 import org.springframework.stereotype.Component;
@@ -25,8 +26,11 @@ import java.util.UUID;
  * do contrato. Nenhum valor recebido de fora aparece cru numa mensagem de exceção — sempre
  * sanitizado por {@link #sanitizeForLog(String)}.
  *
- * <p>Só {@code ReserveStock} é despachado nesta task; um {@code eventType} desconhecido (incluindo
- * ausente) é rejeitado como mensagem inválida, não roteado para outro parser.
+ * <p>Despacha por {@code eventType}: {@code ReserveStock} vira {@link ReserveStockCommand}, {@code
+ * ReleaseStock} (D-63, D-66, 05-04) vira {@link ReleaseStockCommand} — o chamador ({@link
+ * ReservationCommandListener}) distingue por {@code instanceof}, mesma técnica do {@code
+ * SagaEventParser} do order-service (05-03). Um {@code eventType} desconhecido (incluindo ausente)
+ * é rejeitado como mensagem inválida.
  */
 @Component
 public class SagaCommandParser {
@@ -45,7 +49,11 @@ public class SagaCommandParser {
         this.eventReader = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
 
-    public ReserveStockCommand parse(String rawPayload) {
+    /**
+     * @return {@link ReserveStockCommand} ou {@link ReleaseStockCommand}, conforme {@code
+     *     eventType} — o chamador distingue por {@code instanceof}.
+     */
+    public Object parse(String rawPayload) {
         if (rawPayload == null
                 || rawPayload.getBytes(StandardCharsets.UTF_8).length > MAX_RAW_PAYLOAD_BYTES) {
             throw new InvalidSagaMessageException(
@@ -64,22 +72,48 @@ public class SagaCommandParser {
         }
 
         String eventType = optionalText(tree, "eventType");
-        if (!ReserveStockCommand.EVENT_TYPE.equals(eventType)) {
-            throw new InvalidSagaMessageException("Tipo de evento nao suportado: " + sanitizeForLog(eventType));
+        if (ReserveStockCommand.EVENT_TYPE.equals(eventType)) {
+            return parseReserveStock(tree, eventType);
         }
+        if (ReleaseStockCommand.EVENT_TYPE.equals(eventType)) {
+            return parseReleaseStock(tree, eventType);
+        }
+        throw new InvalidSagaMessageException("Tipo de evento nao suportado: " + sanitizeForLog(eventType));
+    }
 
+    private ReserveStockCommand parseReserveStock(JsonNode tree, String eventType) {
         UUID eventId = requireUuid(tree, "eventId");
         Instant occurredAt = requireInstant(tree, "occurredAt");
         UUID orderId = requireUuid(tree, "orderId");
+        String reservationId = requireReservationIdMatchingOrderId(tree, orderId);
+        List<ReservationLine> items = requireItems(tree);
+
+        return new ReserveStockCommand(eventId, eventType, occurredAt, orderId, reservationId, items);
+    }
+
+    /** {@code reason} restrito aos dois valores emitidos pelo order-service (05-04, D-63). */
+    private ReleaseStockCommand parseReleaseStock(JsonNode tree, String eventType) {
+        UUID eventId = requireUuid(tree, "eventId");
+        Instant occurredAt = requireInstant(tree, "occurredAt");
+        UUID orderId = requireUuid(tree, "orderId");
+        String reservationId = requireReservationIdMatchingOrderId(tree, orderId);
+        String reason = requireText(tree, "reason");
+        if (!ReleaseStockCommand.RESERVATION_TIMEOUT.equals(reason)
+                && !ReleaseStockCommand.LATE_RESERVATION.equals(reason)) {
+            throw new InvalidSagaMessageException("Campo reason desconhecido: " + sanitizeForLog(reason));
+        }
+        List<ReservationLine> items = requireItems(tree);
+
+        return new ReleaseStockCommand(eventId, eventType, occurredAt, orderId, reservationId, reason, items);
+    }
+
+    private String requireReservationIdMatchingOrderId(JsonNode tree, UUID orderId) {
         String reservationId = requireText(tree, "reservationId");
         if (!reservationId.equals(orderId.toString())) {
             throw new InvalidSagaMessageException(
                     "Campo reservationId diferente de orderId: " + sanitizeForLog(reservationId));
         }
-
-        List<ReservationLine> items = requireItems(tree);
-
-        return new ReserveStockCommand(eventId, eventType, occurredAt, orderId, reservationId, items);
+        return reservationId;
     }
 
     private List<ReservationLine> requireItems(JsonNode root) {

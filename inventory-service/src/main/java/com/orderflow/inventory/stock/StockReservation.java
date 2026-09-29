@@ -59,6 +59,22 @@ public class StockReservation {
     }
 
     /**
+     * Fábrica de LÁPIDE (D-66) — um {@code ReleaseStock} chegando ANTES do {@code ReserveStock}
+     * correspondente (fila SQS padrão, sem ordem garantida) grava a linha já {@code released =
+     * true}, inclusive para produto SEM linha de estoque cadastrada (D-58, {@code
+     * TOMBSTONE_FK=dropped} — a FK para {@code inventory(product_id)} foi removida em V3
+     * exatamente para permitir isto). Um {@code ReserveStock} posterior com o mesmo {@code
+     * reservationId} encontra esta linha e responde falha ({@code RESERVATION_CANCELLED}, {@link
+     * InventoryService#reserveAll}) em vez de reservar — resolve a corrida da fila padrão sem
+     * precisar de FIFO.
+     */
+    public static StockReservation tombstone(UUID productId, String reservationId, int quantity, OffsetDateTime now) {
+        StockReservation reservation = new StockReservation(productId, reservationId, quantity);
+        reservation.markReleased(now);
+        return reservation;
+    }
+
+    /**
      * Marca a reserva como liberada. Consumido uma unica vez: liberar de novo ou reservar de novo
      * com o mesmo identificador nao reaproveita esta linha para um novo incremento (D-11 vale
      * inclusive apos a liberacao).
