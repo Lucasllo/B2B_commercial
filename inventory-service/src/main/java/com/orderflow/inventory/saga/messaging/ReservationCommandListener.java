@@ -55,9 +55,7 @@ public class ReservationCommandListener {
             return;
         }
         if (command instanceof ReleaseStockCommand releaseStock) {
-            // [RED scaffolding 05-04 Task 2] Despacho temporariamente desativado para provar que
-            // TombstoneReleaseIT falha pelo motivo certo (estoque nunca devolvido / lapide nunca
-            // gravada) antes de restaurar no commit GREEN.
+            inventoryService.releaseAll(releaseStock.orderId(), releaseStock.reservationId(), releaseStock.items());
         }
     }
 }
