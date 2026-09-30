@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Catálogo e Estoque** - O vendedor mantém produtos e níveis de estoque, o comprador enxerga o catálogo, e a reserva já é atômica contra concorrência (completed 2026-09-20)
 - [x] **Phase 3: Primeira Integração Assíncrona — Histórico de Notificações** - Um evento publicado no SQS vira registro consultável no DynamoDB, provando o encanamento antes da saga (completed 2026-09-23)
 - [x] **Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito** - O comprador cria pedidos do catálogo e a regra de aprovação por crédito funciona, ainda sem saga (completed 2026-09-25)
-- [ ] **Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação** - O Core Value: reserva assíncrona com Transactional Outbox terminando sempre em CONFIRMED ou CANCELLED
+- [x] **Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação** - O Core Value: reserva assíncrona com Transactional Outbox terminando sempre em CONFIRMED ou CANCELLED (completed 2026-09-30)
 - [ ] **Phase 6: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido** - Transportadora simulada, rastreio, SHIPPED/DELIVERED e a linha do tempo completa nas notificações
 - [ ] **Phase 7: Endurecimento, Observabilidade e Entrega** - OpenAPI por serviço, Correlation-ID nos logs, testes completos, pipeline de CI verde e ADRs em português
 
@@ -144,7 +144,7 @@ Plans:
   4. Reentregar o mesmo comando de reserva duas vezes decrementa o estoque uma única vez — consumidor idempotente comprovado por teste que republica o evento.
   5. Um teste E2E com Testcontainers (PostgreSQL + LocalStack reais) percorre o fluxo completo criar → reservar → confirmar e também o caminho de falha → cancelar, executável por um único comando.
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano tem testes com LocalStack.*
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Catálogo e Estoque | 3/3 | Complete    | 2026-09-20 |
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
-| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | In Progress|  |
+| 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 

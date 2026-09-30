@@ -21,14 +21,14 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - [ ] Vendedor gerencia catálogo de produtos (criar/atualizar produtos e preços)
 - [ ] Vendedor gerencia níveis de estoque por produto
 - [ ] Empresa compradora cria pedido selecionando produtos do catálogo — *entregue na Fase 4 (order-service, itens validados e precificados pelo catalog-service, snapshot gravado)*
-- [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação — *regra de exposição acumulada entregue na Fase 4 (APPROVED automático sob trava pessimista por empresa); a confirmação via reserva de estoque chega na Fase 5*
+- [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação — *regra de exposição acumulada entregue na Fase 4; na Fase 5 a aprovação (automática ou manual) entra na saga e termina em CONFIRMED ou CANCELLED*
 - [ ] Vendedor aprova ou rejeita pedidos pendentes de aprovação — *entregue na Fase 4 (decidedBy/decidedAt/reason, 409 fora de PENDING_APPROVAL)*
 - [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos — *entregue na Fase 4 (escopo por `company_id` do JWT, 404 idêntico para pedido de outra empresa)*
-- [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação)
-- [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade
+- [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação) — *entregue na Fase 5 (RESERVING + `ReserveStock` no outbox na mesma transação, relay `SKIP LOCKED`, inventory responde pelo próprio outbox; idempotente por reentrega; E2E com os dois serviços reais)*
+- [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade — *entregue na Fase 5 (CANCELLED com `cancellationCode` e motivo legível; timeout cancela e compensa com `ReleaseStock`; nenhum pedido fica preso em RESERVING)*
 - [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada)
-- [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED)
-- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; falta ligar os eventos do ciclo de vida do pedido (Fases 5/6)*
+- [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) — *na Fase 5 o estado intermediário RESERVING foi adicionado entre APPROVED e CONFIRMED/CANCELLED; SHIPPED/DELIVERED chegam na Fase 6*
+- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; na Fase 5 o `STOCK_ADJUSTED` passou a sair pelo outbox; falta ligar os eventos do ciclo de vida do pedido (Fase 6)*
 - [ ] Todo o sistema sobe localmente via docker-compose (microsserviços + Postgres + LocalStack)
 - [ ] Pipeline de CI/CD (GitHub Actions) builda e testa cada serviço a cada push
 - [ ] Decisões arquiteturais documentadas como ADRs em português
@@ -78,13 +78,17 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | AWS demonstrada via LocalStack, sem deploy real contínuo | Evita custo de nuvem constante, mas ainda demonstra uso de serviços AWS (S3, SQS, DynamoDB) | — Pending |
 | Documentação em português, código em inglês | Alinhado às convenções da comunidade Java/Spring e ao objetivo de portfólio para uma vaga no Brasil | — Pending |
 | Empresa compradora como entidade própria com limite de crédito | A regra de aprovação por limite de crédito não tem contra o que checar sem isso; achado da pesquisa de domínio | — Pending |
-| Padrão Transactional Outbox em vez de publicação direta (dual-write) | Evita divergência entre o estado salvo no banco e o evento publicado no SQS; achado de risco crítico da pesquisa de arquitetura/pitfalls | — Pending |
-| Fase 3 publica direto (dual-write) do inventory-service, após o commit, e adia o Outbox para a Fase 5 (D-29/D-30) | Isola o encanamento SQS/DynamoDB antes da saga; a perda de evento fica observável em log ERROR e declarada no README | ✓ Aceito temporariamente — Fase 3 |
+| Padrão Transactional Outbox em vez de publicação direta (dual-write) | Evita divergência entre o estado salvo no banco e o evento publicado no SQS; achado de risco crítico da pesquisa de arquitetura/pitfalls | ✓ Good — Fase 5 (outbox nos dois serviços; relay é o único caminho de envio SQS) |
+| Fase 3 publica direto (dual-write) do inventory-service, após o commit, e adia o Outbox para a Fase 5 (D-29/D-30) | Isola o encanamento SQS/DynamoDB antes da saga; a perda de evento fica observável em log ERROR e declarada no README | ✓ Resolvido na Fase 5 — `STOCK_ADJUSTED` passou a sair pelo outbox do inventory-service |
 | Idempotência do histórico pela chave `productId` + `STOCK_ADJUSTED#<eventId>` com `putItem` sem condição | Reentrega do SQS sobrescreve em vez de duplicar, sem precisar de tabela de deduplicação | ✓ Good — Fase 3 (IT + smoke na stack real) |
 | Resource servers validam o `iss` do JWT (`issuer-uri` junto de `jwk-set-uri`) e os testes usam o decoder de produção | Fecha a ameaça T-03-02; testes que trocam o decoder inteiro escondiam a falta da checagem | ✓ Good — quick 260923-tj9 |
 | Decisão de crédito serializada por empresa: linha `company_credit_lock` com `PESSIMISTIC_WRITE` antes da soma da exposição, na mesma transação do INSERT/decisão; toda chamada HTTP a vizinhos acontece antes da transação | Evita dois pedidos simultâneos aprovados além do limite sem segurar a trava durante I/O de rede | ✓ Good — Fase 4 (concorrência por socket real) |
 | order-service falha fechado (503) quando catálogo ou auth-service não respondem, e não aprova por omissão | Sem limite confiável não há decisão; aprovação fail-open seria elevação de privilégio | ✓ Good — Fase 4 |
-| Estado APPROVED não reserva estoque nem confirma o pedido nesta fase | Reserva assíncrona com Outbox é o escopo isolado da Fase 5; limitação declarada no README | ✓ Aceito temporariamente — Fase 4 |
+| Estado APPROVED não reserva estoque nem confirma o pedido nesta fase | Reserva assíncrona com Outbox é o escopo isolado da Fase 5; limitação declarada no README | ✓ Resolvido na Fase 5 — APPROVED entra na saga (RESERVING → CONFIRMED/CANCELLED) |
+| Saga orquestrada pelo order-service, com mensagens de envelope plano (`eventId`/`eventType`/`occurredAt`) e `reservationId = orderId` | Máquina de estados dentro do agregado Order, sem motor de workflow; um id natural por pedido torna a reserva idempotente sem tabela extra | ✓ Good — Fase 5 (E2E + smoke na stack real) |
+| Resultado da saga e timeout serializados pela trava da linha do pedido (`PESSIMISTIC_WRITE`), com guarda por estado | Duas fontes de transição sobre o mesmo pedido; a trava por linha evita corrida sem bloquear a empresa inteira | ✓ Good — Fase 5 (`SagaTimeoutIT` cobre resultado tardio) |
+| `ReleaseStock` antes do `ReserveStock` grava lápide no livro de reservas (FK removida) | A fila padrão do SQS não garante ordem; sem lápide, a compensação chegando primeiro deixaria estoque preso | ✓ Good — Fase 5 (`TombstoneReleaseIT`, 5 rodadas concorrentes) |
+| `poll-timeout: 0s` nos listeners SQS (WR-03 do review, não corrigido) | Long polling estourava o timeout compartilhado com a chamada síncrona; separar o cliente SQS exige mudança estrutural | ⚠ Revisitar — custo/latência só no SQS real |
 
 ## Evolution
 
@@ -104,4 +108,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-09-25 após a Fase 4*
+*Última atualização: 2026-09-30 após a Fase 5*

@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 05
-current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
-status: executing
-stopped_at: Completed 05-06-PLAN.md
-last_updated: "2026-09-30T01:49:30.126Z"
-last_activity: 2026-09-29
-last_activity_desc: Phase 05 execution started
-state_head: "0b41ca473527df3244cef3876294e8f4e6bd57ab"
+current_phase: 6
+current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
+status: planning
+stopped_at: Phase 5 complete, ready to plan Phase 6
+last_updated: "2026-09-30T22:39:35.117Z"
+last_activity: 2026-09-30
+last_activity_desc: Phase 5 complete, transitioned to Phase 6
+state_head: 51491445557e566d56284a585b48b0da974c9e27
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 22
   completed_plans: 22
-  percent: 57
+  percent: 71
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-25)
+See: .planning/PROJECT.md (updated 2026-09-30)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 05 — Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
+**Current focus:** Phase 06 — Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 
 ## Current Position
 
-Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-09-29 — Phase 05 execution started
+Phase: 6 — Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-30 — Phase 5 complete, transitioned to Phase 6
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 16
+- Total plans completed: 27
 - Average duration: —
 - Total execution time: 0.0 hours
 
@@ -51,6 +51,7 @@ Progress: [██████░░░░] 57%
 | 03 | 3 | - | - |
 | 04 | 5 | - | - |
 | 4 | 5 | - | - |
+| 5 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -134,7 +135,9 @@ None yet.
 
 - [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
-- [Fase 5]: Padrões do Spring Cloud AWS (`SqsTemplate`/`@SqsListener`, `doNotSendPayloadTypeHeader`, `setPayloadTypeMapper`) já provados na Fase 3 — reusar na saga; o desenho de tabela DynamoDB (partition por agregado + sort `TIPO#eventId`) serve de base para a timeline do pedido (Fase 6).
+- [Fase 5 → Fase 6]: Padrões do Spring Cloud AWS (`SqsTemplate`/`@SqsListener`, `doNotSendPayloadTypeHeader`, `setPayloadTypeMapper`) já provados na Fase 3 — reusar na saga; o desenho de tabela DynamoDB (partition por agregado + sort `TIPO#eventId`) serve de base para a timeline do pedido (Fase 6).
+- [Fase 5]: WR-03 do review não corrigido — `poll-timeout: 0s` desliga o long polling no `SqsAsyncClient` compartilhado (order e inventory); só afeta custo/latência no SQS real. Separar um cliente dedicado para os listeners faz a auto-configuração do Spring Cloud AWS recuar — tratar como backlog (candidato natural à Fase 7).
+- [Fase 5]: Outbox sem retenção (OUTBOX_RETENTION=none-this-phase) e lápides de reserva sem limpeza (AR-05-02) — documentados como limitações conhecidas.
 - [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
@@ -155,6 +158,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-30T01:49:29.958Z
-Stopped at: Completed 05-06-PLAN.md
+Last session: 2026-09-30T22:40:17Z
+Stopped at: Phase 5 complete, ready to plan Phase 6
 Resume file: None

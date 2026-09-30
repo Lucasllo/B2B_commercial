@@ -26,7 +26,7 @@
     {
       "number": "5",
       "name": "Saga de Reserva de Estoque — Outbox, Compensação e Confirmação",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "6",
@@ -41,8 +41,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 05 of 7 · 57% · executing"
+    "label": "Advance to the next step (plan phase 6)",
+    "reason": "Phase 6 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-30T01:49:13.706Z"
+  "updated_at": "2026-09-30T22:39:35.185Z"
 }
