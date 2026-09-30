@@ -2,6 +2,8 @@ package com.orderflow.order;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orderflow.order.shipping.CarrierAssignment;
+import com.orderflow.order.shipping.SimulatedCarrierGateway;
 import com.orderflow.order.support.OrderSagaQueues;
 import com.orderflow.order.support.TestJwt;
 import org.junit.jupiter.api.Test;
@@ -288,6 +290,33 @@ class ReservationResultListenerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void stockReservedAssignsSimulatedCarrierAndTrackingCodeInTheSameTransactionAsConfirmed() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-SHIP-1");
+        // Antes do resultado da reserva, nada de transportadora (ORD-07: so no CONFIRMED).
+        JsonNode reserving = getOrder(order.orderId());
+        assertThat(reserving.get("carrier").isNull()).isTrue();
+        assertThat(reserving.get("trackingCode").isNull()).isTrue();
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1))));
+
+        JsonNode confirmed = awaitStatus(order.orderId(), "CONFIRMED");
+        CarrierAssignment expected = new SimulatedCarrierGateway().assign(order.orderId());
+        assertThat(confirmed.get("carrier").asText()).isEqualTo(expected.carrier());
+        assertThat(confirmed.get("trackingCode").asText()).isEqualTo(expected.trackingCode());
+        assertThat(confirmed.get("trackingCode").asText()).matches("^[A-Z]{2}[0-9]{9}BR$");
+        assertThat(confirmed.get("shippedAt").isNull()).isTrue();
+        assertThat(confirmed.get("shippedBy").isNull()).isTrue();
+        assertThat(confirmed.get("deliveredAt").isNull()).isTrue();
+        assertThat(confirmed.get("deliveredBy").isNull()).isTrue();
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT carrier, tracking_code, confirmed_at FROM \"order\".orders WHERE id = ?", order.orderId());
+        assertThat(row.get("carrier")).isEqualTo(expected.carrier());
+        assertThat(row.get("tracking_code")).isEqualTo(expected.trackingCode());
+        assertThat(row.get("confirmed_at")).isNotNull();
+    }
+
+    @Test
     void duplicateStockReservedIsANoOpTheSecondTime() throws Exception {
         ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-CONF-2");
         Map<String, Object> body = stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1)));
@@ -295,6 +324,8 @@ class ReservationResultListenerIT extends AbstractIntegrationTest {
         sagaQueues().publishResult(body);
         JsonNode first = awaitStatus(order.orderId(), "CONFIRMED");
         String firstConfirmedAt = first.get("confirmedAt").asText();
+        String firstCarrier = first.get("carrier").asText();
+        String firstTrackingCode = first.get("trackingCode").asText();
 
         sagaQueues().publishResult(body);
         Thread.sleep(3000);
@@ -302,7 +333,28 @@ class ReservationResultListenerIT extends AbstractIntegrationTest {
         JsonNode second = getOrder(order.orderId());
         assertThat(second.get("status").asText()).isEqualTo("CONFIRMED");
         assertThat(second.get("confirmedAt").asText()).isEqualTo(firstConfirmedAt);
+        assertThat(second.get("carrier").asText()).isEqualTo(firstCarrier);
+        assertThat(second.get("trackingCode").asText()).isEqualTo(firstTrackingCode);
         assertThat(outboxRowCount(order.orderId(), "ReleaseStock")).isZero();
+    }
+
+    @Test
+    void orderCancelledByFailureNeverGetsACarrierNotEvenAfterALateStockReserved() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-SHIP-2");
+
+        sagaQueues().publishResult(stockReservationFailedBody(order.orderId(), "INSUFFICIENT_STOCK",
+                List.of(failureLine(order.productId(), 2, 1))));
+        JsonNode cancelled = awaitStatus(order.orderId(), "CANCELLED");
+        assertThat(cancelled.get("carrier").isNull()).isTrue();
+        assertThat(cancelled.get("trackingCode").isNull()).isTrue();
+
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), List.of(itemLine(order.productId(), 1))));
+        Thread.sleep(3000);
+
+        JsonNode stillCancelled = getOrder(order.orderId());
+        assertThat(stillCancelled.get("status").asText()).isEqualTo("CANCELLED");
+        assertThat(stillCancelled.get("carrier").isNull()).isTrue();
+        assertThat(stillCancelled.get("trackingCode").isNull()).isTrue();
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.orderflow.order.order;
 
 import com.orderflow.order.credit.CreditPolicy;
 import com.orderflow.order.order.exception.OrderNotPendingException;
+import com.orderflow.order.shipping.CarrierAssignment;
+import com.orderflow.order.shipping.TrackingCodes;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -275,33 +277,68 @@ class OrderDomainTest {
     }
 
     @Test
-    void confirmFromReservingRecordsConfirmedAtElseThrowsWithoutChangingState() {
+    void confirmFromReservingRecordsConfirmedAtCarrierAndTrackingCodeElseThrowsWithoutChangingState() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
         order.approveAutomatically(now);
         order.startReservation(now.plusSeconds(1));
+        CarrierAssignment assignment = assignment();
 
         OffsetDateTime confirmInstant = now.plusSeconds(2);
-        order.confirm(confirmInstant);
+        order.confirm(confirmInstant, assignment);
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
         assertThat(order.getConfirmedAt()).isEqualTo(confirmInstant);
+        assertThat(order.getCarrier()).isEqualTo(assignment.carrier());
+        assertThat(order.getTrackingCode()).isEqualTo(assignment.trackingCode());
         assertThat(order.getCancellationCode()).isNull();
         assertThat(order.getCancelledAt()).isNull();
+        assertThat(order.getShippedAt()).isNull();
+        assertThat(order.getShippedBy()).isNull();
+        assertThat(order.getDeliveredAt()).isNull();
+        assertThat(order.getDeliveredBy()).isNull();
 
         Order created = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
-        assertThatThrownBy(() -> created.confirm(now)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> created.confirm(now, assignment)).isInstanceOf(IllegalStateException.class);
         assertThat(created.getConfirmedAt()).isNull();
+        assertThat(created.getCarrier()).isNull();
+        assertThat(created.getTrackingCode()).isNull();
 
         Order cancelled = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
         cancelled.approveAutomatically(now);
         cancelled.startReservation(now.plusSeconds(1));
         cancelled.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now.plusSeconds(2));
-        assertThatThrownBy(() -> cancelled.confirm(now.plusSeconds(3))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cancelled.confirm(now.plusSeconds(3), assignment))
+                .isInstanceOf(IllegalStateException.class);
         assertThat(cancelled.getConfirmedAt()).isNull();
+        assertThat(cancelled.getCarrier()).isNull();
+        assertThat(cancelled.getTrackingCode()).isNull();
 
-        assertThatThrownBy(() -> order.confirm(now.plusSeconds(4))).isInstanceOf(IllegalStateException.class);
+        CarrierAssignment other = new CarrierAssignment("Litoral Log", TrackingCodes.fromDigest(new byte[32]));
+        assertThatThrownBy(() -> order.confirm(now.plusSeconds(4), other)).isInstanceOf(IllegalStateException.class);
         assertThat(order.getConfirmedAt()).isEqualTo(confirmInstant);
+        assertThat(order.getCarrier()).isEqualTo(assignment.carrier());
+        assertThat(order.getTrackingCode()).isEqualTo(assignment.trackingCode());
+    }
+
+    @Test
+    void confirmWithoutAssignmentThrowsIllegalArgumentAndLeavesTheOrderReserving() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        order.approveAutomatically(now);
+        order.startReservation(now.plusSeconds(1));
+
+        assertThatThrownBy(() -> order.confirm(now.plusSeconds(2), null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.RESERVING);
+        assertThat(order.getConfirmedAt()).isNull();
+        assertThat(order.getCarrier()).isNull();
+        assertThat(order.getTrackingCode()).isNull();
+    }
+
+    private CarrierAssignment assignment() {
+        return new CarrierAssignment("Norte Entregas", TrackingCodes.fromDigest(new byte[32]));
     }
 
     private PricedItem pricedItem() {

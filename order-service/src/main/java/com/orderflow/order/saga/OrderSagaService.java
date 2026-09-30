@@ -11,6 +11,7 @@ import com.orderflow.order.saga.messaging.dto.ReservationLine;
 import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
 import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
 import com.orderflow.order.saga.outbox.OutboxWriter;
+import com.orderflow.order.shipping.CarrierGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,10 +43,13 @@ public class OrderSagaService {
 
     private final OrderRepository orderRepository;
     private final OutboxWriter outboxWriter;
+    private final CarrierGateway carrierGateway;
 
-    public OrderSagaService(OrderRepository orderRepository, OutboxWriter outboxWriter) {
+    public OrderSagaService(OrderRepository orderRepository, OutboxWriter outboxWriter,
+                            CarrierGateway carrierGateway) {
         this.orderRepository = orderRepository;
         this.outboxWriter = outboxWriter;
+        this.carrierGateway = carrierGateway;
     }
 
     /**
@@ -76,7 +80,9 @@ public class OrderSagaService {
     /**
      * {@code StockReserved} → {@code CONFIRMED} (ORD-05, D-57), só a partir de {@code RESERVING}.
      * O estoque continua reservado no inventory-service — nada aqui chama o inventory-service (a
-     * baixa física de {@code quantity_on_hand} é da Fase 6).
+     * baixa física de {@code quantity_on_hand} é o {@code ShipStock} da expedição, D-75). Na mesma
+     * transação que grava o {@code CONFIRMED}, a {@link CarrierGateway} simulada atribui
+     * transportadora e código de rastreio (ORD-07, D-70).
      *
      * <p>{@code STOCK_RESERVED_ITEMS_CHECK}: se os itens do evento diferirem dos itens do pedido
      * (produto ou quantidade), a mensagem é tratada como INVÁLIDA — {@link
@@ -105,7 +111,10 @@ public class OrderSagaService {
 
         if (order.getStatus() == OrderStatus.RESERVING) {
             OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
-            order.confirm(now);
+            // D-70: transportadora e rastreio entram na MESMA transação e sob a MESMA trava de
+            // linha do CONFIRMED. O gateway é determinístico, sem I/O e sem exceção (D-72); só este
+            // ramo o chama, então duplicata e sucesso tardio nunca reatribuem.
+            order.confirm(now, carrierGateway.assign(order.getId()));
             return;
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {

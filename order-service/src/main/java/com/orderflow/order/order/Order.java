@@ -1,6 +1,7 @@
 package com.orderflow.order.order;
 
 import com.orderflow.order.order.exception.OrderNotPendingException;
+import com.orderflow.order.shipping.CarrierAssignment;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -90,6 +91,28 @@ public class Order {
 
     @Column(name = "confirmed_at")
     private OffsetDateTime confirmedAt;
+
+    /** Transportadora simulada (D-70) — atribuída uma única vez, junto de {@code confirmedAt}. */
+    @Column(name = "carrier", length = 64)
+    private String carrier;
+
+    /** Código de rastreio S10 simulado (D-73) — atribuído junto da transportadora, nunca trocado. */
+    @Column(name = "tracking_code", length = 13)
+    private String trackingCode;
+
+    /** Expedição (D-76) — preenchidos pelo endpoint de /ship (06-02); nulos até lá. */
+    @Column(name = "shipped_at")
+    private OffsetDateTime shippedAt;
+
+    @Column(name = "shipped_by", length = 64)
+    private String shippedBy;
+
+    /** Entrega (D-76) — preenchidos pelo endpoint de /deliver (06-02); nulos até lá. */
+    @Column(name = "delivered_at")
+    private OffsetDateTime deliveredAt;
+
+    @Column(name = "delivered_by", length = 64)
+    private String deliveredBy;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
@@ -204,12 +227,22 @@ public class Order {
      * Aplica o resultado de SUCESSO da reserva (ORD-05, D-57) — chamado só por {@link
      * com.orderflow.order.saga.OrderSagaService#applyStockReserved} a partir de {@code RESERVING}.
      * O estoque continua reservado no inventory-service; a baixa física de {@code quantity_on_hand}
-     * é da Fase 6 (D-57) — nada aqui chama o inventory-service.
+     * é do {@code ShipStock} da expedição (D-75) — nada aqui chama o inventory-service.
+     *
+     * <p>D-70: nunca existe {@code CONFIRMED} sem transportadora — a atribuição é obrigatória e
+     * gravada junto de {@code confirmedAt}, na mesma transação. Atribuição nula lança {@link
+     * IllegalArgumentException} antes de qualquer mudança; status diferente de {@code RESERVING}
+     * lança {@link IllegalStateException}.
      */
-    public void confirm(OffsetDateTime now) {
+    public void confirm(OffsetDateTime now, CarrierAssignment assignment) {
+        if (assignment == null) {
+            throw new IllegalArgumentException("a confirmed order requires a carrier assignment");
+        }
         requireReserving();
         this.status = OrderStatus.CONFIRMED;
         this.confirmedAt = now;
+        this.carrier = assignment.carrier();
+        this.trackingCode = assignment.trackingCode();
     }
 
     private void requireCreated() {
