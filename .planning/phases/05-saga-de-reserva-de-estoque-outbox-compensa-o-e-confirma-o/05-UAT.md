@@ -18,15 +18,15 @@ result: pass
 
 ### 2. order-service ligado ao LocalStack saudável (05-01 D6)
 expected: Na mesma subida, `docker compose ps` mostra o LocalStack healthy só depois de as filas `inventory-commands-queue` e `order-events-queue` (e as DLQs) existirem, e o order-service só sobe depois dele. `docker compose exec localstack awslocal sqs list-queues` lista as quatro filas.
-result: [pending]
+result: pass
 
 ### 3. Saga observável pelo Swagger e pelo smoke
-expected: `bash scripts/smoke-order-saga.sh` termina com sucesso. Em `http://localhost:8085/swagger-ui.html`, com o token de BUYER impresso pelo script, um `POST /orders` dentro do estoque e do limite volta RESERVING e, poucos segundos depois, `GET /orders/{id}` mostra CONFIRMED com `confirmedAt`. Um pedido acima do disponível termina CANCELLED com `cancellationCode` INSUFFICIENT_STOCK e um `cancellationReason` legível.
-result: [pending]
+expected: `bash scripts/smoke-order-saga.sh` termina com sucesso. Em `http://localhost:8085/swagger-ui.html`, com um token de BUYER obtido pelo login (o script não imprime tokens, por design — T-05-25), um `POST /orders` dentro do estoque e do limite volta RESERVING e, poucos segundos depois, `GET /orders/{id}` mostra CONFIRMED com `confirmedAt`. Um pedido acima do disponível termina CANCELLED com `cancellationCode` INSUFFICIENT_STOCK e um `cancellationReason` legível.
+result: pass
 
 ### 4. Documentação da saga legível para um avaliador (05-06 D4)
 expected: As seções do README 'Saga de reserva de estoque (Fase 5)', 'Como observar a saga' e 'Limitações conhecidas (Fase 5)', a subseção de estados/códigos de cancelamento em `docs/API.md` e `docs/VISAO-GERAL.md` explicam o outbox, a entrega pelo menos uma vez, a idempotência, o timeout/compensação e a lápide, e dá para entender tudo sem abrir o código.
-result: [pending]
+result: pass
 
 ### 5. Suíte completa verde depois das correções do review
 expected: Com o compose derrubado (`docker compose down`) e o Docker de pé, `./mvnw -B verify` termina com BUILD SUCCESS: testes de integração do inventory/order e o E2E da saga (`e2e-tests`) passam por cima das correções WR-01/WR-02/WR-04, que só foram compiladas e testadas por unidade.
