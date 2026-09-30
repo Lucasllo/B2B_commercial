@@ -431,4 +431,20 @@ public class InventoryService {
                                    List<ReservationLine> lines) {
         throw new ReservationConflictException();
     }
+
+    /**
+     * [Rule 1 - Bug] Mesma classe de bug de {@link #recoverReserveAllInconsistentBook}: {@code
+     * releaseAll} lanca {@link IllegalStateException} para a reserva viva sem linha de {@code
+     * inventory} (anomalia tecnica, nunca retentavel — nao esta em {@code retryFor}), mas o aspecto
+     * de reexecucao do Spring Retry intercepta QUALQUER excecao escapando de um metodo {@code
+     * @Retryable}; sem um {@code @Recover} cujo tipo de parametro corresponda, a excecao real fica
+     * soterrada por {@code ExhaustedRetryException("Cannot locate recovery method")}, escondendo
+     * {@code productId}/{@code reservationId}/{@code orderId} do chamador e dos logs. Este metodo
+     * apenas relanca a excecao original, preservando a mensagem diagnostica.
+     */
+    @Recover
+    public void recoverReleaseAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
+                                                   List<ReservationLine> lines) {
+        throw ex;
+    }
 }
