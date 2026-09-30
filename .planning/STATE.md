@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-09-30T00:08:46.208Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-09-30T01:19:29.693Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 05 execution started
-state_head: da6160db14cddd2ee874eb0cf8d772a9c92ac49b
+state_head: b4f1804676f4802672ad097640280a256792e237
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 57
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 ## Current Position
 
 Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 2 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-29 — Phase 05 execution started
 
@@ -74,6 +74,7 @@ Progress: [██████░░░░] 57%
 | Phase 05 P02 | 89min | 2 tasks | 28 files |
 | Phase 05 P03 | 34min | 2 tasks | 21 files |
 | Phase 05 P04 | 110min | 3 tasks | 27 files |
+| Phase 05 P05 | 95min | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 05]: STOCK_RESERVED_ITEMS_CHECK - StockReserved com itens diferentes dos do pedido e mensagem invalida e descartado; a fila e uma fronteira de confianca
 - [Phase 05]: TOMBSTONE_FK=dropped, REST_RESERVATION_ENDPOINTS=kept, SAGA_TIMEOUT_DEFAULTS=reservation-timeout 2m/timeout-check-interval 10000ms/timeout-batch-size 50 (05-04)
 - [Phase 05]: [Rule 1 - Bug] StockReservationConcurrencyIT reaproveita o Postgres de AbstractIntegrationTest em vez de um container separado - evita listener zumbi gravando no banco errado sob a suite inteira
+- [Phase 05]: [Phase 05]: E2E_CONFIG_STRATEGY/E2E_FLYWAY_LOCATIONS provados no módulo e2e-tests (05-05) — dois contextos Spring reais isolados via spring.config.location real + overrides + argumentos de linha de comando, sem depender da resolução ambígua de classpath:application.yml entre os dois jars
+- [Phase 05]: [Phase 05]: [Rule 1 - Bug] Consulta a flyway_schema_history do E2eContextsSmokeIT ajustada para version IS NOT NULL — o Flyway grava uma linha adicional (type SCHEMA, version nulo) para o evento de criação do schema
 
 ### Pending Todos
 
@@ -150,6 +153,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-30T00:08:46.013Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-09-30T01:19:29.529Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
