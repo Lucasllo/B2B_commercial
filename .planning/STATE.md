@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-09-26T16:03:17.821Z"
-last_activity: 2026-09-26
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-09-30T00:08:46.208Z"
+last_activity: 2026-09-29
 last_activity_desc: Phase 05 execution started
-state_head: 506811b84f0d57dfaa6c462bb99d02c72a5e81fa
+state_head: da6160db14cddd2ee874eb0cf8d772a9c92ac49b
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 57
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 ## Current Position
 
 Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 4 of 6
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-09-26 — Phase 05 execution started
+Last activity: 2026-09-29 — Phase 05 execution started
 
 Progress: [██████░░░░] 57%
 
@@ -73,6 +73,7 @@ Progress: [██████░░░░] 57%
 | Phase 05 P01 | 33min | 2 tasks | 32 files |
 | Phase 05 P02 | 89min | 2 tasks | 28 files |
 | Phase 05 P03 | 34min | 2 tasks | 21 files |
+| Phase 05 P04 | 110min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,8 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 05]: SAGA_RESULT_LOCK=order-row - OrderSagaService trava a linha do pedido (findByIdForUpdate/PESSIMISTIC_WRITE), nao company_credit_lock, para serializar resultado x timeout (05-04) sobre o mesmo pedido
 - [Phase 05]: [Phase 05]: CANCELLATION_REASON_TEMPLATE - texto de cancelamento montado no servidor a partir de modelo fixo por reasonCode, com sku do snapshot do item; truncado em 500 caracteres; nunca texto livre da mensagem
 - [Phase 05]: [Phase 05]: STOCK_RESERVED_ITEMS_CHECK - StockReserved com itens diferentes dos do pedido e mensagem invalida e descartado; a fila e uma fronteira de confianca
+- [Phase 05]: TOMBSTONE_FK=dropped, REST_RESERVATION_ENDPOINTS=kept, SAGA_TIMEOUT_DEFAULTS=reservation-timeout 2m/timeout-check-interval 10000ms/timeout-batch-size 50 (05-04)
+- [Phase 05]: [Rule 1 - Bug] StockReservationConcurrencyIT reaproveita o Postgres de AbstractIntegrationTest em vez de um container separado - evita listener zumbi gravando no banco errado sob a suite inteira
 
 ### Pending Todos
 
@@ -147,6 +150,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-26T16:03:17.641Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-09-30T00:08:46.013Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
