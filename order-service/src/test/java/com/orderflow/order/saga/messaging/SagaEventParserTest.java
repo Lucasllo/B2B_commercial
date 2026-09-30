@@ -289,6 +289,48 @@ class SagaEventParserTest {
     }
 
     @Test
+    void stockReservedWithDuplicateProductIdIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String body = validReservedBody(UUID.randomUUID(), orderId, orderId.toString(),
+                "[" + itemJson(productId, 1) + "," + itemJson(productId, 2) + "]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("productId repetido");
+    }
+
+    @Test
+    void stockReservedWithQuantityAboveCeilingIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        // 9999999999999 nao cabe em int: sem teto antes do cast seria truncado silenciosamente.
+        String body = validReservedBody(UUID.randomUUID(), orderId, orderId.toString(),
+                "[{\"productId\":\"" + UUID.randomUUID() + "\",\"quantity\":9999999999999}]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("quantity");
+    }
+
+    @Test
+    void failureWithRequestedAboveCeilingIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validFailedBody(UUID.randomUUID(), orderId, orderId.toString(), "INSUFFICIENT_STOCK",
+                "[{\"productId\":\"" + UUID.randomUUID() + "\",\"requested\":9999999999999,\"available\":0}]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("requested");
+    }
+
+    @Test
+    void failureWithAvailableAboveIntRangeIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = validFailedBody(UUID.randomUUID(), orderId, orderId.toString(), "INSUFFICIENT_STOCK",
+                "[{\"productId\":\"" + UUID.randomUUID() + "\",\"requested\":1,\"available\":9999999999999}]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("available");
+    }
+
+    @Test
     void exceptionMessageIsSanitizedAndBoundedInLength() {
         String longSuffix = "Y".repeat(100);
         String body = """

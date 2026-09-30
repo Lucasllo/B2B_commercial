@@ -15,7 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -33,6 +35,7 @@ public class SagaEventParser {
 
     private static final int MAX_RAW_PAYLOAD_BYTES = 64 * 1024;
     private static final int SANITIZED_VALUE_MAX_LENGTH = 64;
+    private static final long MAX_QUANTITY_PER_ITEM = 1_000_000L;
 
     private final ObjectReader eventReader;
 
@@ -88,9 +91,17 @@ public class SagaEventParser {
             throw new InvalidSagaMessageException("Campo items nao pode ser vazio");
         }
         List<ReservationLine> items = new ArrayList<>(itemsNode.size());
+        // productId repetido e rejeitado aqui (mesma regra de SagaCommandParser.requireItems): sem
+        // isso, OrderSagaService.itemsMatchOrder (Collectors.toMap) lancaria IllegalStateException,
+        // que o listener nao trata como mensagem malformada.
+        Set<UUID> seenProductIds = new HashSet<>();
         for (JsonNode itemNode : itemsNode) {
             UUID productId = requireUuid(itemNode, "productId");
-            int quantity = requireIntAtLeast(itemNode, "quantity", 1);
+            if (!seenProductIds.add(productId)) {
+                throw new InvalidSagaMessageException(
+                        "Campo productId repetido em items: " + sanitizeForLog(productId.toString()));
+            }
+            int quantity = requireIntInRange(itemNode, "quantity", 1, MAX_QUANTITY_PER_ITEM);
             items.add(new ReservationLine(productId, quantity));
         }
         return items;
@@ -135,22 +146,34 @@ public class SagaEventParser {
         List<ReservationFailureLine> failures = new ArrayList<>(failuresNode.size());
         for (JsonNode failureNode : failuresNode) {
             UUID productId = requireUuid(failureNode, "productId");
-            int requested = requireIntAtLeast(failureNode, "requested", 1);
-            int available = requireIntAtLeast(failureNode, "available", 0);
+            int requested = requireIntInRange(failureNode, "requested", 1, MAX_QUANTITY_PER_ITEM);
+            // available reflete o saldo em estoque (quantityOnHand, ate Integer.MAX_VALUE no
+            // inventory-service) — teto de int evita o truncamento silencioso no cast.
+            int available = requireIntInRange(failureNode, "available", 0, Integer.MAX_VALUE);
             failures.add(new ReservationFailureLine(productId, requested, available));
         }
         return failures;
     }
 
-    private int requireIntAtLeast(JsonNode node, String field, int min) {
+    /**
+     * Piso E teto checados em {@code long} ANTES do cast para {@code int} — um valor JSON fora da
+     * faixa de {@code int} (ex.: {@code 9999999999999}) seria truncado silenciosamente por {@code
+     * (int) value} e poderia virar qualquer inteiro, inclusive negativo (mesma disciplina de {@code
+     * SagaCommandParser.requireQuantity}).
+     */
+    private int requireIntInRange(JsonNode node, String field, int min, long max) {
         JsonNode valueNode = node.get(field);
         if (valueNode == null || valueNode.isNull() || !valueNode.isIntegralNumber()) {
             throw new InvalidSagaMessageException("Campo " + field + " ausente ou nao e um numero inteiro");
         }
-        long value = valueNode.asLong();
-        if (value < min) {
+        if (!valueNode.canConvertToLong()) {
             throw new InvalidSagaMessageException(
-                    "Campo " + field + " fora da faixa permitida (minimo " + min + "): " + value);
+                    "Campo " + field + " fora da faixa permitida (" + min + ".." + max + ")");
+        }
+        long value = valueNode.asLong();
+        if (value < min || value > max) {
+            throw new InvalidSagaMessageException(
+                    "Campo " + field + " fora da faixa permitida (" + min + ".." + max + "): " + value);
         }
         return (int) value;
     }
