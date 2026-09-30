@@ -5,6 +5,16 @@
 # decisão manual do vendedor com auditoria, recusa de produto descontinuado pelo catálogo real, e
 # isolamento por empresa (04-05-PLAN.md Task 1).
 #
+# Fase 5 (D-69): todo pedido aprovado (automático ou manual) entra direto em RESERVING em vez de
+# permanecer em APPROVED (D-54) — a criação e a aprovação manual devolvem o pedido já em reserva de
+# estoque, cujo resultado chega depois pela saga. Por isso o passo 3 define o estoque de P1 antes de
+# qualquer pedido: sem estoque, os pedidos aprovados terminariam CANCELLED por falta de reserva,
+# liberariam o crédito recém-consumido e quebrariam o determinismo dos passos seguintes deste smoke
+# (que dependem da exposição de crédito acumulada). A saga completa — confirmação, cancelamento com
+# motivo e a reserva refletida no inventory-service — é demonstrada por
+# scripts/smoke-order-saga.sh; este smoke continua provando só os Success Criteria 1 a 4 originais
+# da Fase 4.
+#
 # MSYS_NO_PATHCONV=1 evita que o Git Bash do Windows reescreva argumentos como
 # /proc/sys/kernel/random/uuid como caminhos do Windows antes de repassá-los ao
 # `docker compose exec`.
@@ -138,7 +148,17 @@ DISCONTINUE_STATUS=$(exec_gateway curl -s -o /dev/null -w '%{http_code}' -X PUT 
     -d '{"status":"DISCONTINUED"}')
 [ "$DISCONTINUE_STATUS" = "200" ] \
     || fail "PUT /api/products/${P2_ID}/status devolveu ${DISCONTINUE_STATUS}, esperado 200"
-echo "3/15 produtos P1 (${P1_ID}, 100.00) e P2 (${P2_ID}, 50.00, DISCONTINUED) criados"
+
+# Fase 5 (D-69): define o estoque de P1 antes de qualquer pedido — sem estoque, os pedidos
+# aprovados abaixo entrariam em RESERVING e terminariam CANCELLED por falta de reserva, liberando o
+# crédito consumido e quebrando o determinismo do passo 12 (que depende da exposição acumulada).
+P1_STOCK_STATUS=$(exec_gateway curl -s -o /dev/null -w '%{http_code}' -X PUT \
+    "${GATEWAY_URL}/api/inventory/${P1_ID}" \
+    -H "Authorization: Bearer ${SELLER_TOKEN}" -H "Content-Type: application/json" \
+    -d '{"quantityOnHand":100}')
+[ "$P1_STOCK_STATUS" = "200" ] \
+    || fail "PUT /api/inventory/${P1_ID} (estoque 100) devolveu ${P1_STOCK_STATUS}, esperado 200"
+echo "3/15 produtos P1 (${P1_ID}, 100.00, estoque 100) e P2 (${P2_ID}, 50.00, DISCONTINUED) criados"
 
 # 4. POST /api/orders sem token → 401.
 NO_TOKEN_STATUS=$(exec_gateway curl -s -o /dev/null -w '%{http_code}' -X POST \
@@ -161,11 +181,11 @@ ORDER_APPROVED_ID=$(extract_string "$ORDER_APPROVED_BODY" id)
 ORDER_APPROVED_STATUS_FIELD=$(extract_string "$ORDER_APPROVED_BODY" status)
 ORDER_APPROVED_DECIDED_BY=$(extract_string "$ORDER_APPROVED_BODY" decidedBy)
 [ -n "$ORDER_APPROVED_ID" ] || fail "pedido de 400.00 (4x P1) nao devolveu id"
-[ "$ORDER_APPROVED_STATUS_FIELD" = "APPROVED" ] \
-    || fail "pedido de 400.00 (4x P1) nasceu com status ${ORDER_APPROVED_STATUS_FIELD:-<vazio>}, esperado APPROVED"
+[ "$ORDER_APPROVED_STATUS_FIELD" = "RESERVING" ] \
+    || fail "pedido de 400.00 (4x P1) nasceu com status ${ORDER_APPROVED_STATUS_FIELD:-<vazio>}, esperado RESERVING"
 [ "$ORDER_APPROVED_DECIDED_BY" = "SYSTEM" ] \
     || fail "pedido de 400.00 (4x P1) tem decidedBy ${ORDER_APPROVED_DECIDED_BY:-<vazio>}, esperado SYSTEM"
-echo "5/15 pedido ${ORDER_APPROVED_ID} (400.00) nasceu APPROVED, decidedBy=SYSTEM"
+echo "5/15 pedido ${ORDER_APPROVED_ID} (400.00) nasceu RESERVING, decidedBy=SYSTEM"
 
 # 6. BUYER de A pede 7 x P1 (700.00) → 201 PENDING_APPROVAL — Success Criteria 2.
 ORDER_PENDING_BODY=$(create_order "$BUYER_A_TOKEN" "$P1_ID" 7)
@@ -222,8 +242,8 @@ APPROVE_BODY=$(exec_gateway curl -s -X POST \
     -d '{"reason":"cliente estrategico"}')
 APPROVE_STATUS_FIELD=$(extract_string "$APPROVE_BODY" status)
 APPROVE_DECIDED_BY=$(extract_string "$APPROVE_BODY" decidedBy)
-[ "$APPROVE_STATUS_FIELD" = "APPROVED" ] \
-    || fail "aprovacao do pedido ${ORDER_PENDING_ID} devolveu status ${APPROVE_STATUS_FIELD:-<vazio>}, esperado APPROVED"
+[ "$APPROVE_STATUS_FIELD" = "RESERVING" ] \
+    || fail "aprovacao do pedido ${ORDER_PENDING_ID} devolveu status ${APPROVE_STATUS_FIELD:-<vazio>}, esperado RESERVING"
 [ "$APPROVE_DECIDED_BY" = "$SELLER_USER_ID" ] \
     || fail "aprovacao do pedido ${ORDER_PENDING_ID} tem decidedBy ${APPROVE_DECIDED_BY:-<vazio>}, esperado ${SELLER_USER_ID}"
 echo "11/15 vendedor aprova pedido ${ORDER_PENDING_ID}, decidedBy=${SELLER_USER_ID}"
