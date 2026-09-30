@@ -135,11 +135,7 @@ class TombstoneReleaseIT extends AbstractIntegrationTest {
 
         sagaQueues().sendCommand(releaseStockCommand(orderId, "RESERVATION_TIMEOUT", "[" + itemJson(productId, 3) + "]"));
 
-        // 45s (nao 15s): sob a suite inteira, um Retryable esgotado por contencao de conexao
-        // (DataAccessException fora de retryFor) so reaparece apos o VisibilityTimeout padrao da
-        // fila SQS (30s, localstack-init/ready.d/02-create-order-saga-resources.sh nao o
-        // sobrescreve) — a redelivery reprocessa e converge, mas 15s nao cobre esse ciclo.
-        await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(500)).untilAsserted(() -> {
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(500)).untilAsserted(() -> {
             assertThat(quantityReserved(productId)).isZero();
             assertThat(reservationReleased(orderId.toString(), productId)).isTrue();
             assertThat(reservationReleasedAt(orderId.toString(), productId)).isNotNull();
@@ -147,7 +143,7 @@ class TombstoneReleaseIT extends AbstractIntegrationTest {
 
         // Um segundo ReleaseStock igual — no-op idempotente, nao muda nada.
         sagaQueues().sendCommand(releaseStockCommand(orderId, "RESERVATION_TIMEOUT", "[" + itemJson(productId, 3) + "]"));
-        Thread.sleep(5000);
+        Thread.sleep(3000);
         assertThat(quantityReserved(productId)).isZero();
         assertThat(stockReservationCount(orderId.toString())).isEqualTo(1);
     }
@@ -166,7 +162,7 @@ class TombstoneReleaseIT extends AbstractIntegrationTest {
         String items = "[" + itemJson(stockedProduct, 2) + "," + itemJson(neverStockedProduct, 4) + "]";
         sagaQueues().sendCommand(releaseStockCommand(orderId, "RESERVATION_TIMEOUT", items));
 
-        await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(500)).untilAsserted(() ->
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(500)).untilAsserted(() ->
                 assertThat(stockReservationCount(orderId.toString())).isEqualTo(2));
 
         assertThat(reservationReleased(orderId.toString(), stockedProduct)).isTrue();
@@ -202,9 +198,8 @@ class TombstoneReleaseIT extends AbstractIntegrationTest {
             sagaQueues().sendCommand(reserveStockCommand(orderId, items));
 
             // Awaitility (nao Thread.sleep fixo): a resolucao da corrida pode exigir reexecucoes
-            // do @Retryable de um dos dois lados (conflito de unicidade/versao) antes de convergir
-            // — um prazo curto fixo e sensivel a contencao do sistema sob a suite inteira.
-            await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(300)).untilAsserted(() -> {
+            // do @Retryable de um dos dois lados (conflito de unicidade/versao) antes de convergir.
+            await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted(() -> {
                 assertThat(quantityReserved(productId)).isEqualTo(before);
                 assertThat(liveReservationCount(orderId.toString())).isZero();
             });

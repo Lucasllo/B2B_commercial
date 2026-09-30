@@ -17,11 +17,12 @@ import java.util.List;
 
 /**
  * Publicação transacional do lote (D-59) — duplicado do relay equivalente do order-service (D-62).
- * Único bean deste serviço que fala com o SQS para os eventos de resultado da saga — o gate de grep
- * da Task 1 verifica que só este arquivo e o publicador legado de {@code STOCK_ADJUSTED}
- * ({@code StockEventPublisher}, removido em 05-04) importam {@code io.awspring.cloud.sqs.operations.}
- * (T-05-01). Ao contrário de {@code InventoryService.reserveAll}, que nunca faz I/O de rede sob sua
- * transação de reserva, aqui o envio ao SQS É o ponto da transação (D-59).
+ * Único bean deste serviço que fala com o SQS (D-60, 05-04) — a partir desta fase o gate de grep
+ * verifica que este é o ÚNICO arquivo de produção que importa {@code
+ * io.awspring.cloud.sqs.operations.}: o publicador direto legado ({@code StockEventPublisher}, D-29,
+ * dual-write da Fase 3) foi removido, fechando a limitação D-29/D-30 (T-05-01). Ao contrário de
+ * {@code InventoryService.reserveAll}, que nunca faz I/O de rede sob sua transação de reserva, aqui
+ * o envio ao SQS É o ponto da transação (D-59).
  *
  * <p>Uma falha de envio de UM evento é capturada só para aquele evento — {@link
  * OutboxEvent#recordFailure} + log WARN citando {@code eventId}/{@code eventType}/fila, nunca o
@@ -29,11 +30,10 @@ import java.util.List;
  * e nunca derruba o lote inteiro por um evento que falhou.
  *
  * <p>{@code resolveQueue} despacha por {@code eventType}: {@code StockReserved}/
- * {@code StockReservationFailed} (esta task) vão para {@code order-events-queue};
- * {@code STOCK_ADJUSTED} (D-60, usado a partir de 05-04, quando {@code InventoryController} passa
- * a gravar no outbox em vez de chamar {@code StockEventPublisher}) vai para
- * {@code notification-events-queue}; qualquer outro é erro de programação, tratado como falha do
- * próprio evento.
+ * {@code StockReservationFailed} vão para {@code order-events-queue}; {@code STOCK_ADJUSTED} (D-60,
+ * gravado por {@code InventoryService#setStock} desde 05-04) vai para {@code
+ * notification-events-queue}; qualquer outro é erro de programação, tratado como falha do próprio
+ * evento.
  */
 @Component
 public class OutboxRelay {

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.Message;
 
@@ -41,8 +42,25 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @Value("${orderflow.messaging.notification-events-queue}")
     private String queueName;
+
+    private int outboxRowCount(UUID productId, String eventType) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory.outbox_event WHERE aggregate_id = ? AND event_type = ?",
+                Integer.class, productId.toString(), eventType);
+        return count == null ? 0 : count;
+    }
+
+    private boolean outboxRowPublished(UUID eventId) {
+        Boolean published = jdbcTemplate.queryForObject(
+                "SELECT published_at IS NOT NULL FROM inventory.outbox_event WHERE id = ?",
+                Boolean.class, eventId);
+        return Boolean.TRUE.equals(published);
+    }
 
     private String setStockPayload(int quantityOnHand) {
         return """
@@ -81,6 +99,8 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
         assertContractShape(firstEvent, productId, 0, 7);
         assertThat(firstBatch.get(0).attributeKeys()).doesNotContain(SqsHeaders.SQS_DEFAULT_TYPE_HEADER);
         UUID firstEventId = UUID.fromString(firstEvent.get("eventId").asText());
+        assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(1);
+        assertThat(outboxRowPublished(firstEventId)).isTrue();
 
         mockMvc.perform(put("/inventory/" + productId)
                         .header("Authorization", "Bearer " + token)
@@ -94,6 +114,8 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
         assertContractShape(secondEvent, productId, 7, 12);
         UUID secondEventId = UUID.fromString(secondEvent.get("eventId").asText());
         assertThat(secondEventId).isNotEqualTo(firstEventId);
+        assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(2);
+        assertThat(outboxRowPublished(secondEventId)).isTrue();
     }
 
     // -----------------------------------------------------------------------------------------
@@ -112,6 +134,7 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
         List<ReceivedMessage> afterSetStock = awaitMessagesForProduct(productId, 1);
         assertThat(afterSetStock).hasSize(1);
+        assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(1);
 
         mockMvc.perform(post("/inventory/" + productId + "/reservations")
                         .header("Authorization", "Bearer " + token)
@@ -125,6 +148,7 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
                         .content(setStockPayload(2)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("stock_below_reserved"));
+        assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(1);
 
         mockMvc.perform(delete("/inventory/" + productId + "/reservations/res-t2-rej")
                         .header("Authorization", "Bearer " + token))
@@ -132,6 +156,7 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
 
         List<ReceivedMessage> afterActions = drainMessagesForProductDuring(productId, Duration.ofSeconds(3));
         assertThat(afterActions).isEmpty();
+        assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(1);
     }
 
     @Test

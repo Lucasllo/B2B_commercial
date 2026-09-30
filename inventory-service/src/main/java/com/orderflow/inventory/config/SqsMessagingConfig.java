@@ -39,22 +39,23 @@ public class SqsMessagingConfig {
 
     /**
      * O {@code SqsAsyncClient} padrao (Netty) usa read timeout de 30s e retry standard (3
-     * tentativas) — sem limite mais curto, {@code StockEventPublisher.publishStockAdjusted}
-     * (chamado sincronamente na thread HTTP do Tomcat, depois do commit) pode prender a
-     * requisicao por 1-2 minutos se o LocalStack/SQS aceitar a conexao mas nao responder (WR-03).
-     * Limitar a chamada inteira a poucos segundos garante que a resposta HTTP (que ja reflete um
-     * commit real no Postgres) nunca fica presa pelo "melhor esforco" declarado do envio.
+     * tentativas) — sem limite mais curto, uma chamada sincrona ao SQS na thread HTTP do Tomcat
+     * poderia prender a requisicao por 1-2 minutos se o LocalStack/SQS aceitar a conexao mas nao
+     * responder (WR-03). A partir da Fase 5 (D-60, 05-04) {@code PUT /inventory/{productId}} nao
+     * fala mais com o SQS diretamente — o {@code STOCK_ADJUSTED} vai para o outbox na mesma
+     * transacao e quem fala com o SQS e o relay {@code @Scheduled} ({@code OutboxRelay}), fora da
+     * thread HTTP. Este limite curto agora protege justamente o relay: ele segura linhas do outbox
+     * (nao commitadas ao SQS ainda) durante o envio, e um SQS lento nao pode prender esse ciclo por
+     * mais que alguns segundos, sob risco de atrasar o proximo lote.
      *
-     * <p>Fase 5 (D-61): este {@code SqsAsyncClient} passa a ser compartilhado tambem pelo container
-     * do {@code ReservationCommandListener} (as dez requisicoes {@code ReceiveMessage} concorrentes
-     * do padrao do Spring Cloud AWS competem pelo mesmo pool de conexoes Netty que esta chamada
-     * sincrona). {@code orderflow.messaging}/{@code spring.cloud.aws.sqs.listener.poll-timeout=0s}
+     * <p>Fase 5 (D-61): este {@code SqsAsyncClient} tambem e compartilhado pelo container do
+     * {@code ReservationCommandListener} (as dez requisicoes {@code ReceiveMessage} concorrentes do
+     * padrao do Spring Cloud AWS competem pelo mesmo pool de conexoes Netty que o relay e o
+     * listener). {@code orderflow.messaging}/{@code spring.cloud.aws.sqs.listener.poll-timeout=0s}
      * (application.yml) desliga o long polling do listener para que cada {@code ReceiveMessage}
      * responda na hora em vez de segurar a conexao por ate 20s — sem isso, toda tentativa de
      * recebimento estouraria {@code apiCallAttemptTimeout} sozinha. Os valores abaixo ganharam
-     * folga (de 1s/3s para 2s/5s) para absorver a contencao dessas dez requisicoes concorrentes sem
-     * enfraquecer o motivo original (a resposta HTTP continua limitada a poucos segundos, nunca a
-     * 1-2 minutos).
+     * folga (de 1s/3s para 2s/5s) para absorver a contencao dessas dez requisicoes concorrentes.
      */
     @Bean
     public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {

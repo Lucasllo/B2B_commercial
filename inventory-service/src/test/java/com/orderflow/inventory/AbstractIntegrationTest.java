@@ -30,9 +30,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * recomenda (padrao herdado de {@code auth-service}/{@code catalog-service}).
  *
  * <p>Desde o plano 03-02, um LocalStack real tambem sobe (via {@link LocalStackTestSupport}) para
- * que {@code StockEventPublisher} tenha uma fila de verdade para publicar — sem isso, todo
- * {@code PUT /inventory/{productId}} dos testes existentes tentaria falar com um endpoint
- * inexistente. Spring Cloud AWS nao oferece {@code @ServiceConnection} para LocalStack
+ * que o relay do outbox ({@code OutboxRelay}, D-59/D-60, 05-04) e o listener da saga ({@code
+ * ReservationCommandListener}, Fase 5) tenham uma fila de verdade para falar — sem isso, todo
+ * {@code PUT /inventory/{productId}} (que grava {@code STOCK_ADJUSTED} no outbox) e todo comando
+ * {@code ReserveStock}/{@code ReleaseStock} dos testes existentes nao teriam fila real para
+ * publicar/consumir. Spring Cloud AWS nao oferece {@code @ServiceConnection} para LocalStack
  * (03-RESEARCH.md Pitfall A), entao as propriedades sao registradas a mao.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)

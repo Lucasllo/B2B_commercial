@@ -5,6 +5,7 @@ import com.orderflow.inventory.saga.messaging.dto.ReservationLine;
 import com.orderflow.inventory.saga.messaging.dto.StockReservationFailedEvent;
 import com.orderflow.inventory.saga.messaging.dto.StockReservedEvent;
 import com.orderflow.inventory.saga.outbox.OutboxWriter;
+import com.orderflow.inventory.stock.dto.StockAdjustedEvent;
 import com.orderflow.inventory.stock.dto.StockResponse;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -86,20 +87,21 @@ public class InventoryService {
      * {@code UNIQUE(product_id)} — a reexecucao absorve essa corrida e a tentativa perdedora
      * relê a linha ja comitada pela vencedora.
      *
-     * <p>Devolve tambem a quantidade anterior ao ajuste (0 quando a linha e criada agora), lida
-     * dentro desta mesma transacao — nunca por uma leitura separada de fora, porque o metodo
-     * inteiro e reexecutado num conflito de versao, e so a releitura de dentro da tentativa atual
-     * garante que o valor capturado nunca fica desatualizado (03-RESEARCH.md Pitfall C). Esta
-     * classe nao conhece nada de mensageria: o evento de ajuste (03-02) e publicado pelo chamador
-     * — {@code InventoryController} — depois que este metodo retorna e a transacao ja foi
-     * commitada, nunca daqui de dentro.
+     * <p>A quantidade anterior ao ajuste (0 quando a linha e criada agora) e lida dentro desta
+     * mesma transacao — nunca por uma leitura separada de fora, porque o metodo inteiro e
+     * reexecutado num conflito de versao, e so a releitura de dentro da tentativa atual garante
+     * que o valor capturado nunca fica desatualizado (03-RESEARCH.md Pitfall C). O {@code
+     * STOCK_ADJUSTED} (D-60, 05-04) e gravado no {@code outboxWriter} NA MESMA transacao deste
+     * ajuste, depois do {@code save}/{@code saveAndFlush} — a partir desta fase o unico caminho de
+     * publicacao e o outbox; nao existe mais publicacao direta depois do commit (o publicador
+     * legado {@code StockEventPublisher} deixou de existir, Pitfall 4 da pesquisa).
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
             maxAttempts = RETRY_MAX_ATTEMPTS,
             backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
     @Transactional
-    public StockAdjustmentResult setStock(UUID productId, int quantityOnHand) {
+    public StockResponse setStock(UUID productId, int quantityOnHand) {
         Inventory inventory = inventoryRepository.findByProductId(productId).orElse(null);
         int previousQuantityOnHand;
         if (inventory == null) {
@@ -113,15 +115,19 @@ public class InventoryService {
             inventory.setOnHand(quantityOnHand);
             inventoryRepository.saveAndFlush(inventory);
         }
-        // Capturado aqui, dentro da tentativa transacional que de fato gravou o ajuste — nao no
-        // momento da publicacao do evento (fora da transacao, depois do commit), que sob dois PUT
-        // concorrentes no mesmo produto pode inverter a ordem cronologica do occurredAt em relacao
-        // a ordem real de commit (WR-04).
-        return new StockAdjustmentResult(StockResponse.from(inventory), previousQuantityOnHand, Instant.now());
+        // Capturado aqui, dentro da tentativa transacional que de fato gravou o ajuste — nunca no
+        // momento da publicacao (que so aconteceria depois, no relay do outbox, fora desta
+        // transacao) — sob dois PUT concorrentes no mesmo produto isso evitaria inverter a ordem
+        // cronologica do occurredAt em relacao a ordem real de commit (WR-04, 03-RESEARCH.md
+        // Pitfall C).
+        // [RED scaffolding 05-04 Task 3] Gravacao no outbox temporariamente desativada para provar
+        // que StockAdjustedEventPublishingIT falha pelo motivo certo (nenhum STOCK_ADJUSTED
+        // publicado) antes de restaurar no commit GREEN.
+        return StockResponse.from(inventory);
     }
 
     @Recover
-    public StockAdjustmentResult recoverSetStock(DataAccessException ex, UUID productId, int quantityOnHand) {
+    public StockResponse recoverSetStock(DataAccessException ex, UUID productId, int quantityOnHand) {
         throw new ReservationConflictException();
     }
 

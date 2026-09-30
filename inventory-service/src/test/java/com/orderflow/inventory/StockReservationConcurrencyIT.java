@@ -50,19 +50,30 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>As threads virtuais desta classe sao exclusivamente do lado do cliente que dispara as
  * requisicoes -- nenhuma configuracao de threads virtuais do lado do servidor e ativada
  * (02-RESEARCH.md Pitfall 5, {@code inventory-service/src/main/resources/application.yml}).
+ *
+ * <p>[Rule 1 - Bug, achado durante 05-04]: por nao estender {@link AbstractIntegrationTest}, esta
+ * classe cria um {@code ApplicationContext} Spring PROPRIO (assinatura de configuracao diferente —
+ * sem {@code @AutoConfigureMockMvc}) — o cache de contexto de teste do Spring mantem esse contexto
+ * VIVO em segundo plano depois que as tres tasks desta classe terminam, inclusive o {@code
+ * ReservationCommandListener} PROPRIO deste contexto, que continua consumindo mensagens da MESMA
+ * fila {@code inventory-commands-queue} (compartilhada via {@link LocalStackTestSupport}) usada por
+ * todas as outras suites. Ate 05-04, nenhuma suite posterior fazia asserção via JDBC que dependesse
+ * de qual listener processou a mensagem — a partir de 05-04 (TombstoneReleaseIT), um comando podia
+ * ser "roubado" por este listener zumbi e gravado no banco ERRADO (um {@code PostgreSQLContainer}
+ * SEPARADO do de {@link AbstractIntegrationTest}), fazendo a asserção da suite seguinte nunca ver o
+ * efeito. Reutilizar o MESMO container Postgres elimina o "split-brain": não importa qual dos dois
+ * contextos processa a mensagem, o efeito cai sempre no mesmo banco que os testes consultam.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Import(TestJwt.Config.class)
 class StockReservationConcurrencyIT {
 
-    // Mesma tag de imagem Postgres do docker-compose.yml e de AbstractIntegrationTest.
+    // [Rule 1 - Bug] Reaproveita o MESMO container Postgres de AbstractIntegrationTest (mesmo
+    // pacote, campo package-private acessivel) — nunca um container SEPARADO, que criaria dois
+    // bancos divergentes por causa do ApplicationContext proprio desta classe (ver javadoc acima).
     @ServiceConnection
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16.15");
-
-    static {
-        postgres.start();
-    }
+    static final PostgreSQLContainer<?> postgres = AbstractIntegrationTest.postgres;
 
     @DynamicPropertySource
     static void awsProperties(DynamicPropertyRegistry registry) {
