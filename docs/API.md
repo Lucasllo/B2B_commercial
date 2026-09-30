@@ -679,10 +679,13 @@ Cria um pedido a partir de itens do catálogo. A empresa dona do pedido vem semp
 `company_id` do próprio token — não existe (nem é aceito) um campo de empresa no corpo. Cada item é
 validado e precificado com uma chamada síncrona ao `catalog-service` (`GET /products/{productId}`);
 o preço, nome e SKU são congelados como snapshot no momento da criação e não mudam depois, mesmo
-que o produto mude no catálogo. O pedido nasce `APPROVED` (decidido automaticamente, `decidedBy:
-"SYSTEM"`) se `exposição de crédito atual da empresa + total do pedido` couber no limite de
-crédito da empresa (consultado no `auth-service`); caso contrário nasce `PENDING_APPROVAL` e espera
-a decisão manual do vendedor — ver
+que o produto mude no catálogo. Se `exposição de crédito atual da empresa + total do pedido` couber
+no limite de crédito da empresa (consultado no `auth-service`), o pedido é decidido automaticamente
+(`decidedBy: "SYSTEM"`) e já nasce `RESERVING` — a decisão dispara a saga de reserva de estoque
+(Fase 5) na mesma transação; caso contrário nasce `PENDING_APPROVAL` e espera a decisão manual do
+vendedor. Esta resposta **não bloqueia** esperando o resultado da reserva — acompanhe o pedido por
+`GET /orders/{orderId}` até ele chegar a `CONFIRMED` ou `CANCELLED` — ver
+[README.md § Saga de reserva de estoque (Fase 5)](../README.md#saga-de-reserva-de-estoque-fase-5) e
 [README.md § Como a aprovação por crédito funciona](../README.md#como-a-aprovação-por-crédito-funciona).
 
 **Autenticação:** Bearer, papel `BUYER`.
@@ -710,13 +713,17 @@ primeiro campo):
 {
   "id": "3f7b1c2a-...",
   "companyId": "9a21e4d0-...",
-  "status": "APPROVED",
+  "status": "RESERVING",
   "total": 400.00,
   "createdBy": "8c793e97-...",
   "createdAt": "2026-09-25T14:32:00Z",
   "decidedBy": "SYSTEM",
   "decidedAt": "2026-09-25T14:32:00Z",
   "reason": null,
+  "cancellationCode": null,
+  "cancellationReason": null,
+  "confirmedAt": null,
+  "cancelledAt": null,
   "items": [
     {
       "lineNumber": 1,
@@ -731,11 +738,15 @@ primeiro campo):
 }
 ```
 
-`status` é `APPROVED` ou `PENDING_APPROVAL` — nunca outro valor nesta resposta, já que a criação
-sempre decide entre esses dois. `decidedBy`/`decidedAt`/`reason` só são preenchidos quando o pedido
-já nasce `APPROVED` (decisão automática, `decidedBy: "SYSTEM"`, `reason: null`); num pedido
-`PENDING_APPROVAL`, os três campos vêm nulos até a decisão manual (ver
-`POST /orders/{orderId}/approve`/`reject` abaixo).
+`status` é `RESERVING` ou `PENDING_APPROVAL` — nunca outro valor nesta resposta, já que a criação
+sempre decide entre esses dois; `RESERVING` avança em seguida para `CONFIRMED` ou `CANCELLED` de
+forma assíncrona (ver "Estados do pedido e saga de reserva de estoque" abaixo).
+`decidedBy`/`decidedAt`/`reason` só são preenchidos quando o pedido já nasce decidido
+automaticamente (`decidedBy: "SYSTEM"`, `reason: null`); num pedido `PENDING_APPROVAL`, os três
+campos vêm nulos até a decisão manual (ver `POST /orders/{orderId}/approve`/`reject` abaixo). Os
+quatro campos da saga (`cancellationCode`, `cancellationReason`, `confirmedAt`, `cancelledAt`) vêm
+sempre nulos nesta resposta — só são preenchidos quando o resultado da reserva chega, consultável
+por `GET /orders/{orderId}`.
 
 **Erros possíveis:** `400 validation_failed` (lista vazia/ausente, mais de 50 itens, `productId`
 nulo, `quantity` nula/`<= 0`/acima de 1000000, `productId` repetido), `400 malformed_request` (corpo
@@ -743,6 +754,38 @@ não é JSON válido), `401 unauthorized`, `403 forbidden` (papel diferente de `
 `422 invalid_order_items` (item inexistente ou `DISCONTINUED` no catálogo),
 `422 order_total_out_of_range` (total não cabe em `NUMERIC(19,2)`),
 `503 catalog_service_unavailable`, `503 auth_service_unavailable`.
+
+### Estados do pedido e saga de reserva de estoque (Fase 5)
+
+| Transição | Disparada por | Consome crédito? |
+|---|---|---|
+| `CREATED` → `PENDING_APPROVAL` | Total acima do limite de crédito disponível da empresa | Não |
+| `CREATED`/`PENDING_APPROVAL` → `APPROVED` | Decisão automática (`SYSTEM`) ou manual (`SELLER_ADMIN`, `POST /orders/{orderId}/approve`) | Sim — passo lógico da decisão, nunca um estado de repouso |
+| `APPROVED` → `RESERVING` | Mesma transação da decisão — grava o comando `ReserveStock` no outbox | Sim |
+| `PENDING_APPROVAL` → `REJECTED` | Decisão manual (`POST /orders/{orderId}/reject`) | Não |
+| `RESERVING` → `CONFIRMED` | Evento `StockReserved` consumido da fila de resultado da saga | Sim |
+| `RESERVING` → `CANCELLED` | Evento `StockReservationFailed`, ou timeout da saga (`RESERVATION_TIMEOUT`) | Não — libera o crédito consumido |
+
+`APPROVED` nunca é observado como o `status` de um pedido em repouso a partir da Fase 5 — é sempre
+um passo intermediário registrado em `decidedBy`/`decidedAt`/`reason`, e a transição para
+`RESERVING` acontece na mesma transação da decisão (D-50). `SHIPPED`/`DELIVERED` (expedição e
+entrega) chegam na Fase 6.
+
+**Códigos de cancelamento (`cancellationCode`):**
+
+| Código | Quando ocorre |
+|---|---|
+| `INSUFFICIENT_STOCK` | Quantidade solicitada de um ou mais itens excede o disponível no `inventory-service` |
+| `PRODUCT_NOT_STOCKED` | Um ou mais itens não têm nenhuma linha de estoque cadastrada |
+| `RESERVATION_CANCELLED` | A reserva foi cancelada antes de o `inventory-service` processá-la (corrida da fila SQS padrão contra um `ReleaseStock` de compensação, resolvida por lápide — ver [README.md § Saga de reserva de estoque](../README.md#saga-de-reserva-de-estoque-fase-5)) |
+| `RESERVATION_TIMEOUT` | O resultado da reserva não chegou dentro do prazo configurado (`orderflow.saga.reservation-timeout`) |
+
+`cancellationReason` é um texto legível montado pelo servidor a partir de um modelo fixo por
+código — nunca texto livre vindo da fila de mensagens. Exemplo para `INSUFFICIENT_STOCK`:
+
+```
+"Estoque insuficiente: produto SKU-001 — disponível 7, solicitado 20"
+```
 
 ---
 
@@ -755,7 +798,8 @@ sempre do pedido mais recente para o mais antigo.
 
 `BUYER` vê apenas os pedidos da própria empresa (derivada do claim `company_id` do token, nunca de
 um parâmetro de query); `SELLER_ADMIN` vê os pedidos de todas as empresas. O filtro opcional
-`?status=` vale para os dois papéis igualmente.
+`?status=` vale para os dois papéis igualmente e aceita qualquer valor do enum de estado, incluindo
+os da saga de reserva de estoque (`?status=RESERVING`, `?status=CONFIRMED`, `?status=CANCELLED`).
 
 **Resposta `200 OK`:**
 
@@ -765,7 +809,7 @@ um parâmetro de query); `SELLER_ADMIN` vê os pedidos de todas as empresas. O f
     {
       "id": "3f7b1c2a-...",
       "companyId": "9a21e4d0-...",
-      "status": "APPROVED",
+      "status": "RESERVING",
       "total": 400.00,
       "createdBy": "8c793e97-...",
       "createdAt": "2026-09-25T14:32:00Z",
@@ -781,8 +825,9 @@ um parâmetro de query); `SELLER_ADMIN` vê os pedidos de todas as empresas. O f
 }
 ```
 
-O resumo de cada pedido na listagem não inclui os itens — só `GET /orders/{orderId}` traz o
-detalhe item a item.
+O resumo de cada pedido na listagem não inclui os itens nem os campos da saga
+(`cancellationCode`/`cancellationReason`/`confirmedAt`/`cancelledAt`) — só `GET /orders/{orderId}`
+traz o detalhe completo, item a item.
 
 **Erros possíveis:** `401 unauthorized`.
 
@@ -796,10 +841,14 @@ Consulta o detalhe completo de um pedido pelo id, incluindo os itens.
 
 `BUYER` só enxerga pedidos da própria empresa — um pedido de outra empresa devolve `404
 order_not_found`, o mesmo erro de um id inexistente (nunca `403`), para não revelar que o pedido
-existe. `SELLER_ADMIN` consulta qualquer pedido, de qualquer empresa.
+existe. `SELLER_ADMIN` consulta qualquer pedido, de qualquer empresa. É por este endpoint que o
+cliente acompanha a saga de reserva de estoque: um pedido criado ou aprovado como `RESERVING` avança
+para `CONFIRMED` ou `CANCELLED` de forma assíncrona (ver
+[README.md § Saga de reserva de estoque (Fase 5)](../README.md#saga-de-reserva-de-estoque-fase-5)).
 
 **Resposta `200 OK`:** mesmo formato completo de `POST /orders` (ORDER_RESPONSE_CONTRACT), com
-`items` incluído.
+`items` incluído — pedido `CONFIRMED` traz `confirmedAt` preenchido; pedido `CANCELLED` traz
+`cancellationCode`, `cancellationReason` e `cancelledAt` preenchidos.
 
 **Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
 `401 unauthorized`, `404 order_not_found` (id inexistente, ou pedido de outra empresa visto por um
@@ -812,7 +861,9 @@ existe. `SELLER_ADMIN` consulta qualquer pedido, de qualquer empresa.
 Aprova manualmente um pedido `PENDING_APPROVAL`. A aprovação manual não reavalia o limite de
 crédito — mesmo que a soma resultante ultrapasse o limite da empresa, o pedido é aprovado e passa a
 consumir crédito normalmente a partir desse momento (nenhuma chamada ao `auth-service` acontece
-nesta decisão).
+nesta decisão). A aprovação dispara a saga de reserva de estoque na mesma transação — o pedido já
+volta `RESERVING`, não `APPROVED` (D-50, D-54) — ver
+[README.md § Saga de reserva de estoque (Fase 5)](../README.md#saga-de-reserva-de-estoque-fase-5).
 
 **Autenticação:** Bearer, papel `SELLER_ADMIN`.
 
@@ -828,9 +879,10 @@ nesta decisão).
 |---|---|---|---|
 | `reason` | string | Não | Até 500 caracteres; em branco é gravado como `null` |
 
-**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "APPROVED"`,
+**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "RESERVING"`,
 `decidedBy` igual ao `sub` do JWT do vendedor (nunca do corpo), `decidedAt` preenchido e `reason`
-igual ao motivo enviado (ou `null`).
+igual ao motivo enviado (ou `null`). Acompanhe o resultado da reserva por
+`GET /orders/{orderId}` até `CONFIRMED`/`CANCELLED`.
 
 **Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
 `400 validation_failed` (`reason` acima de 500 caracteres), `401 unauthorized`,
