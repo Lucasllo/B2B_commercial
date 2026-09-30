@@ -1,0 +1,27 @@
+# Override de teste do inventory-service para o E2E de dois contextos (E2E_CONFIG_STRATEGY, D-68).
+# Carregado via --spring.config.additional-location, DEPOIS do application.yml real do serviço
+# (--spring.config.location=file:../inventory-service/src/main/resources/application.yml) e ANTES
+# dos argumentos de linha de comando de E2eInfrastructure — só troca o que precisa mudar para caber
+# em dois contextos no mesmo JVM; tudo o resto (schema, filas, título do OpenAPI) continua vindo do
+# arquivo real.
+server:
+  # Porta 0 — o order-service também sobe com porta 0; a porta efetiva de cada contexto é lida de
+  # volta via WebServerApplicationContext em E2eInfrastructure.
+  port: 0
+
+spring:
+  jmx:
+    # Duas JVMs Spring Boot no mesmo processo registrariam MBeans com nomes colidentes sem isso.
+    enabled: false
+  flyway:
+    # E2E_FLYWAY_LOCATIONS: aponta direto para a pasta de migrações do PRÓPRIO módulo no sistema de
+    # arquivos — nunca a localização padrão `classpath:db/migration`, que veria as migrações dos
+    # DOIS serviços (o jar do order-service também está no classpath deste módulo de teste) e
+    # falharia na versão 1 duplicada (05-RESEARCH.md Pitfall 2).
+    locations: filesystem:../inventory-service/src/main/resources/db/migration
+
+orderflow:
+  outbox:
+    # Mesmo valor de teste já usado pelo inventory-service (application-test.yml) — relay rápido o
+    # bastante para os testes de Awaitility (até 30s) não pagarem o intervalo de produção (1000ms).
+    relay-interval: 200

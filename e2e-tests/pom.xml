@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.orderflow</groupId>
+        <artifactId>orderflow-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>e2e-tests</artifactId>
+    <packaging>jar</packaging>
+    <name>e2e-tests</name>
+    <description>
+        Módulo só de teste (sem src/main) do Success Criteria 5 do ROADMAP da Fase 5 (D-68, TEST-03)
+        — sobe order-service e inventory-service como dois contextos Spring Boot completos no mesmo
+        JVM, com PostgreSQL e LocalStack reais via Testcontainers e auth-service/catalog-service
+        stubados, provando a saga de reserva de estoque de ponta a ponta com um único comando
+        (`./mvnw -B -pl e2e-tests -am verify`).
+    </description>
+
+    <dependencies>
+        <!--
+          order-service e inventory-service como dependências de teste do próprio reactor — o
+          `classifier=exec` do `spring-boot-maven-plugin` (pluginManagement do pom raiz) mantém o
+          jar PLANO como artefato principal de cada módulo, então esta dependência resolve para o
+          jar plano (classes na raiz), nunca o jar gordo repackado — exatamente o que
+          `SpringApplicationBuilder` precisa para subir a aplicação real de cada serviço dentro
+          desta JVM de teste.
+        -->
+        <dependency>
+            <groupId>com.orderflow</groupId>
+            <artifactId>order-service</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.orderflow</groupId>
+            <artifactId>inventory-service</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- MockMvc não é usado aqui (os dois contextos sobem com socket HTTP real) — trazido só
+             por AssertJ/JUnit 5, já que spring-boot-starter-test é o jeito padrão de puxar os dois. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Integração JUnit 5 + ciclo de vida dos containers Testcontainers -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Container PostgreSQL real, compartilhado pelos dois contextos Spring (schemas
+             separados order/inventory na mesma instância — mesmo desenho do docker-compose.yml). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Container LocalStack real — filas da saga (Success Criteria 4/5); propriedades
+             registradas à mão como argumento de linha de comando de cada contexto (Spring Cloud AWS
+             não oferece @ServiceConnection para LocalStack, 03-RESEARCH.md Pitfall A). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>localstack</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Asserções assíncronas de espera pela saga (criar → RESERVING → CONFIRMED/CANCELLED). -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>e2e-tests</finalName>
+        <plugins>
+            <!--
+              Só o failsafe (roda as classes *IT.java em `./mvnw verify`) — herda a execução do
+              `pluginManagement` do pom raiz. Nenhum `spring-boot-maven-plugin` aqui: este módulo não
+              tem classe principal própria (as duas aplicações reais sobem via
+              `SpringApplicationBuilder` dentro dos próprios testes), e não existe `src/main/java`.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

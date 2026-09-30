@@ -24,6 +24,10 @@
         <module>inventory-service</module>
         <module>notification-service</module>
         <module>order-service</module>
+        <!-- Módulo só de teste do Success Criteria 5 (E2E da saga, D-68) — sobe order-service e
+             inventory-service como dois contextos Spring no mesmo JVM, sem código de produção
+             próprio (sem src/main). -->
+        <module>e2e-tests</module>
     </modules>
 
     <properties>

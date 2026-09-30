@@ -1,0 +1,119 @@
+package com.orderflow.e2e.support;
+
+import org.testcontainers.containers.localstack.LocalStackContainer;
+import org.testcontainers.containers.localstack.LocalStackContainer.Service;
+import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * Suporte de teste com um container {@link LocalStackContainer} singleton — cópia do suporte
+ * equivalente do {@code inventory-service} (05-RESEARCH.md, precedente citado pelo plano): os dois
+ * hooks reais do {@code localstack-init/ready.d/} (o de notificação da Fase 3 e o da saga da Fase
+ * 5) são copiados para dentro do container, e o teste espera pelas TRÊS filas que eles criam —
+ * prova o provisionamento real usado pelo {@code docker-compose.yml}, nunca uma fila criada pelo
+ * próprio teste. {@code Service.DYNAMODB} entra junto por ser exatamente a mesma cópia do
+ * inventory-service (nenhum teste deste módulo usa DynamoDB, mas os hooks reais não distinguem
+ * serviço por serviço).
+ *
+ * <p>Ao contrário das cópias de {@code order-service}/{@code inventory-service}, esta classe não
+ * expõe {@code registerAwsProperties(DynamicPropertyRegistry)} — os dois contextos deste módulo não
+ * sobem via {@code @SpringBootTest} (sem {@code TestContext} do Spring, portanto sem {@code
+ * DynamicPropertyRegistry}); {@link E2eInfrastructure} lê {@link #CONTAINER} diretamente para montar
+ * os argumentos de linha de comando de cada {@code SpringApplicationBuilder}.
+ */
+final class LocalStackTestSupport {
+
+    private static final String REGION = "us-east-1";
+    private static final List<String> QUEUE_NAMES =
+            List.of("notification-events-queue", "inventory-commands-queue", "order-events-queue");
+
+    // Mesma tag de imagem que o docker-compose.yml e os demais módulos de teste usam. Os init hooks
+    // copiados abaixo são os mesmos arquivos usados pelo compose.
+    static final LocalStackContainer CONTAINER = new LocalStackContainer(
+            DockerImageName.parse("localstack/localstack:2026.08.3"))
+            .withServices(Service.SQS, Service.DYNAMODB)
+            .withEnv("LOCALSTACK_AUTH_TOKEN", resolveAuthToken())
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(initHookPath("01-create-notification-resources.sh"), 0755),
+                    "/etc/localstack/init/ready.d/01-create-notification-resources.sh")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(initHookPath("02-create-order-saga-resources.sh"), 0755),
+                    "/etc/localstack/init/ready.d/02-create-order-saga-resources.sh");
+
+    static {
+        CONTAINER.start();
+        LocalStackProvisioningWaiter.awaitProvisioned(CONTAINER, REGION, QUEUE_NAMES);
+    }
+
+    private LocalStackTestSupport() {
+    }
+
+    private static String initHookPath(String fileName) {
+        // Resolvido a partir do diretório do módulo (e2e-tests) subindo um nível até a raiz do
+        // repositório, onde vive localstack-init/ — mesma técnica das cópias de order-service/
+        // inventory-service.
+        return Path.of("..", "localstack-init", "ready.d", fileName)
+                .toAbsolutePath().normalize().toString();
+    }
+
+    /**
+     * Mesma regra das outras cópias: por padrão usa {@code
+     * System.getenv("LOCALSTACK_AUTH_TOKEN")} se não estiver em branco; senão sobe do diretório de
+     * trabalho atual pelos diretórios pais procurando um arquivo {@code .env} e usa o valor da
+     * linha {@code LOCALSTACK_AUTH_TOKEN=} (sem aspas em volta) se não estiver em branco; senão
+     * lança {@link IllegalStateException}. O valor do token nunca aparece em log, em mensagem de
+     * exceção nem em saída de teste — a mensagem de erro nomeia apenas a variável.
+     */
+    static String resolveAuthToken() {
+        String fromEnv = System.getenv("LOCALSTACK_AUTH_TOKEN");
+        if (fromEnv != null && !fromEnv.isBlank()) {
+            return fromEnv;
+        }
+
+        String fromDotEnv = readFromDotEnvUpwards();
+        if (fromDotEnv != null && !fromDotEnv.isBlank()) {
+            return fromDotEnv;
+        }
+
+        throw new IllegalStateException(
+                "LOCALSTACK_AUTH_TOKEN nao encontrado. Exporte a variavel de ambiente "
+                        + "LOCALSTACK_AUTH_TOKEN ou preencha a linha LOCALSTACK_AUTH_TOKEN= no "
+                        + "arquivo .env da raiz do repositorio.");
+    }
+
+    private static String readFromDotEnvUpwards() {
+        Path dir = Path.of("").toAbsolutePath();
+        while (dir != null) {
+            Path candidate = dir.resolve(".env");
+            if (Files.isRegularFile(candidate)) {
+                String value = readTokenLine(candidate);
+                if (value != null) {
+                    return value;
+                }
+            }
+            dir = dir.getParent();
+        }
+        return null;
+    }
+
+    private static String readTokenLine(Path envFile) {
+        try (BufferedReader reader = Files.newBufferedReader(envFile)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("LOCALSTACK_AUTH_TOKEN=")) {
+                    return line.substring("LOCALSTACK_AUTH_TOKEN=".length()).trim();
+                }
+            }
+        } catch (IOException e) {
+            // Arquivo ilegível — trata como ausente, sem propagar o caminho nem o motivo em log.
+            return null;
+        }
+        return null;
+    }
+}

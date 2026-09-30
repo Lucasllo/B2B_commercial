@@ -15,6 +15,7 @@ COPY catalog-service/pom.xml catalog-service/pom.xml
 COPY inventory-service/pom.xml inventory-service/pom.xml
 COPY notification-service/pom.xml notification-service/pom.xml
 COPY order-service/pom.xml order-service/pom.xml
+COPY e2e-tests/pom.xml e2e-tests/pom.xml
 RUN chmod +x mvnw && ./mvnw -B -pl notification-service -am dependency:go-offline
 
 COPY notification-service/src notification-service/src
