@@ -186,7 +186,38 @@ Plans:
   3. Consultando o histórico de notificações de um pedido, aparece a linha do tempo completa: criado, aprovado (quando houve aprovação), confirmado ou cancelado, enviado e entregue.
   4. O fluxo de status CREATED → PENDING_APPROVAL → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) está documentado com diagrama e corresponde exatamente ao comportamento real da API.
 
-**Plans**: TBD
+**Plans:** 7 plans
+
+Plans:
+*Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano com IT usa LocalStack; 06-07 vem por último para documentar o que já foi demonstrado.*
+
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — order-service: CONFIRMED recebe transportadora simulada (`CarrierGateway`) e rastreio S10 na mesma transação, V3 com colunas de expedição/entrega, backfill e CHECK, `OrderResponse` com seis campos novos, e tabela única de 9 transições em `OrderStatus` consultada pelo domínio e pela saga (ORD-07, ORD-10)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-02-PLAN.md — order-service: `POST /orders/{id}/ship` (com `ShipStock` no outbox) e `/deliver` só para o vendedor, 409 `invalid_order_transition`, e prova de que cada status × ação da API segue a tabela (ORD-10)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-03-PLAN.md — inventory-service: consome `ShipStock`, baixa `quantity_on_hand` e `quantity_reserved` pelo livro uma única vez (V4), anomalias como erro técnico e liberações que ignoram reservas expedidas (ORD-10)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 06-04-PLAN.md — notification-service: partição genérica `entityId`, os oito eventos `ORDER_*` validados com mensagem legível, ordem de ciclo de vida e `GET /notifications/orders/{orderId}` com regra SELLER/BUYER (404 para outra empresa) (ORD-10)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 06-05-PLAN.md — order-service: toda transição persistida grava seu evento `ORDER_*` no outbox e o relay os entrega na `notification-events-queue` existente (ORD-10)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 06-06-PLAN.md — stack real: `scripts/smoke-order-lifecycle.sh` pelo Gateway (jornada completa, caminhos tristes e recusas) e E2E `OrderShipmentE2EIT` (expedição baixa o estoque), reactor inteiro verde (ORD-07, ORD-10)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 06-07-PLAN.md — diagrama Mermaid no README e na visão geral conferido por teste contra a tabela, README e `docs/API.md` com endpoints, contratos, smoke e limitações da Fase 6 (ORD-07, ORD-10)
 
 ### Phase 7: Endurecimento, Observabilidade e Entrega
 
@@ -216,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
-| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/TBD | Not started | - |
+| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 0/7 | Planned | - |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 
 ## Coverage

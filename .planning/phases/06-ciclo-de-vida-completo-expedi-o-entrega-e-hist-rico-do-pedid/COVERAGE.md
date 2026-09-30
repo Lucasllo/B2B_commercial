@@ -1,0 +1,1 @@
+No external API integration: the detector's signals are this project's own REST contracts (OrderResponse, /ship, /deliver, /notifications/orders), the carrier is an in-process simulated mock behind CarrierGateway with no network I/O (D-71/D-72), and SQS/DynamoDB via LocalStack were already integrated in Phases 3-5.
