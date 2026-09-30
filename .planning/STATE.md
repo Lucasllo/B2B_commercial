@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação
 status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-09-30T01:19:29.693Z"
+stopped_at: Completed 05-06-PLAN.md
+last_updated: "2026-09-30T01:49:30.126Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 05 execution started
-state_head: b4f1804676f4802672ad097640280a256792e237
+state_head: "0b41ca473527df3244cef3876294e8f4e6bd57ab"
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
   percent: 57
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 ## Current Position
 
 Phase: 05 (Saga de Reserva de Estoque — Outbox, Compensação e Confirmação) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-09-29 — Phase 05 execution started
 
@@ -75,6 +75,7 @@ Progress: [██████░░░░] 57%
 | Phase 05 P03 | 34min | 2 tasks | 21 files |
 | Phase 05 P04 | 110min | 3 tasks | 27 files |
 | Phase 05 P05 | 95min | 2 tasks | 18 files |
+| Phase 05 P06 | 30min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Recent decisions affecting current work:
 - [Phase 05]: [Rule 1 - Bug] StockReservationConcurrencyIT reaproveita o Postgres de AbstractIntegrationTest em vez de um container separado - evita listener zumbi gravando no banco errado sob a suite inteira
 - [Phase 05]: [Phase 05]: E2E_CONFIG_STRATEGY/E2E_FLYWAY_LOCATIONS provados no módulo e2e-tests (05-05) — dois contextos Spring reais isolados via spring.config.location real + overrides + argumentos de linha de comando, sem depender da resolução ambígua de classpath:application.yml entre os dois jars
 - [Phase 05]: [Phase 05]: [Rule 1 - Bug] Consulta a flyway_schema_history do E2eContextsSmokeIT ajustada para version IS NOT NULL — o Flyway grava uma linha adicional (type SCHEMA, version nulo) para o evento de criação do schema
+- [Phase 05]: [Phase 05]: OUTBOX_RETENTION=none-this-phase - linhas publicadas do outbox nao sao apagadas nesta fase; documentado como limitacao conhecida
 
 ### Pending Todos
 
@@ -153,6 +155,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-30T01:19:29.529Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-09-30T01:49:29.958Z
+Stopped at: Completed 05-06-PLAN.md
 Resume file: None

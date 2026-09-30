@@ -31,8 +31,8 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 - [x] **ORD-01**: Comprador cria pedido selecionando produtos/quantidades do catálogo
 - [x] **ORD-02**: Pedido acima do limite de crédito da empresa compradora entra em PENDING_APPROVAL; abaixo do limite segue direto rumo à confirmação
 - [x] **ORD-03**: Vendedor aprova ou rejeita pedidos pendentes de aprovação
-- [ ] **ORD-04**: Order-service publica evento de reserva de estoque via SQS usando o padrão Transactional Outbox (evento gravado na mesma transação da mudança de estado do pedido)
-- [ ] **ORD-05**: Order-service consome o resultado da reserva de estoque e transiciona o pedido para CONFIRMED (sucesso) ou CANCELLED (falha)
+- [x] **ORD-04**: Order-service publica evento de reserva de estoque via SQS usando o padrão Transactional Outbox (evento gravado na mesma transação da mudança de estado do pedido)
+- [x] **ORD-05**: Order-service consome o resultado da reserva de estoque e transiciona o pedido para CONFIRMED (sucesso) ou CANCELLED (falha)
 - [x] **ORD-06**: Consumidores SQS processam cada evento de forma idempotente, mesmo diante de entrega duplicada
 - [ ] **ORD-07**: Pedido confirmado recebe atribuição de transportadora simulada e código de rastreio
 - [x] **ORD-08**: Comprador lista e visualiza detalhe dos próprios pedidos
@@ -59,7 +59,7 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 - [ ] **TEST-01**: Cada serviço possui testes unitários cobrindo as regras de negócio centrais (JUnit + Mockito)
 - [ ] **TEST-02**: Cada serviço possui testes de integração contra dependências reais via Testcontainers
-- [ ] **TEST-03**: Ao menos um teste E2E/contrato verifica o fluxo completo da saga (criação do pedido → reserva de estoque com sucesso ou falha → status final)
+- [x] **TEST-03**: Ao menos um teste E2E/contrato verifica o fluxo completo da saga (criação do pedido → reserva de estoque com sucesso ou falha → status final)
 
 ## v2 Requirements
 
@@ -116,8 +116,8 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | ORD-01 | Phase 4 | Complete |
 | ORD-02 | Phase 4 | Complete |
 | ORD-03 | Phase 4 | Complete |
-| ORD-04 | Phase 5 | Pending |
-| ORD-05 | Phase 5 | Pending |
+| ORD-04 | Phase 5 | Complete |
+| ORD-05 | Phase 5 | Complete |
 | ORD-06 | Phase 5 | Complete |
 | ORD-07 | Phase 6 | Pending |
 | ORD-08 | Phase 4 | Complete |
@@ -132,7 +132,7 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | INFRA-03 | Phase 7 | Pending |
 | TEST-01 | Phase 7 | Pending |
 | TEST-02 | Phase 7 | Pending |
-| TEST-03 | Phase 5 | Pending |
+| TEST-03 | Phase 5 | Complete |
 
 **Coverage:**
 
