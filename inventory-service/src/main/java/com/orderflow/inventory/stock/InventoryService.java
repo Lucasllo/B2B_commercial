@@ -120,9 +120,9 @@ public class InventoryService {
         // transacao) — sob dois PUT concorrentes no mesmo produto isso evitaria inverter a ordem
         // cronologica do occurredAt em relacao a ordem real de commit (WR-04, 03-RESEARCH.md
         // Pitfall C).
-        // [RED scaffolding 05-04 Task 3] Gravacao no outbox temporariamente desativada para provar
-        // que StockAdjustedEventPublishingIT falha pelo motivo certo (nenhum STOCK_ADJUSTED
-        // publicado) antes de restaurar no commit GREEN.
+        Instant adjustedAt = Instant.now();
+        StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, quantityOnHand, adjustedAt);
+        outboxWriter.enqueue(event.eventId(), StockAdjustedEvent.EVENT_TYPE, productId.toString(), event);
         return StockResponse.from(inventory);
     }
 
