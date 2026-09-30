@@ -4,6 +4,14 @@ server:
 spring:
   application:
     name: order-service
+  task:
+    scheduling:
+      # O TaskScheduler padrão do Boot roda com UMA thread para todos os @Scheduled do contexto.
+      # Aqui há dois jobs (OutboxRelayJob a cada 1s e SagaTimeoutJob a cada 10s): com SQS lento, um
+      # lote do relay (até 20 eventos x apiCallAttemptTimeout) atrasaria o job de timeout e
+      # enfraqueceria a garantia "pedido nunca preso". Duas threads evitam que um serialize o outro
+      # (WR-04); cada job continua sem sobreposição consigo mesmo (fixedDelay).
+      pool-size: 2
   datasource:
     # D-01: instância Postgres única, um schema por serviço — currentSchema=order isola este
     # serviço das tabelas de auth/catalog/inventory.
