@@ -42,14 +42,24 @@ Outbox), publica pela fila `inventory-commands-queue`, reserva tudo-ou-nada no
 `CONFIRMED` (estoque reservado) ou `CANCELLED` (com código e motivo legível), nunca preso em
 `RESERVING`; um job de timeout garante essa propriedade mesmo se o resultado nunca chegar.
 
+A Fase 6 fecha o ciclo do pedido: ao ser confirmado, o pedido recebe uma **transportadora simulada**
+(nome fictício) e um **código de rastreio** no padrão dos Correios (S10, ex.: `AB123456789BR`); o
+vendedor então o expede (`POST /api/orders/{orderId}/ship`) — o `order-service` grava o comando
+`ShipStock` no outbox e o `inventory-service` dá a baixa física do estoque (`quantityOnHand` e
+`quantityReserved` caem juntos, uma única vez) — e registra a entrega
+(`POST /api/orders/{orderId}/deliver`). Cada transição do pedido vira um evento `ORDER_*` publicado
+pelo outbox do `order-service` e gravado pelo `notification-service` no DynamoDB; a jornada inteira é
+consultável em `GET /api/notifications/orders/{orderId}`. O diagrama e a tabela de gatilhos estão em
+"Ciclo de vida do pedido" abaixo.
+
 | Serviço | Papel | Porta | Exposto externamente |
 |---|---|---|---|
 | `gateway` | API Gateway — único ponto de entrada para clientes externos | 8080 | Sim |
 | `auth-service` | Autenticação (JWT auto-emitido), cadastro de empresas compradoras e limite de crédito | 8081 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `catalog-service` | Catálogo de produtos do vendedor (criação, atualização, ativação/descontinuação) | 8082 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
-| `inventory-service` | Estoque por produto: quantidade em mãos, reserva e liberação, com proteção contra overselling concorrente; reserva tudo-ou-nada consumida da saga (`inventory-commands-queue`) e devolve o resultado (`order-events-queue`); publica `STOCK_ADJUSTED` pelo mesmo Transactional Outbox | 8083 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
-| `notification-service` | Consome eventos de ajuste de estoque da fila SQS e mantém o histórico consultável por produto no DynamoDB | 8084 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
-| `order-service` | Criação de pedidos validados contra o catálogo, decisão de aprovação por limite de crédito (automática ou manual) e orquestração da saga de reserva de estoque (Transactional Outbox, consumo do resultado, timeout com compensação) | 8085 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `inventory-service` | Estoque por produto: quantidade em mãos, reserva e liberação, com proteção contra overselling concorrente; reserva tudo-ou-nada consumida da saga (`inventory-commands-queue`) e devolve o resultado (`order-events-queue`); na expedição (`ShipStock`, Fase 6) dá a baixa física do estoque reservado; publica `STOCK_ADJUSTED` pelo mesmo Transactional Outbox | 8083 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `notification-service` | Consome da fila SQS os eventos de ajuste de estoque (`STOCK_ADJUSTED`) e os oito eventos do ciclo de vida do pedido (`ORDER_*`, Fase 6) e mantém o histórico consultável no DynamoDB — por produto e, desde a Fase 6, por pedido (a linha do tempo) | 8084 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
+| `order-service` | Criação de pedidos validados contra o catálogo, decisão de aprovação por limite de crédito (automática ou manual) e orquestração da saga de reserva de estoque (Transactional Outbox, consumo do resultado, timeout com compensação); atribui transportadora simulada e rastreio ao confirmar, expede e entrega o pedido (Fase 6) e publica os eventos `ORDER_*` da linha do tempo | 8085 | Apenas para depuração local; o caminho normal é sempre via `gateway` |
 | `postgres` | Persistência transacional — um schema por serviço (`auth`, `catalog`, `inventory`, `order`) na mesma instância | 5432 | Não |
 | `localstack` | Emulação local de SQS (`notification-events-queue`, `inventory-commands-queue`/DLQ, `order-events-queue`/DLQ) e DynamoDB (`notification-history`), provisionados automaticamente na subida pelo init hook | 4566 | Não |
 
@@ -61,7 +71,8 @@ consultar o histórico de notificações de um produto, alimentado de forma ass�
 de estoque; e criar pedidos a partir do catálogo, decididos automaticamente pelo limite de crédito
 da empresa ou, quando acima do limite, aprovados/rejeitados manualmente pelo vendedor — e acompanhar
 o pedido, pelo mesmo Gateway, até a saga de reserva de estoque terminar em `CONFIRMED` ou
-`CANCELLED`. Ver [API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
+`CANCELLED`; expedir e entregar um pedido confirmado (papel `SELLER_ADMIN`) e ler a linha do tempo de
+um pedido (o vendedor vê qualquer um, o comprador só os da própria empresa). Ver [API.md](API.md) para a lista completa de endpoints, papéis exigidos e formatos.
 
 ## Arquitetura em alto nível
 
@@ -129,6 +140,62 @@ JWT trafega nessas mensagens, e cada fila da saga tem sua própria DLQ (maxRecei
   eventos/comandos na própria tabela `outbox_event`, na mesma transação de negócio, e um relay
   `@Scheduled` publica depois no SQS real — nunca uma escrita no banco e uma publicação separadas
   (dual-write).
+
+## Ciclo de vida do pedido (Fase 6)
+
+Um pedido passa por nove estados. O diagrama abaixo tem exatamente as nove transições permitidas
+pelo código — a tabela única `OrderStatus.transitions()` do `order-service`, que todo método de
+transição consulta — e cada rótulo diz o que a dispara:
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> PENDING_APPROVAL: valor do pedido acima do limite de crédito da empresa
+    CREATED --> APPROVED: aprovação automática, dentro do limite de crédito
+    PENDING_APPROVAL --> APPROVED: POST approve feito pelo vendedor
+    PENDING_APPROVAL --> REJECTED: POST reject feito pelo vendedor, com motivo
+    APPROVED --> RESERVING: entrada na saga, na mesma transação da decisão
+    RESERVING --> CONFIRMED: mensagem StockReserved, com transportadora e rastreio
+    RESERVING --> CANCELLED: mensagem StockReservationFailed ou timeout de 2 minutos
+    CONFIRMED --> SHIPPED: POST ship feito pelo vendedor, baixa o estoque
+    SHIPPED --> DELIVERED: POST deliver feito pelo vendedor
+    REJECTED --> [*]
+    CANCELLED --> [*]
+    DELIVERED --> [*]
+```
+
+| Transição | Gatilho | Endpoint ou mensagem | Evento da linha do tempo |
+|---|---|---|---|
+| (criação) | Comprador cria o pedido | `POST /api/orders` | `ORDER_CREATED` (`createdBy`, `total`) |
+| `CREATED` → `PENDING_APPROVAL` | Valor acima do limite de crédito na criação | `POST /api/orders` | `ORDER_PENDING_APPROVAL` |
+| `CREATED` → `APPROVED` | Aprovação automática dentro do limite de crédito (`decidedBy` = `SYSTEM`) | `POST /api/orders` | `ORDER_APPROVED` |
+| `PENDING_APPROVAL` → `APPROVED` | Decisão manual do vendedor | `POST /api/orders/{orderId}/approve` | `ORDER_APPROVED` (`decidedBy` = vendedor, motivo opcional) |
+| `PENDING_APPROVAL` → `REJECTED` | Decisão manual do vendedor | `POST /api/orders/{orderId}/reject` | `ORDER_REJECTED` (`decidedBy`, `reason`) |
+| `APPROVED` → `RESERVING` | Entrada na saga, na mesma transação da decisão; o comando `ReserveStock` vai para o outbox | comando `ReserveStock` em `inventory-commands-queue` | sem evento próprio |
+| `RESERVING` → `CONFIRMED` | O `inventory-service` reservou todos os itens | mensagem `StockReserved` em `order-events-queue` | `ORDER_CONFIRMED` (`carrier`, `trackingCode`) |
+| `RESERVING` → `CANCELLED` | Reserva recusada, ou nenhum resultado em 2 minutos | mensagem `StockReservationFailed` em `order-events-queue`, ou o job de timeout | `ORDER_CANCELLED` (`cancellationCode`, `cancellationReason`) |
+| `CONFIRMED` → `SHIPPED` | Vendedor expede; o comando `ShipStock` vai para o outbox | `POST /api/orders/{orderId}/ship`; comando `ShipStock` em `inventory-commands-queue` | `ORDER_SHIPPED` (`shippedBy`) |
+| `SHIPPED` → `DELIVERED` | Vendedor registra a entrega; nenhuma mensagem de estoque | `POST /api/orders/{orderId}/deliver` | `ORDER_DELIVERED` (`deliveredBy`) |
+
+`CREATED` e `APPROVED` são passos lógicos da mesma transação e nunca são observados em repouso pela
+API. `CANCELLED` só é alcançado pela saga (não há endpoint de cancelamento). Tentar qualquer outra
+aresta — por exemplo expedir um pedido `CANCELLED` — devolve `409 invalid_order_transition` sem
+alterar o pedido. O diagrama acima e o do README são conferidos por teste contra a tabela do código
+(`OrderStatusDiagramConsistencyTest`), e a API é conferida contra a mesma tabela pelo
+`OrderLifecycleTransitionsIT`.
+
+**Transportadora e rastreio são simulados.** Ao confirmar o pedido, o `order-service` chama a costura
+`CarrierGateway`; a única implementação, `SimulatedCarrierGateway`, escolhe de forma determinística,
+a partir do `orderId`, uma de cinco transportadoras com nomes fictícios e gera um código no padrão
+S10 dos Correios (duas letras, nove dígitos e `BR`) — sem rede e sem integração real. É nessa costura
+que uma API de transportadora de verdade entraria.
+
+**Como a linha do tempo é construída.** Cada transição grava, na mesma transação, um evento `ORDER_*`
+no outbox do `order-service`; o relay publica na `notification-events-queue`, o `notification-service`
+consome e grava um item por evento no DynamoDB, e `GET /api/notifications/orders/{orderId}` devolve o
+histórico em ordem de ciclo de vida. A expedição segue o mesmo caminho do outbox para o estoque: o
+`ShipStock` publicado pelo relay faz o `inventory-service` baixar `quantityOnHand` e
+`quantityReserved` do pedido, uma única vez, mesmo que a mensagem seja reentregue.
 
 ## Stack técnica
 

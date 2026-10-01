@@ -51,7 +51,7 @@ class OrderStatusDiagramConsistencyTest {
      * ({@code order-service/}): a raiz do repositório fica um nível acima.
      */
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"../README.md"})
+    @ValueSource(strings = {"../README.md", "../docs/VISAO-GERAL.md"})
     void everyStateDiagramInTheDocumentMatchesTheTransitionTableExactly(String document) throws IOException {
         Path path = Path.of(document).toAbsolutePath().normalize();
         String markdown = Files.readString(path, StandardCharsets.UTF_8);

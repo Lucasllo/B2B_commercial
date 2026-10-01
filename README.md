@@ -6,15 +6,18 @@ pedidos sujeitos a aprovação por limite de crédito, reserva de estoque, atrib
 transportadora e acompanhamento até a entrega. É um projeto de portfólio técnico voltado a
 demonstrar competências exigidas para uma vaga de Desenvolvedor Java Pleno.
 
-O que já funciona hoje (Fases 1 a 5): autenticação com JWT auto-emitido, gestão de empresas
+O que já funciona hoje (Fases 1 a 6): autenticação com JWT auto-emitido, gestão de empresas
 compradoras e limite de crédito, catálogo de produtos, controle de estoque com reserva protegida
 contra concorrência, um histórico de notificações assíncrono — um ajuste de estoque publica um
 evento numa fila SQS real que o `notification-service` consome e grava no DynamoDB, sem nenhuma
 chamada REST entre os dois serviços — a criação de pedidos com aprovação automática ou manual por
 limite de crédito, e a saga de reserva de estoque: o pedido aprovado reserva estoque de forma
 assíncrona no `inventory-service` (padrão Transactional Outbox nos dois serviços) e termina sempre em
-`CONFIRMED` ou `CANCELLED`, nunca preso num estado intermediário — o Core Value do projeto: tudo
-rodando atrás de um API Gateway com a stack inteira subindo localmente via `docker compose`.
+`CONFIRMED` ou `CANCELLED`, nunca preso num estado intermediário — o Core Value do projeto — e, na
+Fase 6, o ciclo completo do pedido: o pedido confirmado recebe uma transportadora simulada e um
+código de rastreio, o vendedor o expede (baixa física do estoque) e o entrega, e cada transição fica
+registrada numa linha do tempo consultável no histórico de notificações; tudo rodando atrás de um API
+Gateway com a stack inteira subindo localmente via `docker compose`.
 
 ## Pré-requisitos
 
@@ -98,6 +101,15 @@ insuficiente e por produto sem linha de estoque, sucesso com o estoque refletido
 idempotência por republicação do mesmo comando e os dois pontos de entrada da saga (aprovação
 automática e manual). Exige `LOCALSTACK_AUTH_TOKEN` (mesma ressalva acima: derrube o
 `docker compose` antes).
+
+```
+./mvnw -B -pl e2e-tests -am verify -Dit.test=OrderShipmentE2EIT
+```
+Roda só o E2E da expedição (Fase 6) sobre `order-service` e `inventory-service` reais: formato da
+transportadora e do rastreio, baixa de `quantityOnHand` e `quantityReserved` uma única vez (inclusive
+com o `ShipStock` republicado), `deliver` sem mexer no estoque e `ship` de um pedido `CANCELLED`
+recusado com `409`. O `notification-service` não participa desse E2E — a junção dos três serviços é
+provada pelo smoke `scripts/smoke-order-lifecycle.sh` (ver "Ciclo de vida do pedido (Fase 6)").
 
 ## Credenciais de demonstração
 
@@ -188,7 +200,16 @@ serviços enriquece a resposta do outro (D-16).
   `eventType`, uma `message` legível, o `payload` original do evento (objeto JSON aninhado, não
   texto escapado), `occurredAt` e `recordedAt`. Produto sem nenhum evento devolve lista vazia
   (nunca `404`). `{productId}` que não é um UUID válido devolve `400 invalid_identifier`; um
-  `BUYER` recebe `403 forbidden`.
+  `BUYER` recebe `403 forbidden`. A partir da Fase 6, a resposta traz `entityId` no lugar do campo
+  que antes se chamava `productId` (a partição do DynamoDB passou a ser genérica, para guardar
+  também os eventos de pedido); os demais campos não mudaram.
+- `GET /api/notifications/orders/{orderId}` (qualquer autenticado, Fase 6) — a **linha do tempo**
+  do pedido: os eventos `ORDER_*` (`ORDER_CREATED`, `ORDER_PENDING_APPROVAL`, `ORDER_APPROVED`,
+  `ORDER_REJECTED`, `ORDER_CONFIRMED`, `ORDER_CANCELLED`, `ORDER_SHIPPED`, `ORDER_DELIVERED`) em ordem
+  de `occurredAt` e, no mesmo instante, na ordem do ciclo de vida. `SELLER_ADMIN` vê qualquer pedido
+  (lista vazia se não houver eventos); `BUYER` só vê pedidos da própria empresa — para qualquer outro
+  caso, inclusive um pedido sem eventos, recebe `404 order_not_found`, idêntico ao de um pedido
+  inexistente. `{orderId}` que não é um UUID válido devolve `400 invalid_identifier`.
 
 ### Como o evento flui (SQS → DynamoDB)
 
@@ -246,6 +267,15 @@ bash scripts/smoke-notification-flow.sh
   aprovação aceita motivo opcional; decidir um pedido fora de `PENDING_APPROVAL` devolve `409`. Uma
   aprovação também dispara a saga e devolve o pedido já `RESERVING` (mesma mecânica da criação
   automática).
+- `POST /api/orders/{orderId}/ship` e `POST /api/orders/{orderId}/deliver` (SELLER_ADMIN, Fase 6) —
+  expedem (`CONFIRMED` → `SHIPPED`) e entregam (`SHIPPED` → `DELIVERED`) o pedido; sem corpo, `200`
+  com o pedido atualizado. Uma transição que a tabela não permite (por exemplo expedir um pedido
+  `CANCELLED` ou entregar um `CONFIRMED`) devolve `409 invalid_order_transition` sem alterar nada;
+  pedido inexistente é `404 order_not_found`; `BUYER` recebe `403`.
+- O pedido (`POST /api/orders`, `GET /api/orders`, `GET /api/orders/{orderId}`, `approve`, `reject`,
+  `ship`, `deliver`) ganhou, na Fase 6, seis campos: `carrier` e `trackingCode` (preenchidos quando o
+  pedido fica `CONFIRMED`), `shippedAt` e `shippedBy` (na expedição) e `deliveredAt` e `deliveredBy`
+  (na entrega) — todos `null` enquanto o passo correspondente não aconteceu.
 
 ### Como a aprovação por crédito funciona
 
@@ -348,7 +378,8 @@ compensação — para o caso de a reserva ter acontecido tarde, depois do cance
 `ReleaseStock` compensatório (sucesso tardio nunca deixa estoque órfão).
 
 **`CONFIRMED` mantém o estoque reservado** (`quantityReserved`) até a expedição — a baixa física de
-`quantityOnHand` só acontece no envio (`SHIPPED`), que chega na Fase 6.
+`quantityOnHand` só acontece no envio (`SHIPPED`), entregue na Fase 6 (ver "Ciclo de vida do pedido
+(Fase 6)" abaixo).
 
 ### Como observar a saga
 
@@ -413,6 +444,42 @@ tiver uma aresta a mais, uma a menos ou um estado que não exista em `OrderStatu
 conferida contra a mesma tabela pelo `OrderLifecycleTransitionsIT`. A versão detalhada, com o
 gatilho, o endpoint ou mensagem e o evento da linha do tempo de cada transição, está em
 [`docs/VISAO-GERAL.md`](docs/VISAO-GERAL.md).
+
+**Transportadora e rastreio simulados.** Quando o `StockReserved` confirma o pedido, o `order-service`
+atribui, na mesma transação, uma transportadora e um código de rastreio. **É uma simulação**: uma de
+cinco transportadoras com nomes fictícios (Expresso Cerrado, TransSul Cargas, Rapido Paulista, Norte
+Entregas, Litoral Log), escolhida de forma determinística a partir do `orderId`, e um código no padrão
+S10 dos Correios (`^[A-Z]{2}[0-9]{9}BR$`, com dígito verificador calculado) — sem nenhuma chamada de
+rede. A costura é a interface `CarrierGateway`; é ali que uma API real de transportadora entraria,
+trocando só a implementação (`SimulatedCarrierGateway`).
+
+**Expedição e baixa de estoque.** `POST /api/orders/{orderId}/ship` leva `CONFIRMED` a `SHIPPED` e
+grava, na mesma transação (Transactional Outbox), o comando `ShipStock` com os itens do pedido. O
+relay o publica na `inventory-commands-queue` e o `inventory-service` dá a baixa física: tanto
+`quantityOnHand` quanto `quantityReserved` caem pela quantidade reservada, uma única vez — um
+`ShipStock` reentregue é no-op, e um `ReleaseStock` que chegue depois da expedição é ignorado. O pedido
+não espera o resultado e não há estado intermediário. `POST /api/orders/{orderId}/deliver` leva
+`SHIPPED` a `DELIVERED` sem nenhuma mensagem de estoque. Confira a baixa com `GET
+/api/inventory/{productId}`.
+
+**Linha do tempo.** Cada transição grava um evento `ORDER_*` no outbox do `order-service`, na mesma
+transação; o relay publica na `notification-events-queue` e o `notification-service` o grava no
+DynamoDB (partição `entityId` = id do pedido). `GET /api/notifications/orders/{orderId}` devolve a
+jornada do pedido — criado, aprovado, confirmado (com transportadora e rastreio), enviado, entregue —
+em ordem de ciclo de vida.
+
+Para ver tudo isso de uma vez na stack real, pelo Gateway (pedido nascendo, confirmado com
+transportadora e rastreio, expedido, com o estoque baixado, entregue e lido na linha do tempo, mais o
+cancelamento por falta de estoque, a rejeição e as recusas de transição, papel e empresa):
+
+```bash
+docker compose up -d --build --wait
+bash scripts/smoke-order-lifecycle.sh
+docker compose down
+```
+
+O script não exige nenhum passo manual e termina com `SMOKE OK ...` (ou `SMOKE FALHOU: ...`). O E2E da
+expedição sem o Gateway está em "Build e testes" (`OrderShipmentE2EIT`).
 
 ### Fluxo de demonstração completo
 
@@ -531,6 +598,44 @@ curl -s http://localhost:8080/api/notifications/$PRODUCT_ID -H "Authorization: B
 8. **Cancelamento de pedido pelo comprador não existe** — o comprador só influencia o destino do
    pedido indiretamente (por exemplo, criando um pedido sem estoque suficiente); não há um endpoint
    para o próprio comprador cancelar um pedido em `RESERVING`/`PENDING_APPROVAL`.
+
+## Limitações conhecidas (Fase 6)
+
+1. **Unicidade do código de rastreio é probabilística.** O código vem de bytes do SHA-256 do
+   `orderId` e não há restrição `UNIQUE` em `tracking_code`: dois pedidos poderiam, em tese, receber
+   o mesmo código (pouco provável, mas não impossível). Uma violação de `UNIQUE` dentro da transação
+   que confirma o pedido faria a mensagem `StockReserved` voltar para a fila em laço de reentrega,
+   por isso a decisão foi não impor a restrição.
+2. **Rastreio dos pedidos legados.** Pedidos que já estavam `CONFIRMED`, `SHIPPED` ou `DELIVERED`
+   antes da Fase 6 (só bases de desenvolvimento antigas) ganharam, pela migração `V3`, a transportadora
+   "Transportadora Legada" e um código que casa o padrão, mas **sem** o dígito verificador S10.
+3. **Transportadora simulada.** Nomes fictícios, escolha determinística e nenhuma chamada de rede;
+   não há integração real, cotação de frete nem consulta de rastreio. A costura é `CarrierGateway`.
+4. **A expedição não publica `STOCK_ADJUSTED`.** A baixa física feita pelo `ShipStock` não aparece no
+   histórico de notificações do produto — `STOCK_ADJUSTED` significa um ajuste feito pelo vendedor. A
+   prova da baixa é `GET /api/inventory/{productId}`.
+5. **Sem cancelamento manual depois de `CONFIRMED`.** Um pedido confirmado só avança (`SHIPPED`,
+   `DELIVERED`); cancelar ou devolver um pedido confirmado, ou liberar o estoque de um expedido, é
+   backlog. `CANCELLED` só é alcançado pela saga, antes da confirmação.
+6. **Baixa de estoque e linha do tempo são eventualmente consistentes.** Ambas passam por outbox, fila
+   e consumidor; leem-se alguns segundos depois da ação. Um `ShipStock` anômalo (reserva inexistente
+   ou já liberada) é reentregue até a DLQ (`inventory-commands-dlq`) e fica lá — não há compensação
+   automática nem ferramenta de reprocessamento.
+7. **O outbox não tem retenção.** As linhas publicadas nunca são apagadas, e cada pedido gera de 5 a 7
+   linhas (comando de estoque mais os eventos `ORDER_*`); `"order".outbox_event` cresce
+   indefinidamente (mesma limitação já registrada na Fase 5).
+8. **`notification-service` fora do E2E em JVM.** O `OrderShipmentE2EIT` cobre `order-service` e
+   `inventory-service`; a junção com o `notification-service` (a linha do tempo) é provada pelo smoke
+   `scripts/smoke-order-lifecycle.sh` na stack real, não por um teste automatizado do build.
+9. **Controle de acesso às filas é da infraestrutura.** Quem alcança a porta 4566 do LocalStack pode
+   publicar um evento `ORDER_*` falso; em uma conta AWS real, uma política de fila/IAM restringiria
+   quem pode publicar (mesma limitação da Fase 3, item 3). O `notification-service` valida o formato
+   e descarta o que não for válido, mas não autentica o produtor.
+10. **Tabela antiga num LocalStack que não reiniciou.** O init hook recria a tabela
+    `notification-history` se ela tiver a chave de partição antiga (`productId`), mas como o LocalStack
+    roda com `PERSISTENCE=0` esse ramo nunca é exercitado numa subida normal — a tabela já nasce com
+    `entityId`. Se um ambiente tiver uma tabela antiga viva, `docker compose down` (e subir de novo)
+    também resolve.
 
 ## Arquitetura
 
