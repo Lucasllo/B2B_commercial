@@ -272,10 +272,11 @@ bash scripts/smoke-notification-flow.sh
   com o pedido atualizado. Uma transição que a tabela não permite (por exemplo expedir um pedido
   `CANCELLED` ou entregar um `CONFIRMED`) devolve `409 invalid_order_transition` sem alterar nada;
   pedido inexistente é `404 order_not_found`; `BUYER` recebe `403`.
-- O pedido (`POST /api/orders`, `GET /api/orders`, `GET /api/orders/{orderId}`, `approve`, `reject`,
-  `ship`, `deliver`) ganhou, na Fase 6, seis campos: `carrier` e `trackingCode` (preenchidos quando o
-  pedido fica `CONFIRMED`), `shippedAt` e `shippedBy` (na expedição) e `deliveredAt` e `deliveredBy`
-  (na entrega) — todos `null` enquanto o passo correspondente não aconteceu.
+- O detalhe do pedido (`POST /api/orders`, `GET /api/orders/{orderId}`, `approve`, `reject`, `ship`,
+  `deliver`) ganhou, na Fase 6, seis campos: `carrier` e `trackingCode` (preenchidos quando o pedido
+  fica `CONFIRMED`), `shippedAt` e `shippedBy` (na expedição) e `deliveredAt` e `deliveredBy` (na
+  entrega) — todos `null` enquanto o passo correspondente não aconteceu. O resumo da listagem
+  (`GET /api/orders`) continua sem itens e sem os campos da saga e da expedição.
 
 ### Como a aprovação por crédito funciona
 

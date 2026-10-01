@@ -81,6 +81,9 @@ controller ser executado.
 | order-service | `GET` | `/api/orders/{orderId}` | Consulta um pedido pelo id (`BUYER` só da própria empresa) | Bearer (qualquer papel) |
 | order-service | `POST` | `/api/orders/{orderId}/approve` | Aprova manualmente um pedido `PENDING_APPROVAL` | Bearer, papel `SELLER_ADMIN` |
 | order-service | `POST` | `/api/orders/{orderId}/reject` | Rejeita um pedido `PENDING_APPROVAL`, com motivo obrigatório | Bearer, papel `SELLER_ADMIN` |
+| order-service | `POST` | `/api/orders/{orderId}/ship` | Expede um pedido `CONFIRMED` (`SHIPPED`) e baixa o estoque (Fase 6) | Bearer, papel `SELLER_ADMIN` |
+| order-service | `POST` | `/api/orders/{orderId}/deliver` | Registra a entrega de um pedido `SHIPPED` (`DELIVERED`) (Fase 6) | Bearer, papel `SELLER_ADMIN` |
+| notification-service | `GET` | `/api/notifications/orders/{orderId}` | Linha do tempo de um pedido: os eventos `ORDER_*`, em ordem de ciclo de vida (Fase 6) | Bearer — `SELLER_ADMIN` (qualquer pedido) ou `BUYER` (só pedidos da própria empresa) |
 | gateway | `GET` | `/actuator/health` | Health check do Gateway | Nenhuma |
 
 > As rotas de reserva/liberação do `inventory-service` são restritas a `SELLER_ADMIN` nesta fase —
@@ -154,7 +157,8 @@ isso é intencional, para não expor se um e-mail existe na base.
 
 | Status | `error` | Quando ocorre |
 |---|---|---|
-| 400 | `invalid_identifier` | `{productId}` não é um UUID válido |
+| 400 | `invalid_identifier` | `{productId}` ou `{orderId}` não é um UUID válido |
+| 404 | `order_not_found` | `GET /notifications/orders/{orderId}` chamado por um `BUYER` para um pedido sem eventos, inexistente ou de outra empresa — os três casos são indistinguíveis (Fase 6) |
 | 503 | `notification_store_unavailable` | Falha do SDK da AWS ao falar com o DynamoDB (indisponibilidade, timeout, erro de credencial) — o motivo real fica só no log do servidor |
 
 **Erros específicos de `order-service`:**
@@ -164,6 +168,7 @@ isso é intencional, para não expor se um e-mail existe na base.
 | 400 | `invalid_parameter` | `{orderId}` não é um UUID válido |
 | 404 | `order_not_found` | `{orderId}` não corresponde a nenhum pedido, **ou** corresponde a um pedido de outra empresa e o requisitante é `BUYER` (pedido alheio é indistinguível de inexistente) |
 | 409 | `order_not_pending` | `POST /orders/{orderId}/approve` ou `/reject` sobre um pedido que não está em `PENDING_APPROVAL` |
+| 409 | `invalid_order_transition` | `POST /orders/{orderId}/ship` ou `/deliver` sobre um pedido cujo status atual não permite a transição (por exemplo `ship` em `CANCELLED`, ou `deliver` em `CONFIRMED`); o corpo traz `Order cannot transition from <ATUAL> to <DESTINO>` e o pedido não é alterado (Fase 6) |
 | 422 | `invalid_order_items` | Um ou mais `productId` do pedido não correspondem a um produto `ACTIVE` no catálogo (inexistente ou `DISCONTINUED`); o corpo inclui o campo extra `productIds` com os ids inválidos, na ordem em que apareceram no pedido |
 | 422 | `order_total_out_of_range` | O total do pedido não cabe na coluna `NUMERIC(19,2)` |
 | 503 | `catalog_service_unavailable` | `catalog-service` fora do ar, lento (acima do timeout) ou com resposta malformada — nenhum pedido é criado |
@@ -637,7 +642,7 @@ grava o histórico no DynamoDB sem nenhuma chamada HTTP de entrada do `inventory
 ```json
 [
   {
-    "productId": "6a4f2e10-...",
+    "entityId": "6a4f2e10-...",
     "eventId": "3f7b1c2a-...",
     "eventType": "STOCK_ADJUSTED",
     "message": "Estoque do produto 6a4f2e10-... ajustado de 0 para 7 unidades",
@@ -655,6 +660,11 @@ grava o histórico no DynamoDB sem nenhuma chamada HTTP de entrada do `inventory
 ]
 ```
 
+**Mudança na Fase 6:** o primeiro campo da resposta passou a se chamar `entityId` (antes
+`productId`). A partição do DynamoDB virou genérica para guardar também os eventos de pedido; aqui
+`entityId` é sempre o id do produto consultado. Os demais campos não mudaram, e a rota continua
+exclusiva de `SELLER_ADMIN`.
+
 `message` é um texto legível montado pelo servidor a partir do evento — não vem do
 `inventory-service`. `payload` é o corpo original do evento de contrato, como objeto JSON aninhado
 (não texto escapado), para inspeção direta pela Swagger UI. `recordedAt` é o instante em que o
@@ -670,6 +680,136 @@ grava o histórico no DynamoDB sem nenhuma chamada HTTP de entrada do `inventory
 `401 unauthorized`, `403 forbidden` (qualquer papel diferente de `SELLER_ADMIN`, incluindo
 `BUYER`), `503 notification_store_unavailable` (DynamoDB indisponível — o motivo real fica só no
 log do servidor).
+
+---
+
+## `GET /api/notifications/orders/{orderId}`
+
+Devolve a **linha do tempo** de um pedido (Fase 6): um registro por transição, em ordem de
+`occurredAt` e, para eventos no mesmo instante, na ordem do ciclo de vida (`ORDER_CREATED` antes de
+`ORDER_APPROVED`, e assim por diante — a fila padrão do SQS não garante ordem de entrega, então a
+ordem é restaurada na leitura). Cada transição do pedido é publicada pelo outbox do `order-service`
+na `notification-events-queue` e gravada pelo `notification-service` no DynamoDB, com `entityId` igual
+ao id do pedido — nenhuma chamada HTTP entre os serviços. Só os eventos `ORDER_*` aparecem aqui; ver
+"Eventos da linha do tempo do pedido" abaixo.
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN` ou `BUYER`.
+
+- `SELLER_ADMIN` consulta qualquer pedido; um pedido sem eventos devolve lista vazia.
+- `BUYER` só consulta pedidos da própria empresa (o `company_id` vem do token, nunca do caminho). Se
+  a lista de eventos do pedido estiver vazia, ou se qualquer registro pertencer a outra empresa, a
+  resposta é `404 order_not_found` — idêntica à de um pedido inexistente, para não revelar que o
+  pedido existe.
+
+**Resposta `200 OK`** (pedido entregue; `payload` abreviado para os campos principais):
+
+```json
+[
+  {
+    "entityId": "3f7b1c2a-...",
+    "eventId": "a1c0e2d4-...",
+    "eventType": "ORDER_CREATED",
+    "message": "Pedido criado — total 400.00",
+    "payload": {
+      "eventId": "a1c0e2d4-...",
+      "eventType": "ORDER_CREATED",
+      "occurredAt": "2026-09-30T14:32:00.120000Z",
+      "orderId": "3f7b1c2a-...",
+      "companyId": "9a21e4d0-...",
+      "createdBy": "8c793e97-...",
+      "total": 400.00
+    },
+    "occurredAt": "2026-09-30T14:32:00.120000Z",
+    "recordedAt": "2026-09-30T14:32:01.508312Z"
+  },
+  {
+    "entityId": "3f7b1c2a-...",
+    "eventId": "b7d3f1a9-...",
+    "eventType": "ORDER_APPROVED",
+    "message": "Pedido aprovado automaticamente — dentro do limite de crédito",
+    "payload": {
+      "eventId": "b7d3f1a9-...",
+      "eventType": "ORDER_APPROVED",
+      "occurredAt": "2026-09-30T14:32:00.120000Z",
+      "orderId": "3f7b1c2a-...",
+      "companyId": "9a21e4d0-...",
+      "decidedBy": "SYSTEM"
+    },
+    "occurredAt": "2026-09-30T14:32:00.120000Z",
+    "recordedAt": "2026-09-30T14:32:01.511070Z"
+  },
+  {
+    "entityId": "3f7b1c2a-...",
+    "eventId": "c2e8a6b1-...",
+    "eventType": "ORDER_CONFIRMED",
+    "message": "Pedido confirmado — transportadora Expresso Cerrado, rastreio AB123456789BR",
+    "payload": {
+      "eventId": "c2e8a6b1-...",
+      "eventType": "ORDER_CONFIRMED",
+      "occurredAt": "2026-09-30T14:32:03.402000Z",
+      "orderId": "3f7b1c2a-...",
+      "companyId": "9a21e4d0-...",
+      "carrier": "Expresso Cerrado",
+      "trackingCode": "AB123456789BR"
+    },
+    "occurredAt": "2026-09-30T14:32:03.402000Z",
+    "recordedAt": "2026-09-30T14:32:04.790415Z"
+  },
+  {
+    "entityId": "3f7b1c2a-...",
+    "eventId": "d9a4b3c7-...",
+    "eventType": "ORDER_SHIPPED",
+    "message": "Pedido enviado pelo vendedor 8c793e97-...",
+    "payload": { "eventType": "ORDER_SHIPPED", "shippedBy": "8c793e97-...", "...": "..." },
+    "occurredAt": "2026-09-30T14:40:10.000000Z",
+    "recordedAt": "2026-09-30T14:40:11.213907Z"
+  },
+  {
+    "entityId": "3f7b1c2a-...",
+    "eventId": "e5b1c8d2-...",
+    "eventType": "ORDER_DELIVERED",
+    "message": "Pedido entregue — registrado pelo vendedor 8c793e97-...",
+    "payload": { "eventType": "ORDER_DELIVERED", "deliveredBy": "8c793e97-...", "...": "..." },
+    "occurredAt": "2026-09-30T15:05:42.000000Z",
+    "recordedAt": "2026-09-30T15:05:43.640021Z"
+  }
+]
+```
+
+Os campos têm o mesmo significado de `GET /notifications/{productId}`; `entityId` é o id do pedido.
+`payload` é o corpo original do evento, como objeto JSON aninhado, e traz só os campos do tipo (campos
+nulos são omitidos).
+
+**Resposta `200 OK`** (`SELLER_ADMIN`, pedido sem eventos registrados — por exemplo o evento ainda
+está a caminho): `[]`.
+
+**Erros possíveis:** `400 invalid_identifier` (`{orderId}` não é um UUID válido), `401 unauthorized`,
+`403 forbidden` (papel diferente de `SELLER_ADMIN`/`BUYER`, ou `BUYER` sem claim `company_id` válido),
+`404 order_not_found` (só para `BUYER`: pedido sem eventos, inexistente ou de outra empresa),
+`503 notification_store_unavailable`.
+
+### Eventos da linha do tempo do pedido
+
+Oito tipos `ORDER_*`, todos com o envelope comum `eventId`, `eventType`, `occurredAt` (instante
+ISO-8601 da própria transição — o mesmo valor de `createdAt`, `decidedAt`, `confirmedAt`,
+`cancelledAt`, `shippedAt` ou `deliveredAt` do pedido), `orderId` e `companyId`, mais os campos de
+cada tipo. Um evento que não cumpre o contrato (campo obrigatório ausente, rastreio fora do padrão,
+texto acima do limite) é descartado inteiro, com log `WARN`, e nunca gravado parcialmente.
+
+| `eventType` | Quando é emitido | Campos do tipo | Exemplo de `message` |
+|---|---|---|---|
+| `ORDER_CREATED` | Na criação do pedido (`POST /orders`) | `createdBy`, `total` | `Pedido criado — total 400.00` |
+| `ORDER_PENDING_APPROVAL` | Na criação, quando o total fica acima do limite de crédito | — | `Pedido aguardando aprovação do vendedor — valor acima do limite de crédito disponível` |
+| `ORDER_APPROVED` | Aprovação automática na criação (`decidedBy` = `SYSTEM`) ou `POST /orders/{orderId}/approve` | `decidedBy`, `reason` (opcional) | `Pedido aprovado automaticamente — dentro do limite de crédito` ou `Pedido aprovado pelo vendedor 8c793e97-... — motivo: cliente estratégico` |
+| `ORDER_REJECTED` | `POST /orders/{orderId}/reject` | `decidedBy`, `reason` | `Pedido rejeitado pelo vendedor 8c793e97-... — motivo: limite excedido` |
+| `ORDER_CONFIRMED` | `StockReserved` leva o pedido a `CONFIRMED` | `carrier`, `trackingCode` | `Pedido confirmado — transportadora Expresso Cerrado, rastreio AB123456789BR` |
+| `ORDER_CANCELLED` | `StockReservationFailed` ou timeout da saga leva o pedido a `CANCELLED` | `cancellationCode`, `cancellationReason` | `Pedido cancelado (INSUFFICIENT_STOCK) — Estoque insuficiente: produto SKU-001 — disponível 7, solicitado 20` |
+| `ORDER_SHIPPED` | `POST /orders/{orderId}/ship` | `shippedBy` | `Pedido enviado pelo vendedor 8c793e97-...` |
+| `ORDER_DELIVERED` | `POST /orders/{orderId}/deliver` | `deliveredBy` | `Pedido entregue — registrado pelo vendedor 8c793e97-...` |
+
+A entrada em `RESERVING` não tem evento próprio (é parte da decisão, na mesma transação), e nada é
+emitido para uma transição recusada (`409`), para uma duplicata de `StockReserved` nem para um
+`StockReserved` tardio de um pedido já `CANCELLED`.
 
 ---
 
@@ -724,6 +864,12 @@ primeiro campo):
   "cancellationReason": null,
   "confirmedAt": null,
   "cancelledAt": null,
+  "carrier": null,
+  "trackingCode": null,
+  "shippedAt": null,
+  "shippedBy": null,
+  "deliveredAt": null,
+  "deliveredBy": null,
   "items": [
     {
       "lineNumber": 1,
@@ -737,6 +883,12 @@ primeiro campo):
   ]
 }
 ```
+
+A partir da Fase 6 o contrato traz seis campos novos, entre `cancelledAt` e `items`: `carrier` e
+`trackingCode` (preenchidos quando o pedido chega a `CONFIRMED`), `shippedAt` e `shippedBy`
+(preenchidos por `POST /orders/{orderId}/ship`) e `deliveredAt` e `deliveredBy` (preenchidos por
+`POST /orders/{orderId}/deliver`). Nesta resposta os seis vêm sempre nulos; um exemplo de pedido já
+`CONFIRMED` está em `GET /orders/{orderId}`.
 
 `status` é `RESERVING` ou `PENDING_APPROVAL` — nunca outro valor nesta resposta, já que a criação
 sempre decide entre esses dois; `RESERVING` avança em seguida para `CONFIRMED` ou `CANCELLED` de
@@ -765,11 +917,60 @@ não é JSON válido), `401 unauthorized`, `403 forbidden` (papel diferente de `
 | `PENDING_APPROVAL` → `REJECTED` | Decisão manual (`POST /orders/{orderId}/reject`) | Não |
 | `RESERVING` → `CONFIRMED` | Evento `StockReserved` consumido da fila de resultado da saga | Sim |
 | `RESERVING` → `CANCELLED` | Evento `StockReservationFailed`, ou timeout da saga (`RESERVATION_TIMEOUT`) | Não — libera o crédito consumido |
+| `CONFIRMED` → `SHIPPED` (Fase 6) | `POST /orders/{orderId}/ship` — grava o comando `ShipStock` no outbox | Sim |
+| `SHIPPED` → `DELIVERED` (Fase 6) | `POST /orders/{orderId}/deliver` — nenhuma mensagem de estoque | Sim |
 
 `APPROVED` nunca é observado como o `status` de um pedido em repouso a partir da Fase 5 — é sempre
 um passo intermediário registrado em `decidedBy`/`decidedAt`/`reason`, e a transição para
-`RESERVING` acontece na mesma transação da decisão (D-50). `SHIPPED`/`DELIVERED` (expedição e
-entrega) chegam na Fase 6.
+`RESERVING` acontece na mesma transação da decisão (D-50). Pela mesma razão `CREATED` nunca é
+observado em repouso. `CANCELLED` só é alcançado pela saga — não existe endpoint de cancelamento.
+`REJECTED`, `CANCELLED` e `DELIVERED` são terminais; qualquer aresta fora desta tabela devolve
+`409 invalid_order_transition`. O diagrama completo, com as nove arestas permitidas, está em
+[README.md § Ciclo de vida do pedido (Fase 6)](../README.md#ciclo-de-vida-do-pedido-fase-6) e é
+conferido por teste contra a tabela de transições do código.
+
+**Transportadora e rastreio são simulados.** Ao chegar a `CONFIRMED`, o pedido recebe `carrier` e
+`trackingCode` no mesmo instante. A transportadora é uma das cinco abaixo (nomes fictícios, escolhida de
+forma determinística a partir do `orderId`) e o rastreio segue o padrão S10 dos Correios,
+`^[A-Z]{2}[0-9]{9}BR$`; nada é consultado em rede. A costura `CarrierGateway` é onde uma API real
+entraria.
+
+| Transportadoras possíveis (`carrier`) |
+|---|
+| `Expresso Cerrado`, `TransSul Cargas`, `Rapido Paulista`, `Norte Entregas`, `Litoral Log` |
+
+**Mensagens da saga que cruzam as filas** (JSON, sem JWT; todas com `eventId`, `eventType`,
+`occurredAt`, `orderId` e `reservationId` = id do pedido em texto):
+
+| Mensagem | Fila | Produtor → consumidor | Campos adicionais |
+|---|---|---|---|
+| `ReserveStock` | `inventory-commands-queue` | `order-service` → `inventory-service` | `items[{productId, quantity}]` |
+| `ReleaseStock` | `inventory-commands-queue` | `order-service` → `inventory-service` | `items[{productId, quantity}]`, `reason` |
+| `ShipStock` (Fase 6) | `inventory-commands-queue` | `order-service` → `inventory-service` | `items[{productId, quantity}]`; sem `reason`; sem resposta |
+| `StockReserved` / `StockReservationFailed` | `order-events-queue` | `inventory-service` → `order-service` | resultado da reserva |
+
+`ShipStock` exemplo:
+
+```json
+{
+  "eventId": "7d1c9a40-...",
+  "eventType": "ShipStock",
+  "occurredAt": "2026-09-30T14:40:10.000000Z",
+  "orderId": "3f7b1c2a-...",
+  "reservationId": "3f7b1c2a-...",
+  "items": [
+    { "productId": "6a4f2e10-...", "quantity": 4 }
+  ]
+}
+```
+
+O `inventory-service` baixa, para cada item, `quantityOnHand` e `quantityReserved` pela quantidade
+**registrada no livro de reservas** (não a da mensagem), numa única transação. É idempotente pelo
+livro: um `ShipStock` repetido para uma reserva já expedida é no-op, e um `ReleaseStock` (ou o
+`DELETE` REST) para uma reserva já expedida é ignorado. Não há resposta ao `order-service` — o pedido
+já está `SHIPPED` quando o comando é entregue — e a expedição não publica `STOCK_ADJUSTED`. Uma
+reserva inexistente ou já liberada é uma anomalia: a mensagem é reentregue até a DLQ
+(`inventory-commands-dlq`).
 
 **Códigos de cancelamento (`cancellationCode`):**
 
@@ -825,9 +1026,10 @@ os da saga de reserva de estoque (`?status=RESERVING`, `?status=CONFIRMED`, `?st
 }
 ```
 
-O resumo de cada pedido na listagem não inclui os itens nem os campos da saga
-(`cancellationCode`/`cancellationReason`/`confirmedAt`/`cancelledAt`) — só `GET /orders/{orderId}`
-traz o detalhe completo, item a item.
+O resumo de cada pedido na listagem não inclui os itens, os campos da saga
+(`cancellationCode`/`cancellationReason`/`confirmedAt`/`cancelledAt`) nem os da expedição (Fase 6:
+`carrier`/`trackingCode`/`shippedAt`/`shippedBy`/`deliveredAt`/`deliveredBy`) — só
+`GET /orders/{orderId}` traz o detalhe completo, item a item.
 
 **Erros possíveis:** `401 unauthorized`.
 
@@ -847,8 +1049,46 @@ para `CONFIRMED` ou `CANCELLED` de forma assíncrona (ver
 [README.md § Saga de reserva de estoque (Fase 5)](../README.md#saga-de-reserva-de-estoque-fase-5)).
 
 **Resposta `200 OK`:** mesmo formato completo de `POST /orders` (ORDER_RESPONSE_CONTRACT), com
-`items` incluído — pedido `CONFIRMED` traz `confirmedAt` preenchido; pedido `CANCELLED` traz
-`cancellationCode`, `cancellationReason` e `cancelledAt` preenchidos.
+`items` incluído — pedido `CONFIRMED` traz `confirmedAt`, `carrier` e `trackingCode` preenchidos;
+pedido `SHIPPED` acrescenta `shippedAt` e `shippedBy`; pedido `DELIVERED`, `deliveredAt` e
+`deliveredBy`; pedido `CANCELLED` traz `cancellationCode`, `cancellationReason` e `cancelledAt`
+preenchidos (e nunca recebe transportadora). Exemplo de um pedido `CONFIRMED` (a ordem dos campos é
+a do contrato, com os seis campos da Fase 6 entre `cancelledAt` e `items`):
+
+```json
+{
+  "id": "3f7b1c2a-...",
+  "companyId": "9a21e4d0-...",
+  "status": "CONFIRMED",
+  "total": 400.00,
+  "createdBy": "8c793e97-...",
+  "createdAt": "2026-09-30T14:32:00Z",
+  "decidedBy": "SYSTEM",
+  "decidedAt": "2026-09-30T14:32:00Z",
+  "reason": null,
+  "cancellationCode": null,
+  "cancellationReason": null,
+  "confirmedAt": "2026-09-30T14:32:03Z",
+  "cancelledAt": null,
+  "carrier": "Expresso Cerrado",
+  "trackingCode": "AB123456789BR",
+  "shippedAt": null,
+  "shippedBy": null,
+  "deliveredAt": null,
+  "deliveredBy": null,
+  "items": [
+    {
+      "lineNumber": 1,
+      "productId": "6a4f2e10-...",
+      "sku": "SKU-001",
+      "name": "Caixa de parafusos M4",
+      "unitPrice": 100.00,
+      "quantity": 4,
+      "subtotal": 400.00
+    }
+  ]
+}
+```
 
 **Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
 `401 unauthorized`, `404 order_not_found` (id inexistente, ou pedido de outra empresa visto por um
@@ -879,10 +1119,10 @@ volta `RESERVING`, não `APPROVED` (D-50, D-54) — ver
 |---|---|---|---|
 | `reason` | string | Não | Até 500 caracteres; em branco é gravado como `null` |
 
-**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "RESERVING"`,
-`decidedBy` igual ao `sub` do JWT do vendedor (nunca do corpo), `decidedAt` preenchido e `reason`
-igual ao motivo enviado (ou `null`). Acompanhe o resultado da reserva por
-`GET /orders/{orderId}` até `CONFIRMED`/`CANCELLED`.
+**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}` (incluindo os seis campos da Fase 6,
+aqui nulos), com `status: "RESERVING"`, `decidedBy` igual ao `sub` do JWT do vendedor (nunca do
+corpo), `decidedAt` preenchido e `reason` igual ao motivo enviado (ou `null`). Acompanhe o resultado
+da reserva por `GET /orders/{orderId}` até `CONFIRMED`/`CANCELLED`.
 
 **Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
 `400 validation_failed` (`reason` acima de 500 caracteres), `401 unauthorized`,
@@ -910,14 +1150,75 @@ Rejeita um pedido `PENDING_APPROVAL`. Pedido rejeitado nunca consome crédito.
 |---|---|---|---|
 | `reason` | string | Sim | Não vazio, até 500 caracteres |
 
-**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}`, com `status: "REJECTED"`,
-`decidedBy` igual ao `sub` do JWT do vendedor, `decidedAt` preenchido e `reason` igual ao motivo
-enviado.
+**Resposta `200 OK`:** mesmo formato de `GET /orders/{orderId}` (incluindo os seis campos da Fase 6,
+aqui nulos), com `status: "REJECTED"`, `decidedBy` igual ao `sub` do JWT do vendedor, `decidedAt`
+preenchido e `reason` igual ao motivo enviado.
 
 **Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
 `400 malformed_request` (sem corpo), `400 validation_failed` (`reason` vazio, em branco ou acima de
 500 caracteres), `401 unauthorized`, `403 forbidden` (papel diferente de `SELLER_ADMIN`),
 `404 order_not_found`, `409 order_not_pending`.
+
+---
+
+## `POST /api/orders/{orderId}/ship`
+
+Expede um pedido `CONFIRMED` (Fase 6): o pedido passa a `SHIPPED`, mantendo a transportadora e o
+rastreio atribuídos na confirmação, e o `order-service` grava na mesma transação (Transactional
+Outbox) o comando `ShipStock` e o evento `ORDER_SHIPPED`. O relay entrega o `ShipStock` ao
+`inventory-service`, que dá a baixa física do estoque (`quantityOnHand` e `quantityReserved` caem
+pela quantidade reservada, uma única vez). A resposta **não espera** a baixa — acompanhe-a por
+`GET /inventory/{productId}`. Duas chamadas simultâneas sobre o mesmo pedido: uma vence, a outra
+recebe `409`, e só um `ShipStock` é gravado. `SHIPPED` continua consumindo crédito.
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN`. Sem corpo.
+
+**Resposta `200 OK`:** o pedido no mesmo formato de `GET /orders/{orderId}`, com `status: "SHIPPED"`,
+`shippedAt` preenchido e `shippedBy` igual ao `sub` do JWT do vendedor (nunca do corpo):
+
+```json
+{
+  "id": "3f7b1c2a-...",
+  "status": "SHIPPED",
+  "carrier": "Expresso Cerrado",
+  "trackingCode": "AB123456789BR",
+  "shippedAt": "2026-09-30T14:40:10Z",
+  "shippedBy": "8c793e97-...",
+  "deliveredAt": null,
+  "deliveredBy": null,
+  "...": "demais campos como em GET /orders/{orderId}"
+}
+```
+
+**Erros possíveis:** `400 invalid_parameter` (`{orderId}` não é um UUID válido),
+`401 unauthorized`, `403 forbidden` (papel diferente de `SELLER_ADMIN`, incluindo o `BUYER` dono do
+pedido), `404 order_not_found`, `409 invalid_order_transition` (o pedido não está em `CONFIRMED`; o
+pedido permanece inalterado):
+
+```json
+{
+  "error": "invalid_order_transition",
+  "message": "Order cannot transition from CANCELLED to SHIPPED"
+}
+```
+
+---
+
+## `POST /api/orders/{orderId}/deliver`
+
+Registra a entrega de um pedido `SHIPPED` (Fase 6): o pedido passa a `DELIVERED` e o `order-service`
+grava o evento `ORDER_DELIVERED`. Não há nenhuma mensagem de estoque (a baixa já aconteceu na
+expedição) e `DELIVERED` continua consumindo crédito. É um estado terminal.
+
+**Autenticação:** Bearer, papel `SELLER_ADMIN`. Sem corpo.
+
+**Resposta `200 OK`:** o pedido no mesmo formato de `GET /orders/{orderId}`, com
+`status: "DELIVERED"`, `deliveredAt` preenchido e `deliveredBy` igual ao `sub` do JWT do vendedor;
+`shippedAt`/`shippedBy`, `carrier` e `trackingCode` permanecem como estavam.
+
+**Erros possíveis:** os mesmos de `POST /orders/{orderId}/ship` — `400 invalid_parameter`,
+`401 unauthorized`, `403 forbidden`, `404 order_not_found` e `409 invalid_order_transition` (o pedido
+não está em `SHIPPED`, por exemplo `Order cannot transition from CONFIRMED to DELIVERED`).
 
 ---
 
