@@ -87,6 +87,22 @@ public class Inventory {
         this.quantityReserved = Math.max(0, this.quantityReserved - quantidade);
     }
 
+    /**
+     * Baixa fisica na expedicao (D-75, D-57): decrementa {@code quantityOnHand} e {@code
+     * quantityReserved} pelo MESMO valor, entao o disponivel nao muda. Diferente de {@link
+     * #release}, nunca mascara com {@code Math.max}: quantidade invalida, maior que o reservado ou
+     * maior que o fisico e anomalia tecnica ({@link IllegalStateException}) — o livro e o inventario
+     * estao inconsistentes e isso nao pode ser silenciado.
+     */
+    public void ship(int quantidade) {
+        if (quantidade < 1 || quantidade > this.quantityReserved || quantidade > this.quantityOnHand) {
+            throw new IllegalStateException("Baixa invalida de " + quantidade + " unidade(s) para productId="
+                    + this.productId + ": onHand=" + this.quantityOnHand + ", reserved=" + this.quantityReserved);
+        }
+        this.quantityOnHand -= quantidade;
+        this.quantityReserved -= quantidade;
+    }
+
     public int availableQuantity() {
         return this.quantityOnHand - this.quantityReserved;
     }

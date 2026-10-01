@@ -51,6 +51,13 @@ public class StockReservation {
     @Column(name = "released_at")
     private OffsetDateTime releasedAt;
 
+    /** Expedida (D-75): a baixa fisica ja foi feita para esta linha — marca de idempotencia do ShipStock. */
+    @Column(nullable = false)
+    private boolean shipped;
+
+    @Column(name = "shipped_at")
+    private OffsetDateTime shippedAt;
+
     public StockReservation(UUID productId, String reservationId, int quantity) {
         this.productId = productId;
         this.reservationId = reservationId;
@@ -82,5 +89,16 @@ public class StockReservation {
     public void markReleased(OffsetDateTime quando) {
         this.released = true;
         this.releasedAt = quando;
+    }
+
+    /**
+     * Marca a reserva como expedida (D-75). Consumido uma unica vez, como a liberacao: e a guarda de
+     * idempotencia do {@code ShipStock} e o que faz {@code release}/{@code releaseAll} ignorarem a
+     * linha. O banco recusa uma linha ao mesmo tempo liberada e expedida
+     * ({@code chk_stock_reservations_not_released_and_shipped}).
+     */
+    public void markShipped(OffsetDateTime quando) {
+        this.shipped = true;
+        this.shippedAt = quando;
     }
 }

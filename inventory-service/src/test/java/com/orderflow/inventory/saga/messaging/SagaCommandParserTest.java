@@ -3,6 +3,7 @@ package com.orderflow.inventory.saga.messaging;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
+import com.orderflow.inventory.saga.messaging.dto.ShipStockCommand;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -372,5 +373,162 @@ class SagaCommandParserTest {
         assertThatThrownBy(() -> parser.parse(body))
                 .isInstanceOf(InvalidSagaMessageException.class)
                 .hasMessageContaining("items");
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // ShipStock (06-03 Task 1, D-75) — mesmo envelope do ReserveStock, sem reason.
+    // -----------------------------------------------------------------------------------------
+
+    /** Monta o corpo de um ShipStock; um campo {@code null} e omitido do JSON. */
+    private String shipCommand(String eventId, String occurredAt, String orderId, String reservationId,
+                               String items) {
+        StringBuilder sb = new StringBuilder("{\"eventType\":\"ShipStock\"");
+        for (String field : new String[] {eventId, occurredAt, orderId, reservationId, items}) {
+            if (field != null) {
+                sb.append(",").append(field);
+            }
+        }
+        return sb.append("}").toString();
+    }
+
+    private static String q(String name, Object value) {
+        return "\"" + name + "\":\"" + value + "\"";
+    }
+
+    private static String itemsOf(UUID productId, int quantity) {
+        return "\"items\":[{\"productId\":\"" + productId + "\",\"quantity\":" + quantity + "}]";
+    }
+
+    private static final String OCCURRED_AT = "\"occurredAt\":\"2026-09-26T12:00:00Z\"";
+
+    private String validShip(UUID orderId, UUID productId, int quantity) {
+        return shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), itemsOf(productId, quantity));
+    }
+
+    @Test
+    void validShipStockParsesIntoCommand() {
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", eventId), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), itemsOf(productId, 4));
+
+        ShipStockCommand command = (ShipStockCommand) parser.parse(body);
+
+        assertThat(command.eventId()).isEqualTo(eventId);
+        assertThat(command.eventType()).isEqualTo("ShipStock");
+        assertThat(command.occurredAt()).isEqualTo(Instant.parse("2026-09-26T12:00:00Z"));
+        assertThat(command.orderId()).isEqualTo(orderId);
+        assertThat(command.reservationId()).isEqualTo(orderId.toString());
+        assertThat(command.items()).hasSize(1);
+        assertThat(command.items().get(0).productId()).isEqualTo(productId);
+        assertThat(command.items().get(0).quantity()).isEqualTo(4);
+    }
+
+    @Test
+    void shipStockWithEmptyItemsIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), "\"items\":[]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("items");
+    }
+
+    @Test
+    void shipStockWithMissingItemsIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), null);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("items");
+    }
+
+    @Test
+    void shipStockWithDuplicatedProductIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        String items = "\"items\":[{\"productId\":\"" + productId + "\",\"quantity\":1},"
+                + "{\"productId\":\"" + productId + "\",\"quantity\":2}]";
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), items);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("repetido");
+    }
+
+    @Test
+    void shipStockWithQuantityZeroIsRejected() {
+        String body = validShip(UUID.randomUUID(), UUID.randomUUID(), 0);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("quantity");
+    }
+
+    @Test
+    void shipStockWithQuantityAboveMaxIsRejected() {
+        String body = validShip(UUID.randomUUID(), UUID.randomUUID(), 1_000_001);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("quantity");
+    }
+
+    @Test
+    void shipStockReservationIdDifferentFromOrderIdIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", UUID.randomUUID()), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("reservationId");
+    }
+
+    @Test
+    void shipStockWithMissingEventIdIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(null, OCCURRED_AT, q("orderId", orderId), q("reservationId", orderId),
+                itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("eventId");
+    }
+
+    @Test
+    void shipStockWithMissingOrderIdIsRejected() {
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, null,
+                q("reservationId", "qualquer"), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("orderId");
+    }
+
+    @Test
+    void shipStockWithMissingOccurredAtIsRejected() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), null, q("orderId", orderId),
+                q("reservationId", orderId), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("occurredAt");
+    }
+
+    @Test
+    void shipStockWithMalformedFieldsIsRejectedWithSanitizedMessage() {
+        UUID orderId = UUID.randomUUID();
+        // \\u0007 no source Java vira o escape JSON valido \u0007 no corpo (BEL depois de decodificado).
+        String badEventId = shipCommand("\"eventId\":\"nao-e-uuid\\u0007" + "Z".repeat(100) + "\"", OCCURRED_AT,
+                q("orderId", orderId), q("reservationId", orderId), itemsOf(UUID.randomUUID(), 1));
+        InvalidSagaMessageException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                InvalidSagaMessageException.class, () -> parser.parse(badEventId));
+        assertThat(ex.getMessage()).contains("eventId").doesNotContainPattern("\\p{Cntrl}");
+        assertThat(ex.getMessage().length()).isLessThan(150);
+
+        String badOccurredAt = shipCommand(q("eventId", UUID.randomUUID()), "\"occurredAt\":\"ontem\"",
+                q("orderId", orderId), q("reservationId", orderId), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(badOccurredAt))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("occurredAt");
     }
 }

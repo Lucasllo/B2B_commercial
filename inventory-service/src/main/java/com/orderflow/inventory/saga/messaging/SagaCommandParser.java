@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReservationLine;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
+import com.orderflow.inventory.saga.messaging.dto.ShipStockCommand;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -50,8 +51,8 @@ public class SagaCommandParser {
     }
 
     /**
-     * @return {@link ReserveStockCommand} ou {@link ReleaseStockCommand}, conforme {@code
-     *     eventType} — o chamador distingue por {@code instanceof}.
+     * @return {@link ReserveStockCommand}, {@link ReleaseStockCommand} ou {@link ShipStockCommand},
+     *     conforme {@code eventType} — o chamador distingue por {@code instanceof}.
      */
     public Object parse(String rawPayload) {
         if (rawPayload == null
@@ -78,7 +79,25 @@ public class SagaCommandParser {
         if (ReleaseStockCommand.EVENT_TYPE.equals(eventType)) {
             return parseReleaseStock(tree, eventType);
         }
+        if (ShipStockCommand.EVENT_TYPE.equals(eventType)) {
+            return parseShipStock(tree, eventType);
+        }
         throw new InvalidSagaMessageException("Tipo de evento nao suportado: " + sanitizeForLog(eventType));
+    }
+
+    /**
+     * {@code ShipStock} (06-03, D-75): mesma validacao de {@code ReserveStock}, sem {@code reason}.
+     * {@code items} so identifica os produtos — a quantidade baixada vem do livro, mas a faixa
+     * 1..1000000 e a regra de itens (sem repetido, 1..50) continuam valendo para o corpo recebido.
+     */
+    private ShipStockCommand parseShipStock(JsonNode tree, String eventType) {
+        UUID eventId = requireUuid(tree, "eventId");
+        Instant occurredAt = requireInstant(tree, "occurredAt");
+        UUID orderId = requireUuid(tree, "orderId");
+        String reservationId = requireReservationIdMatchingOrderId(tree, orderId);
+        List<ReservationLine> items = requireItems(tree);
+
+        return new ShipStockCommand(eventId, eventType, occurredAt, orderId, reservationId, items);
     }
 
     private ReserveStockCommand parseReserveStock(JsonNode tree, String eventType) {

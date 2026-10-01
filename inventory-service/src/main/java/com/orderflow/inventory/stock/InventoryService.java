@@ -7,6 +7,8 @@ import com.orderflow.inventory.saga.messaging.dto.StockReservedEvent;
 import com.orderflow.inventory.saga.outbox.OutboxWriter;
 import com.orderflow.inventory.stock.dto.StockAdjustedEvent;
 import com.orderflow.inventory.stock.dto.StockResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -64,6 +66,8 @@ public class InventoryService {
     private static final long RETRY_DELAY_MS = 20;
     private static final double RETRY_MULTIPLIER = 2.0;
     private static final long RETRY_MAX_DELAY_MS = 200;
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryService.class);
 
     private final InventoryRepository inventoryRepository;
     private final StockReservationRepository stockReservationRepository;
@@ -246,6 +250,12 @@ public class InventoryService {
      * StockReservationFailedEvent} no outbox e devolve o resultado sem tocar em {@code inventory}
      * nem em {@code stock_reservations} (D-55); se todas as linhas passarem, reserva cada uma
      * (nunca altera {@code quantity_on_hand}, D-57) e grava {@code StockReservedEvent}.
+     *
+     * <p><b>Reentrega depois da expedicao (06-03, D-75):</b> um {@code ReserveStock} reentregue
+     * depois do {@code ShipStock} cai na situacao (3) — todas as linhas existem (agora com {@code
+     * shipped = true}) e nenhuma esta liberada — e reemite {@code StockReserved} sem tocar em
+     * {@code inventory} nem no livro; o order-service ignora o evento por estado (pedido ja
+     * SHIPPED). Nenhuma alteracao de codigo foi necessaria neste metodo.
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
@@ -445,6 +455,93 @@ public class InventoryService {
     @Recover
     public void recoverReleaseAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
                                                    List<ReservationLine> lines) {
+        throw ex;
+    }
+
+    /**
+     * Baixa fisica na expedicao (D-75, D-57, 06-03) — mesmo par de anotacoes de {@code releaseAll}:
+     * {@code @Retryable} com as mesmas constantes/{@code retryFor}, e {@code @Transactional} no
+     * proprio metodo. Nunca chama {@code reserve}/{@code release}/{@code reserveAll}/{@code
+     * releaseAll} deste bean (auto-invocacao pula o proxy, javadoc da classe) — le e escreve direto
+     * pelos repositorios, uma linha por vez, ordenadas por {@code productId} (mesma ordem estavel
+     * dos outros comandos, evita deadlock entre pedidos com produtos em comum).
+     *
+     * <p>A QUANTIDADE baixada vem sempre da linha do livro ({@code stock_reservations.quantity}) —
+     * os {@code items} do comando so dizem quais produtos do pedido baixar (T-06-10: um comando
+     * forjado nao baixa mais do que foi reservado). Por linha: sem linha no livro para o par ({@code
+     * reservationId}, {@code productId}) → {@link IllegalStateException} citando {@code productId},
+     * {@code reservationId} e {@code orderId} (anomalia tecnica, {@code
+     * SHIP_STOCK_ANOMALY=missing-or-released-throws}: reentrega ate a DLQ); linha ja EXPEDIDA → no-op
+     * idempotente com log INFO (reentrega do mesmo comando ou de outro com {@code eventId} novo, a
+     * marca {@code shipped} e a guarda); linha LIBERADA → {@link IllegalStateException} (pedido
+     * cancelado e expedido); linha viva → {@link Inventory#ship} (decrementa {@code
+     * quantity_on_hand} e {@code quantity_reserved} pelo mesmo valor) e {@link
+     * StockReservation#markShipped}, escritos com {@code saveAndFlush} dentro desta tentativa para
+     * que o conflito de versao seja capturado pela reexecucao. Inventory ausente para reserva viva e
+     * a mesma anomalia de {@code releaseAll}.
+     *
+     * <p>Nao grava nada no outbox ({@code SHIP_STOCK_ADJUSTED_EVENT=none}): {@code STOCK_ADJUSTED}
+     * significa "ajuste do vendedor" (previous → new) e a baixa de expedicao nao e isso; a prova da
+     * baixa e {@code GET /inventory/{productId}}. Tambem nao responde ao order-service.
+     */
+    @Retryable(
+            retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
+            maxAttempts = RETRY_MAX_ATTEMPTS,
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
+    @Transactional
+    public void shipAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
+        List<ReservationLine> sortedLines = lines.stream()
+                .sorted(Comparator.comparing(ReservationLine::productId))
+                .toList();
+
+        for (ReservationLine line : sortedLines) {
+            StockReservation reservation = stockReservationRepository
+                    .findByProductIdAndReservationId(line.productId(), reservationId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "ShipStock sem reserva no livro para productId=" + line.productId()
+                                    + " reservationId=" + reservationId + " (pedido " + orderId + ")"));
+            if (reservation.isShipped()) {
+                log.info("ShipStock ja aplicado, ignorado: productId={} reservationId={} (pedido {})",
+                        line.productId(), reservationId, orderId);
+                continue;
+            }
+            if (reservation.isReleased()) {
+                throw new IllegalStateException(
+                        "ShipStock para reserva ja liberada productId=" + line.productId()
+                                + " reservationId=" + reservationId + " (pedido " + orderId + ")");
+            }
+            Inventory inventory = inventoryRepository.findByProductId(line.productId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Inventory ausente para produto com reserva viva productId=" + line.productId()
+                                    + " reservationId=" + reservationId + " (pedido " + orderId + ")"));
+            // Sempre a quantidade do LIVRO, nunca a do comando.
+            inventory.ship(reservation.getQuantity());
+            reservation.markShipped(OffsetDateTime.now());
+            inventoryRepository.saveAndFlush(inventory);
+            stockReservationRepository.saveAndFlush(reservation);
+        }
+    }
+
+    @Recover
+    public void recoverShipAll(DataAccessException ex, UUID orderId, String reservationId,
+                               List<ReservationLine> lines) {
+        throw new ReservationConflictException();
+    }
+
+    /**
+     * Mesma lição de {@link #recoverReleaseAllInconsistentBook}: {@code shipAll} lanca {@link
+     * IllegalStateException} para reserva ausente/liberada/sem inventory (anomalia tecnica, nunca
+     * retentavel — nao esta em {@code retryFor}), mas o aspecto de reexecucao do Spring Retry
+     * intercepta QUALQUER excecao escapando de um metodo {@code @Retryable}; sem um {@code @Recover}
+     * cujo tipo de parametro corresponda, a excecao real vira {@code
+     * ExhaustedRetryException("Cannot locate recovery method")}, escondendo {@code
+     * productId}/{@code reservationId}/{@code orderId}. Relanca a excecao original apos registrar um
+     * WARN (permite tambem observar qual {@code @Recover} o Spring Retry resolveu).
+     */
+    @Recover
+    public void recoverShipAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
+                                               List<ReservationLine> lines) {
+        log.warn("ShipStock anomalo (pedido {}): {}", orderId, ex.getMessage());
         throw ex;
     }
 }

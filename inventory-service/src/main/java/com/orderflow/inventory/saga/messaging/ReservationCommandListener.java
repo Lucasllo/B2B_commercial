@@ -2,6 +2,7 @@ package com.orderflow.inventory.saga.messaging;
 
 import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
+import com.orderflow.inventory.saga.messaging.dto.ShipStockCommand;
 import com.orderflow.inventory.stock.InventoryService;
 import io.awspring.cloud.sqs.annotation.SqsListener;
 import org.slf4j.Logger;
@@ -13,9 +14,10 @@ import org.springframework.stereotype.Component;
  * Consumidor da {@code inventory-commands-queue} (D-61) — mesma forma de {@code
  * NotificationEventListener} (Fase 3): parâmetro {@code String} para que o corpo chegue verbatim, e
  * a decisão de como interpretar/validar fica na camada de serviço ({@link SagaCommandParser}).
- * Despacha para {@link InventoryService#reserveAll} ou {@link InventoryService#releaseAll}
- * conforme o tipo devolvido pelo parser (D-63, D-66, 05-04) — {@code ReleaseStock} não gera
- * nenhuma resposta (o order-service não espera resultado da compensação).
+ * Despacha para {@link InventoryService#reserveAll}, {@link InventoryService#releaseAll} ou {@link
+ * InventoryService#shipAll} conforme o tipo devolvido pelo parser (D-63, D-66, 05-04; D-75, 06-03)
+ * — {@code ReleaseStock} e {@code ShipStock} não geram nenhuma resposta (o order-service não espera
+ * resultado da compensação nem da baixa física).
  *
  * <p>Diverge de {@code NotificationEventListener} num ponto central (D-67): mensagem malformada
  * (falha de {@link SagaCommandParser}) é descartada com log WARN, mas uma falha de <b>negócio</b>
@@ -56,6 +58,11 @@ public class ReservationCommandListener {
         }
         if (command instanceof ReleaseStockCommand releaseStock) {
             inventoryService.releaseAll(releaseStock.orderId(), releaseStock.reservationId(), releaseStock.items());
+            return;
+        }
+        if (command instanceof ShipStockCommand shipStock) {
+            // Baixa fisica pelo livro (D-75) — sem resposta; anomalia tecnica propaga (reentrega -> DLQ).
+            inventoryService.shipAll(shipStock.orderId(), shipStock.reservationId(), shipStock.items());
         }
     }
 }
