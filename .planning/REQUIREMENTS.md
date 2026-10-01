@@ -34,10 +34,10 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 - [x] **ORD-04**: Order-service publica evento de reserva de estoque via SQS usando o padrão Transactional Outbox (evento gravado na mesma transação da mudança de estado do pedido)
 - [x] **ORD-05**: Order-service consome o resultado da reserva de estoque e transiciona o pedido para CONFIRMED (sucesso) ou CANCELLED (falha)
 - [x] **ORD-06**: Consumidores SQS processam cada evento de forma idempotente, mesmo diante de entrega duplicada
-- [ ] **ORD-07**: Pedido confirmado recebe atribuição de transportadora simulada e código de rastreio
+- [x] **ORD-07**: Pedido confirmado recebe atribuição de transportadora simulada e código de rastreio
 - [x] **ORD-08**: Comprador lista e visualiza detalhe dos próprios pedidos
 - [x] **ORD-09**: Vendedor lista e visualiza detalhe de todos os pedidos
-- [ ] **ORD-10**: Status do pedido segue CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED)
+- [x] **ORD-10**: Status do pedido segue CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED)
 
 ### Notifications
 
@@ -119,10 +119,10 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | ORD-04 | Phase 5 | Complete |
 | ORD-05 | Phase 5 | Complete |
 | ORD-06 | Phase 5 | Complete |
-| ORD-07 | Phase 6 | Pending |
+| ORD-07 | Phase 6 | Complete |
 | ORD-08 | Phase 4 | Complete |
 | ORD-09 | Phase 4 | Complete |
-| ORD-10 | Phase 6 | Pending |
+| ORD-10 | Phase 6 | Complete |
 | NOTF-01 | Phase 3 | Complete |
 | NOTF-02 | Phase 3 | Complete |
 | QUAL-01 | Phase 7 | Pending |

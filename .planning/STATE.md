@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
-status: executing
-stopped_at: Completed 06-06-PLAN.md
-last_updated: "2026-10-01T01:32:09.361Z"
+status: verifying
+stopped_at: Completed 06-07-PLAN.md
+last_updated: "2026-10-01T01:40:32.748Z"
 last_activity: 2026-09-30
 last_activity_desc: Phase 06 execution started
-state_head: ad4bfd9a95a3161deec0c04d657bf316e0e42128
+state_head: 6053a654a73d9b206e291e2ffbe372147cbb6da2
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 28
+  completed_plans: 29
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 
 Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-30 — Phase 06 execution started
 
 Progress: [███████░░░] 71%
@@ -83,6 +83,7 @@ Progress: [███████░░░] 71%
 | Phase 06 P04 | 14 min | 3 tasks | 15 files |
 | Phase 06 P05 | 11 min | 2 tasks | 15 files |
 | Phase 06 P06 | 75 min | 2 tasks | 3 files |
+| Phase 06 P07 | 40 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,7 @@ Recent decisions affecting current work:
 - [Phase 06]: TIMELINE_OCCURRED_AT=transition-column; TIMELINE_ROUTING=explicit-list; TEST_LOCALSTACK_SERVICES=sqs,dynamodb (06-05) — occurredAt vem da coluna gravada pela transicao; o relay roteia ORDER_* por lista explicita; o LocalStack dos ITs do order-service copia os hooks 01 e 02
 - [Phase 06]: 06-06: smoke afirma formato (carrier nao vazio, trackingCode ^[A-Z]{2}[0-9]{9}BR$), nao valor fixo — O rastreio depende do orderId gerado em cada execucao
 - [Phase 06]: 06-06: E2E de expedicao cobre order+inventory; linha do tempo so e provada pelo smoke na stack real (D-86) — notification-service fora do E2E por custo e fragilidade
+- [Phase 06]: 06-07: diagramas stateDiagram-v2 do README e da visao geral conferidos por OrderStatusDiagramConsistencyTest contra OrderStatus.transitions(); 'corresponde exatamente' = diagrama x tabela (este teste) + API x tabela (OrderLifecycleTransitionsIT) — Mantem documentacao e codigo travados pela mesma tabela unica (D-83)
 
 ### Pending Todos
 
@@ -177,6 +179,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T01:32:09.160Z
-Stopped at: Completed 06-06-PLAN.md
+Last session: 2026-10-01T01:40:32.555Z
+Stopped at: Completed 06-07-PLAN.md
 Resume file: None

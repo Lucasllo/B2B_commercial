@@ -186,7 +186,7 @@ Plans:
   3. Consultando o histórico de notificações de um pedido, aparece a linha do tempo completa: criado, aprovado (quando houve aprovação), confirmado ou cancelado, enviado e entregue.
   4. O fluxo de status CREATED → PENDING_APPROVAL → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) está documentado com diagrama e corresponde exatamente ao comportamento real da API.
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans executed
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano com IT usa LocalStack; 06-07 vem por último para documentar o que já foi demonstrado.*
@@ -217,7 +217,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 06-07-PLAN.md — diagrama Mermaid no README e na visão geral conferido por teste contra a tabela, README e `docs/API.md` com endpoints, contratos, smoke e limitações da Fase 6 (ORD-07, ORD-10)
+- [x] 06-07-PLAN.md — diagrama Mermaid no README e na visão geral conferido por teste contra a tabela, README e `docs/API.md` com endpoints, contratos, smoke e limitações da Fase 6 (ORD-07, ORD-10)
 
 ### Phase 7: Endurecimento, Observabilidade e Entrega
 
@@ -247,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
-| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 6/7 | In Progress|  |
+| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | In Progress|  |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 
 ## Coverage
