@@ -11,29 +11,35 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-
 /**
  * Suporte de teste com um container {@link LocalStackContainer} singleton — cópia do suporte
- * equivalente do {@code inventory-service} (05-RESEARCH.md). Só o serviço SQS: este módulo não usa
- * DynamoDB. Espera pelas DUAS filas criadas pelo init hook da saga ({@code
- * inventory-commands-queue} e {@code order-events-queue}) — {@link
+ * equivalente do {@code e2e-tests}: os DOIS hooks reais de {@code localstack-init/ready.d/} (o de
+ * notificação da Fase 3, que cria a {@code notification-events-queue} e a tabela, e o da saga da
+ * Fase 5) são copiados para o container, com SQS + DynamoDB (o hook 01 chama o DynamoDB; nenhum
+ * teste deste módulo lê a tabela). Espera pelas TRÊS filas — {@link
  * OrderTestInfrastructure#register} chama {@link #registerAwsProperties} para que toda classe de
- * IT do módulo suba com o mesmo LocalStack singleton.
+ * IT do módulo suba com o mesmo LocalStack singleton. A {@code notification-events-queue} é onde o
+ * relay entrega os eventos {@code ORDER_*} da linha do tempo (D-79, Pitfall 3) — sem ela o envio
+ * falharia em todo IT que cria pedido.
  */
 public final class LocalStackTestSupport {
 
     private static final String REGION = "us-east-1";
-    private static final List<String> QUEUE_NAMES = List.of("inventory-commands-queue", "order-events-queue");
+    private static final List<String> QUEUE_NAMES =
+            List.of("notification-events-queue", "inventory-commands-queue", "order-events-queue");
 
-    // Mesma tag de imagem que o docker-compose.yml e os demais serviços usam. O init hook copiado
-    // abaixo é o mesmo arquivo usado pelo compose — o teste prova o provisionamento real, nunca
-    // uma fila criada pelo próprio teste.
+    // Mesma tag de imagem que o docker-compose.yml e os demais serviços usam. Os init hooks
+    // copiados abaixo são os mesmos arquivos usados pelo compose — o teste prova o provisionamento
+    // real, nunca uma fila criada pelo próprio teste.
     public static final LocalStackContainer CONTAINER = new LocalStackContainer(
             DockerImageName.parse("localstack/localstack:2026.08.3"))
-            .withServices(Service.SQS)
+            .withServices(Service.SQS, Service.DYNAMODB)
             .withEnv("LOCALSTACK_AUTH_TOKEN", resolveAuthToken())
             .withCopyFileToContainer(
-                    MountableFile.forHostPath(initHookPath(), 0755),
+                    MountableFile.forHostPath(initHookPath("01-create-notification-resources.sh"), 0755),
+                    "/etc/localstack/init/ready.d/01-create-notification-resources.sh")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(initHookPath("02-create-order-saga-resources.sh"), 0755),
                     "/etc/localstack/init/ready.d/02-create-order-saga-resources.sh");
 
     static {
@@ -44,10 +50,10 @@ public final class LocalStackTestSupport {
     private LocalStackTestSupport() {
     }
 
-    private static String initHookPath() {
+    private static String initHookPath(String fileName) {
         // Resolvido a partir do diretório do módulo (order-service) subindo um nível até a raiz do
         // repositório, onde vive localstack-init/.
-        return Path.of("..", "localstack-init", "ready.d", "02-create-order-saga-resources.sh")
+        return Path.of("..", "localstack-init", "ready.d", fileName)
                 .toAbsolutePath().normalize().toString();
     }
 

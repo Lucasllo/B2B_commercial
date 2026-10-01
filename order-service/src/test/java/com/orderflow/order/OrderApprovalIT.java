@@ -187,9 +187,9 @@ class OrderApprovalIT extends AbstractIntegrationTest {
         String rejectedDecidedAt = rejectJson.get("decidedAt").asText();
         String rejectedReason = rejectJson.get("reason").asText();
 
-        // Rejeitar nunca inicia a saga — nenhuma linha no outbox para este pedido.
+        // Rejeitar nunca inicia a saga — nenhum ReserveStock no outbox para este pedido (as linhas ORDER_* de linha do tempo existem, D-78).
         Integer rejectedOutboxRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ?",
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ReserveStock'",
                 Integer.class, rejectedOrderId.toString());
         assertThat(rejectedOutboxRows).isZero();
 

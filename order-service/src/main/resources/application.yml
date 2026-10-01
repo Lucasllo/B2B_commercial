@@ -109,6 +109,11 @@ orderflow:
     # Fila do resultado da reserva (StockReserved/StockReservationFailed), consumida por
     # ReservationResultListener (05-03, D-61) — mesmo init hook cria as duas filas.
     order-events-queue: order-events-queue
+    # Fila de fan-out de notificações (Fase 3), onde o OutboxRelay entrega os eventos ORDER_* da
+    # linha do tempo do pedido (D-78, D-79) — consumida pelo notification-service. É a MESMA fila
+    # criada pelo init hook 01-create-notification-resources.sh: nenhuma fila nova e nenhuma
+    # variável nova no docker-compose.
+    notification-events-queue: notification-events-queue
   outbox:
     # Intervalo do relay @Scheduled do outbox, em milissegundos (D-59, Claude's Discretion). Valor
     # curto nos testes (application-test.yml) para não pagar segundos de espera por teste.

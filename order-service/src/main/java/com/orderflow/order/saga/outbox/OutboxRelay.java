@@ -2,6 +2,7 @@ package com.orderflow.order.saga.outbox;
 
 import com.orderflow.order.saga.messaging.dto.ReserveStockCommand;
 import com.orderflow.order.saga.messaging.dto.ShipStockCommand;
+import com.orderflow.order.timeline.OrderLifecycleEvent;
 import io.awspring.cloud.sqs.operations.SqsOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,14 +39,17 @@ public class OutboxRelay {
     private final SqsOperations sqsOperations;
     private final int batchSize;
     private final String inventoryCommandsQueue;
+    private final String notificationEventsQueue;
 
     public OutboxRelay(OutboxEventRepository outboxEventRepository, SqsOperations sqsOperations,
                         @Value("${orderflow.outbox.batch-size}") int batchSize,
-                        @Value("${orderflow.messaging.inventory-commands-queue}") String inventoryCommandsQueue) {
+                        @Value("${orderflow.messaging.inventory-commands-queue}") String inventoryCommandsQueue,
+                        @Value("${orderflow.messaging.notification-events-queue}") String notificationEventsQueue) {
         this.outboxEventRepository = outboxEventRepository;
         this.sqsOperations = sqsOperations;
         this.batchSize = batchSize;
         this.inventoryCommandsQueue = inventoryCommandsQueue;
+        this.notificationEventsQueue = notificationEventsQueue;
     }
 
     @Transactional
@@ -71,14 +75,20 @@ public class OutboxRelay {
 
     /**
      * {@code ReserveStock}, {@code ReleaseStock} (D-63) e {@code ShipStock} (D-75, baixa física na
-     * expedição) vão para {@code inventory-commands-queue}; qualquer outro {@code eventType} é erro
-     * de programação — tratado como falha do próprio evento (nunca derruba o lote), nunca envia
-     * para fila nenhuma.
+     * expedição) vão para {@code inventory-commands-queue}. Os oito tipos {@code ORDER_*} de linha
+     * do tempo (D-78, D-79) vão para a {@code notification-events-queue} — a mesma fila de fan-out
+     * da Fase 3, sem fila nova; o roteamento é pela lista explícita {@link
+     * OrderLifecycleEvent#EVENT_TYPES}, não por prefixo (TIMELINE_ROUTING=explicit-list). Qualquer
+     * outro {@code eventType} é erro de programação — tratado como falha do próprio evento (nunca
+     * derruba o lote), nunca envia para fila nenhuma.
      */
     private String resolveQueue(String eventType) {
         if (ReserveStockCommand.EVENT_TYPE.equals(eventType) || RELEASE_STOCK_EVENT_TYPE.equals(eventType)
                 || ShipStockCommand.EVENT_TYPE.equals(eventType)) {
             return inventoryCommandsQueue;
+        }
+        if (OrderLifecycleEvent.EVENT_TYPES.contains(eventType)) {
+            return notificationEventsQueue;
         }
         throw new IllegalStateException("No queue configured for outbox eventType '" + eventType + "'");
     }

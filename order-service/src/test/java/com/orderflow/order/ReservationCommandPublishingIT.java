@@ -148,7 +148,7 @@ class ReservationCommandPublishingIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void orderAboveTheLimitStaysPendingApprovalWithNoOutboxRow() throws Exception {
+    void orderAboveTheLimitStaysPendingApprovalWithNoReserveStockCommand() throws Exception {
         UUID companyId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         String buyerToken = TestJwt.buyerToken(companyId);
@@ -168,7 +168,7 @@ class ReservationCommandPublishingIT extends AbstractIntegrationTest {
         UUID orderId = UUID.fromString(json.get("id").asText());
 
         Integer outboxRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ?",
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ReserveStock'",
                 Integer.class, orderId.toString());
         assertThat(outboxRows).isZero();
     }

@@ -147,9 +147,10 @@ class OrderShipmentIT extends AbstractIntegrationTest {
         return count == null ? 0 : count;
     }
 
+    /** Conta so os COMANDOS de estoque do pedido - as linhas ORDER_* de linha do tempo nao entram (D-78). */
     private int outboxRowCount(UUID orderId) {
         Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ?",
+                "SELECT COUNT(*) FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type IN ('ReserveStock', 'ReleaseStock', 'ShipStock')",
                 Integer.class, orderId.toString());
         return count == null ? 0 : count;
     }
@@ -307,7 +308,7 @@ class OrderShipmentIT extends AbstractIntegrationTest {
         assertThat(reread.get("status").asText()).isEqualTo("DELIVERED");
         assertThat(instant(reread, "deliveredAt")).isEqualTo(instant(delivered, "deliveredAt"));
 
-        // /deliver nao grava nada no outbox e nenhum comando de estoque a mais chega a fila.
+        // /deliver nao grava nenhum comando de estoque no outbox (so o ORDER_DELIVERED de linha do tempo) e nenhum comando a mais chega a fila.
         assertThat(outboxRowCount(order.orderId())).isEqualTo(outboxRowsAfterShip);
         assertThat(outboxRowCount(order.orderId(), "ShipStock")).isEqualTo(1);
         assertThat(sagaQueues().drainCommandsForOrderDuring(order.orderId(), "ShipStock", Duration.ofSeconds(3)))

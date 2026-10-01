@@ -6,6 +6,7 @@ import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.dto.OrderSummaryResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
 import com.orderflow.order.saga.ReservationSagaStarter;
+import com.orderflow.order.timeline.OrderTimelineEvents;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,12 +32,14 @@ public class OrderService {
     private final CompanyCreditLocker creditLocker;
     private final OrderRepository orderRepository;
     private final ReservationSagaStarter sagaStarter;
+    private final OrderTimelineEvents orderTimelineEvents;
 
     public OrderService(CompanyCreditLocker creditLocker, OrderRepository orderRepository,
-                         ReservationSagaStarter sagaStarter) {
+                         ReservationSagaStarter sagaStarter, OrderTimelineEvents orderTimelineEvents) {
         this.creditLocker = creditLocker;
         this.orderRepository = orderRepository;
         this.sagaStarter = sagaStarter;
+        this.orderTimelineEvents = orderTimelineEvents;
     }
 
     /**
@@ -72,8 +75,16 @@ public class OrderService {
         }
 
         order = orderRepository.save(order);
+
+        // D-78/D-79: cada transição persistida grava o seu evento de linha do tempo no outbox, na
+        // MESMA transação — "criado" e depois "aprovado" (decisão automática) ou "aguardando
+        // aprovação". A entrada em RESERVING não tem evento próprio: ORDER_APPROVED a cobre.
+        orderTimelineEvents.created(order);
         if (order.getStatus() == OrderStatus.APPROVED) {
+            orderTimelineEvents.approved(order);
             sagaStarter.start(order, now);
+        } else {
+            orderTimelineEvents.pendingApproval(order);
         }
         return OrderResponse.from(order);
     }

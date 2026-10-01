@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 class OutboxRelayTest {
 
     private static final String QUEUE_NAME = "inventory-commands-queue";
+    private static final String NOTIFICATION_QUEUE_NAME = "notification-events-queue";
     private static final int BATCH_SIZE = 20;
 
     @Mock
@@ -49,7 +50,7 @@ class OutboxRelayTest {
         when(sqsOperations.send(eq(QUEUE_NAME), eq(second.getPayload()))).thenReturn(null);
         when(sqsOperations.send(eq(QUEUE_NAME), eq(third.getPayload()))).thenReturn(null);
 
-        OutboxRelay relay = new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME);
+        OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
 
         assertThat(published).isEqualTo(2);
@@ -67,7 +68,7 @@ class OutboxRelayTest {
         OutboxEvent unknown = pendingEvent("SomethingElse");
         when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(unknown));
 
-        OutboxRelay relay = new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME);
+        OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
 
         assertThat(published).isZero();
@@ -83,7 +84,7 @@ class OutboxRelayTest {
         when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(shipStock));
         when(sqsOperations.send(eq(QUEUE_NAME), eq(shipStock.getPayload()))).thenReturn(null);
 
-        OutboxRelay relay = new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME);
+        OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
 
         assertThat(published).isEqualTo(1);
@@ -96,11 +97,58 @@ class OutboxRelayTest {
     void relayRequestsExactlyTheConfiguredBatchSizeAndReturnsTheNumberOfEventsPublished() {
         when(outboxEventRepository.lockNextBatch(anyInt())).thenReturn(List.of());
 
-        OutboxRelay relay = new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME);
+        OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
 
         assertThat(published).isZero();
         verify(outboxEventRepository).lockNextBatch(BATCH_SIZE);
+    }
+
+    @Test
+    void everyOrderLifecycleTypeGoesToTheNotificationQueueAndInventoryCommandsStayOnTheirOwnQueue() {
+        List<String> timelineTypes = List.of("ORDER_CREATED", "ORDER_PENDING_APPROVAL", "ORDER_APPROVED",
+                "ORDER_REJECTED", "ORDER_CONFIRMED", "ORDER_CANCELLED", "ORDER_SHIPPED", "ORDER_DELIVERED");
+        List<String> commandTypes = List.of("ReserveStock", "ReleaseStock", "ShipStock");
+        List<OutboxEvent> timeline = timelineTypes.stream().map(this::pendingEvent).toList();
+        List<OutboxEvent> commands = commandTypes.stream().map(this::pendingEvent).toList();
+        List<OutboxEvent> all = new java.util.ArrayList<>(timeline);
+        all.addAll(commands);
+        when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(all);
+
+        int published = newRelay().publishPendingBatch();
+
+        assertThat(published).isEqualTo(11);
+        for (OutboxEvent event : timeline) {
+            verify(sqsOperations).send(eq(NOTIFICATION_QUEUE_NAME), eq(event.getPayload()));
+            assertThat(event.getPublishedAt()).isNotNull();
+            assertThat(event.getAttempts()).isZero();
+        }
+        for (OutboxEvent event : commands) {
+            verify(sqsOperations).send(eq(QUEUE_NAME), eq(event.getPayload()));
+            assertThat(event.getPublishedAt()).isNotNull();
+        }
+    }
+
+    @Test
+    void unknownOrderTypeIsRecordedAsFailureAndTheRestOfTheBatchIsStillPublished() {
+        OutboxEvent teleported = pendingEvent("ORDER_TELEPORTED");
+        OutboxEvent created = pendingEvent("ORDER_CREATED");
+        when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(teleported, created));
+
+        int published = newRelay().publishPendingBatch();
+
+        assertThat(published).isEqualTo(1);
+        assertThat(teleported.getPublishedAt()).isNull();
+        assertThat(teleported.getAttempts()).isEqualTo(1);
+        assertThat(teleported.getLastError()).isNotBlank();
+        assertThat(created.getPublishedAt()).isNotNull();
+        verify(sqsOperations).send(eq(NOTIFICATION_QUEUE_NAME), eq(created.getPayload()));
+        verify(sqsOperations, org.mockito.Mockito.never()).send(anyString(), eq(teleported.getPayload()));
+    }
+
+    private OutboxRelay newRelay() {
+        return new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME,
+                NOTIFICATION_QUEUE_NAME);
     }
 
     private OutboxEvent pendingEvent(String eventType) {
