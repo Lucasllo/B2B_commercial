@@ -1,5 +1,6 @@
 package com.orderflow.notification.config;
 
+import com.orderflow.notification.history.NotificationNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleInvalidIdentifier(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(errorBody("invalid_identifier", "Identifier must be a UUID"));
+    }
+
+    /**
+     * Linha do tempo inexistente PARA QUEM PEDIU (D-81): o mesmo corpo para "pedido de outra
+     * empresa", "inexistente" e "sem eventos" — nunca revela se o pedido existe.
+     */
+    @ExceptionHandler(NotificationNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(NotificationNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(errorBody("order_not_found", "Order not found"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

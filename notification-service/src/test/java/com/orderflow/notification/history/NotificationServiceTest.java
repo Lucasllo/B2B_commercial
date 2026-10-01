@@ -282,7 +282,7 @@ class NotificationServiceTest {
         NotificationRecord stock = rawRecord(orderId, "STOCK_ADJUSTED#bbb", Instant.parse("2026-09-30T12:01:00Z"));
         when(notificationRepository.findByEntityId(orderId.toString())).thenReturn(List.of(stock, created));
 
-        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId);
+        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId, null, true);
 
         assertThat(timeline).extracting(NotificationResponse::eventType).containsExactly("ORDER_CREATED");
     }
@@ -382,6 +382,54 @@ class NotificationServiceTest {
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("\n"));
     }
 
+    // ---- Plano 06-04 Task 3: regra de leitura SELLER/BUYER (D-81, D-47) ----
+
+    private NotificationRecord orderRecordOfCompany(UUID orderId, String type, UUID companyId) {
+        NotificationRecord record = orderRecord(orderId, type, "2026-09-30T12:00:00Z");
+        record.setCompanyId(companyId.toString());
+        return record;
+    }
+
+    @Test
+    void buyerOfTheOwningCompanySeesTheTimeline() {
+        UUID orderId = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        when(notificationRepository.findByEntityId(orderId.toString()))
+                .thenReturn(List.of(orderRecordOfCompany(orderId, "ORDER_CREATED", company)));
+
+        assertThat(notificationService.historyForOrder(orderId, company, false)).hasSize(1);
+    }
+
+    @Test
+    void buyerGetsNotFoundForAnotherCompanyEmptyOrMixedCompanies() {
+        UUID orderId = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+
+        when(notificationRepository.findByEntityId(orderId.toString()))
+                .thenReturn(List.of(orderRecordOfCompany(orderId, "ORDER_CREATED", other)));
+        assertThatThrownBy(() -> notificationService.historyForOrder(orderId, company, false))
+                .isInstanceOf(NotificationNotFoundException.class).hasMessage("Order not found");
+
+        when(notificationRepository.findByEntityId(orderId.toString())).thenReturn(List.of());
+        assertThatThrownBy(() -> notificationService.historyForOrder(orderId, company, false))
+                .isInstanceOf(NotificationNotFoundException.class);
+
+        when(notificationRepository.findByEntityId(orderId.toString())).thenReturn(List.of(
+                orderRecordOfCompany(orderId, "ORDER_CREATED", company),
+                orderRecordOfCompany(orderId, "ORDER_SHIPPED", other)));
+        assertThatThrownBy(() -> notificationService.historyForOrder(orderId, company, false))
+                .isInstanceOf(NotificationNotFoundException.class);
+    }
+
+    @Test
+    void sellerGetsEmptyListWhenThereAreNoOrderEvents() {
+        UUID orderId = UUID.randomUUID();
+        when(notificationRepository.findByEntityId(orderId.toString())).thenReturn(List.of());
+
+        assertThat(notificationService.historyForOrder(orderId, null, true)).isEmpty();
+    }
+
     private NotificationRecord orderRecord(UUID orderId, String type, String occurredAt) {
         NotificationRecord record = rawRecord(orderId, type + "#" + UUID.randomUUID(), Instant.parse(occurredAt));
         record.setEventType(type);
@@ -400,7 +448,7 @@ class NotificationServiceTest {
         when(notificationRepository.findByEntityId(orderId.toString()))
                 .thenReturn(List.of(delivered, shipped, confirmed, approved, created));
 
-        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId);
+        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId, null, true);
 
         assertThat(timeline).extracting(NotificationResponse::eventType)
                 .containsExactly("ORDER_CREATED", "ORDER_APPROVED", "ORDER_CONFIRMED", "ORDER_SHIPPED",

@@ -21,6 +21,20 @@ TABLE_NAME="notification-history"
 
 awslocal --region "$REGION" sqs create-queue --queue-name "$QUEUE_NAME"
 
+# Pitfall 11: um LocalStack que NAO reiniciou desde a Fase 5 ainda guarda a tabela com o key-schema
+# antigo (particao "productId"). O hook e idempotente para a tabela com a chave nova, mas esta
+# unica excecao apaga e recria a tabela — o estado do LocalStack nao e persistido (PERSISTENCE=0),
+# entao nao ha dado real a migrar. "docker compose down" tambem resolve.
+if awslocal --region "$REGION" dynamodb describe-table --table-name "$TABLE_NAME" >/dev/null 2>&1; then
+    CURRENT_HASH_KEY=$(awslocal --region "$REGION" dynamodb describe-table --table-name "$TABLE_NAME" \
+        --query "Table.KeySchema[?KeyType=='HASH'].AttributeName" --output text)
+    if [ "$CURRENT_HASH_KEY" != "entityId" ]; then
+        echo "notification-history com particao '$CURRENT_HASH_KEY' (esperado entityId) — recriando a tabela"
+        awslocal --region "$REGION" dynamodb delete-table --table-name "$TABLE_NAME" >/dev/null
+        awslocal --region "$REGION" dynamodb wait table-not-exists --table-name "$TABLE_NAME"
+    fi
+fi
+
 if ! awslocal --region "$REGION" dynamodb describe-table --table-name "$TABLE_NAME" >/dev/null 2>&1; then
     awslocal --region "$REGION" dynamodb create-table \
         --table-name "$TABLE_NAME" \

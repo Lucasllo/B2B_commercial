@@ -36,11 +36,13 @@ services:
     # localstack-init/ready.d/02-create-order-saga-resources.sh) — mesmo motivo das filas da Fase
     # 3 acima: o order-service depende do localstack saudável para não subir contra uma fila ainda
     # inexistente (queue-not-found-strategy=fail faria a subida cair, em vez de mascarar o problema).
+    # Fase 6 (D-80): a tabela notification-history passa a ter particao generica entityId; o
+    # healthcheck so fica saudavel com esse key-schema, nao com a tabela antiga (particao productId).
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history > /dev/null && awslocal --region us-east-1 sqs get-queue-url --queue-name inventory-commands-queue > /dev/null && awslocal --region us-east-1 sqs get-queue-url --queue-name order-events-queue > /dev/null",
+          "awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history --query Table.KeySchema --output text | grep -q entityId && awslocal --region us-east-1 sqs get-queue-url --queue-name inventory-commands-queue > /dev/null && awslocal --region us-east-1 sqs get-queue-url --queue-name order-events-queue > /dev/null",
         ]
       interval: 10s
       timeout: 10s

@@ -291,14 +291,31 @@ public class NotificationService {
 
     /**
      * Linha do tempo do pedido (D-81): so registros de tipo {@code ORDER_*} — um id de produto
-     * consultado por esta rota nao mostra {@code STOCK_ADJUSTED}. A regra de leitura do comprador
-     * (empresa dona do pedido) entra na Task 3.
+     * consultado por esta rota nao mostra {@code STOCK_ADJUSTED}.
+     *
+     * <p>Regra de leitura (D-81, D-47): o vendedor recebe a lista (vazia se nao houver registros
+     * {@code ORDER_*}). O comprador so a recebe quando ha registros E todos eles tem o
+     * {@code companyId} igual ao do JWT; em qualquer outro caso — pedido de outra empresa,
+     * inexistente, sem eventos, ou com eventos de empresas misturadas (evento forjado, T-06-16) —
+     * recebe a MESMA {@link NotificationNotFoundException}, sem revelar a existencia do pedido.
+     *
+     * @param callerCompanyId {@code company_id} do JWT; ignorado na visao de vendedor
+     * @param sellerView      {@code true} para SELLER_ADMIN
      */
-    public List<NotificationResponse> historyForOrder(UUID orderId) {
+    public List<NotificationResponse> historyForOrder(UUID orderId, UUID callerCompanyId, boolean sellerView) {
         List<NotificationRecord> orderRecords = notificationRepository.findByEntityId(orderId.toString())
                 .stream()
                 .filter(record -> OrderLifecycleEvent.TYPES.contains(record.getEventType()))
                 .toList();
+
+        if (!sellerView) {
+            String callerCompany = callerCompanyId == null ? null : callerCompanyId.toString();
+            boolean ownedByCaller = !orderRecords.isEmpty() && callerCompany != null
+                    && orderRecords.stream().allMatch(record -> callerCompany.equals(record.getCompanyId()));
+            if (!ownedByCaller) {
+                throw new NotificationNotFoundException();
+            }
+        }
         return toSortedResponses(orderRecords);
     }
 
