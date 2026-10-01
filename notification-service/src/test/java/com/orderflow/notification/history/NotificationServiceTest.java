@@ -55,7 +55,8 @@ class NotificationServiceTest {
         verify(notificationRepository).save(captor.capture());
         NotificationRecord record = captor.getValue();
 
-        assertThat(record.getProductId()).isEqualTo(productId.toString());
+        assertThat(record.getEntityId()).isEqualTo(productId.toString());
+        assertThat(record.getCompanyId()).isNull();
         assertThat(record.getSortKey()).isEqualTo("STOCK_ADJUSTED#" + eventId);
         assertThat(record.getEventId()).isEqualTo(eventId.toString());
         assertThat(record.getEventType()).isEqualTo("STOCK_ADJUSTED");
@@ -125,7 +126,7 @@ class NotificationServiceTest {
                 {"eventId":"%s","eventType":"STOCK_ADJUSTED","productId":"%s","previousQuantityOnHand":-1,"newQuantityOnHand":12,"occurredAt":"2026-09-22T12:00:00Z"}
                 """.formatted(validEventId, validProductId),
                 """
-                {"eventId":"%s","eventType":"ORDER_CREATED","productId":"%s","previousQuantityOnHand":5,"newQuantityOnHand":12,"occurredAt":"2026-09-22T12:00:00Z"}
+                {"eventId":"%s","eventType":"ORDER_TELEPORTED","productId":"%s","previousQuantityOnHand":5,"newQuantityOnHand":12,"occurredAt":"2026-09-22T12:00:00Z"}
                 """.formatted(validEventId, validProductId),
                 """
                 {"eventId":"%s","productId":"%s","previousQuantityOnHand":5,"newQuantityOnHand":12,"occurredAt":"2026-09-22T12:00:00Z"}
@@ -185,7 +186,7 @@ class NotificationServiceTest {
 
     @Test
     void repositoryRuntimeExceptionOnSavePropagatesUnconverted() {
-        when(notificationRepository.findByProductId(any())).thenReturn(List.of());
+        when(notificationRepository.findByEntityId(any())).thenReturn(List.of());
         org.mockito.Mockito.doThrow(new RuntimeException("dynamo down"))
                 .when(notificationRepository).save(any());
 
@@ -202,7 +203,7 @@ class NotificationServiceTest {
         NotificationRecord later = rawRecord(productId, "STOCK_ADJUSTED#zzz", Instant.parse("2026-09-22T12:05:00Z"));
         NotificationRecord earlierA = rawRecord(productId, "STOCK_ADJUSTED#aaa", Instant.parse("2026-09-22T12:00:00Z"));
         NotificationRecord earlierB = rawRecord(productId, "STOCK_ADJUSTED#bbb", Instant.parse("2026-09-22T12:00:00Z"));
-        when(notificationRepository.findByProductId(productId.toString()))
+        when(notificationRepository.findByEntityId(productId.toString()))
                 .thenReturn(List.of(later, earlierB, earlierA));
 
         List<NotificationResponse> history = notificationService.history(productId);
@@ -214,9 +215,79 @@ class NotificationServiceTest {
                         later.getEventId());
     }
 
+    // ---- Plano 06-04 Task 1: ORDER_CREATED na particao generica entityId (D-80, D-82) ----
+
+    private static String orderCreatedBody(UUID eventId, UUID orderId, UUID companyId, String total) {
+        return """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00.123456Z","orderId":"%s","companyId":"%s","createdBy":"buyer-1","total":%s}
+                """.formatted(eventId, orderId, companyId, total);
+    }
+
+    @Test
+    void orderCreatedProducesRecordPartitionedByOrderIdWithCompanyAndMessage() {
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+
+        notificationService.record(orderCreatedBody(eventId, orderId, companyId, "40.00"));
+
+        ArgumentCaptor<NotificationRecord> captor = ArgumentCaptor.forClass(NotificationRecord.class);
+        verify(notificationRepository).save(captor.capture());
+        NotificationRecord record = captor.getValue();
+        assertThat(record.getEntityId()).isEqualTo(orderId.toString());
+        assertThat(record.getCompanyId()).isEqualTo(companyId.toString());
+        assertThat(record.getEventType()).isEqualTo("ORDER_CREATED");
+        assertThat(record.getEventId()).isEqualTo(eventId.toString());
+        assertThat(record.getSortKey()).isEqualTo("ORDER_CREATED#" + eventId);
+        assertThat(record.getRawPayload()).contains("createdBy").contains(orderId.toString());
+        assertThat(record.getMessage()).isEqualTo("Pedido criado — total 40.00");
+        assertThat(record.getOccurredAt()).isEqualTo(Instant.parse("2026-09-30T12:00:00.123456Z"));
+    }
+
+    private static Stream<String> invalidOrderCreatedBodies() {
+        UUID eventId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        return Stream.of(
+                // sem companyId
+                """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00Z","orderId":"%s","createdBy":"buyer-1","total":40.00}
+                """.formatted(eventId, orderId),
+                // orderId que nao e UUID
+                """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00Z","orderId":"nao-e-uuid","companyId":"%s","createdBy":"buyer-1","total":40.00}
+                """.formatted(eventId, companyId),
+                // sem total
+                """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00Z","orderId":"%s","companyId":"%s","createdBy":"buyer-1"}
+                """.formatted(eventId, orderId, companyId)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidOrderCreatedBodies")
+    void invalidOrderCreatedThrowsAndNeverCallsRepository(String body) {
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOf(InvalidNotificationEventException.class);
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void historyForOrderReturnsOnlyOrderEventTypes() {
+        UUID orderId = UUID.randomUUID();
+        NotificationRecord created = rawRecord(orderId, "ORDER_CREATED#aaa", Instant.parse("2026-09-30T12:00:00Z"));
+        created.setEventType("ORDER_CREATED");
+        NotificationRecord stock = rawRecord(orderId, "STOCK_ADJUSTED#bbb", Instant.parse("2026-09-30T12:01:00Z"));
+        when(notificationRepository.findByEntityId(orderId.toString())).thenReturn(List.of(stock, created));
+
+        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId);
+
+        assertThat(timeline).extracting(NotificationResponse::eventType).containsExactly("ORDER_CREATED");
+    }
+
     private NotificationRecord rawRecord(UUID productId, String sortKey, Instant occurredAt) {
         NotificationRecord record = new NotificationRecord();
-        record.setProductId(productId.toString());
+        record.setEntityId(productId.toString());
         record.setSortKey(sortKey);
         record.setEventId(sortKey.substring(sortKey.indexOf('#') + 1));
         record.setEventType("STOCK_ADJUSTED");

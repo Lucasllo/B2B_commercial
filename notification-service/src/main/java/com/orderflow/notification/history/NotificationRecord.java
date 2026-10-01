@@ -16,9 +16,12 @@ import java.time.Instant;
  * estilo de entidade JPA de {@code Inventory} ({@code record} do Java tem campos implicitamente
  * finais, incompativel com {@code @DynamoDbBean}; 03-RESEARCH.md §Anti-Patterns).
  *
- * <p>Os nomes {@code productId}/{@code sortKey} sao o key-schema criado pelo init hook do
+ * <p>Os nomes {@code entityId}/{@code sortKey} sao o key-schema criado pelo init hook do
  * LocalStack ({@code localstack-init/ready.d/01-create-notification-resources.sh}) — precisam
- * bater exatamente. O formato da sort key e {@code eventType#eventId} (D-33): distingue reentrega
+ * bater exatamente. A particao e generica (D-80, realiza D-32): produto nos eventos STOCK_ADJUSTED,
+ * pedido nos eventos ORDER_*. {@code companyId} so existe nos itens de pedido (nulo nos de produto) e
+ * serve a regra de leitura do comprador (D-81). O formato da sort key e {@code eventType#eventId}
+ * (D-33): distingue reentrega
  * da mesma mensagem (mesmo eventId, sobrescreve) de um evento novo do mesmo tipo (eventId
  * diferente, nova linha).
  */
@@ -28,7 +31,8 @@ import java.time.Instant;
 @DynamoDbBean
 public class NotificationRecord {
 
-    private String productId;
+    private String entityId;
+    private String companyId;
     private String sortKey;
     private String eventId;
     private String eventType;
@@ -38,8 +42,8 @@ public class NotificationRecord {
     private Instant recordedAt;
 
     @DynamoDbPartitionKey
-    public String getProductId() {
-        return productId;
+    public String getEntityId() {
+        return entityId;
     }
 
     @DynamoDbSortKey

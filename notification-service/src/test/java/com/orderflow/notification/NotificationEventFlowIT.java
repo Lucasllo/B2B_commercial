@@ -51,7 +51,7 @@ class NotificationEventFlowIT extends AbstractIntegrationTest {
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
-                    .andExpect(jsonPath("$[0].productId").value(productId.toString()))
+                    .andExpect(jsonPath("$[0].entityId").value(productId.toString()))
                     .andExpect(jsonPath("$[0].eventId").value(eventId.toString()))
                     .andExpect(jsonPath("$[0].eventType").value("STOCK_ADJUSTED"))
                     .andExpect(jsonPath("$[0].message").value(
@@ -71,9 +71,9 @@ class NotificationEventFlowIT extends AbstractIntegrationTest {
         sqsTemplate.send(to -> to.queue(queueName).payload(stockAdjustedEventBody(eventId, productId, 3, 9)));
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
-            var items = notificationRepository.findByProductId(productId.toString());
+            var items = notificationRepository.findByEntityId(productId.toString());
             assertThat(items).hasSize(1);
-            assertThat(items.get(0).getProductId()).isEqualTo(productId.toString());
+            assertThat(items.get(0).getEntityId()).isEqualTo(productId.toString());
             assertThat(items.get(0).getSortKey()).isEqualTo("STOCK_ADJUSTED#" + eventId);
         });
     }

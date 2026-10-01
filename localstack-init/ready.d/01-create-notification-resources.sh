@@ -8,6 +8,11 @@
 # Regiao us-east-1 e credenciais "test" precisam bater com a configuracao dos servicos Java
 # (spring.cloud.aws.region.static / credentials.access-key / secret-key), porque o LocalStack
 # separa recursos por regiao e por conta derivada da access key.
+#
+# D-80 (Fase 6): a particao da tabela e o atributo generico "entityId" — o id do produto nos
+# eventos STOCK_ADJUSTED e o id do pedido nos eventos ORDER_*, na mesma tabela (realiza a
+# intencao de D-32, "particao por entidade"). O nome precisa bater com o getter
+# @DynamoDbPartitionKey de NotificationRecord (getEntityId).
 set -euo pipefail
 
 REGION="us-east-1"
@@ -20,10 +25,10 @@ if ! awslocal --region "$REGION" dynamodb describe-table --table-name "$TABLE_NA
     awslocal --region "$REGION" dynamodb create-table \
         --table-name "$TABLE_NAME" \
         --attribute-definitions \
-            AttributeName=productId,AttributeType=S \
+            AttributeName=entityId,AttributeType=S \
             AttributeName=sortKey,AttributeType=S \
         --key-schema \
-            AttributeName=productId,KeyType=HASH \
+            AttributeName=entityId,KeyType=HASH \
             AttributeName=sortKey,KeyType=RANGE \
         --billing-mode PAY_PER_REQUEST
 fi

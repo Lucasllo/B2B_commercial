@@ -31,6 +31,16 @@ public class NotificationController {
         this.notificationService = notificationService;
     }
 
+    /**
+     * {@code GET /notifications/orders/{orderId}} (D-81) — linha do tempo do pedido. Nesta task so o
+     * vendedor; a Task 3 abre para o comprador da propria empresa.
+     */
+    @GetMapping("/orders/{orderId}")
+    @PreAuthorize("hasRole('SELLER_ADMIN')")
+    public List<NotificationResponse> getOrderTimeline(@PathVariable UUID orderId) {
+        return notificationService.historyForOrder(orderId);
+    }
+
     @GetMapping("/{productId}")
     @PreAuthorize("hasRole('SELLER_ADMIN')")
     public List<NotificationResponse> getHistory(@PathVariable UUID productId) {

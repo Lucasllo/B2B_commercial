@@ -36,11 +36,12 @@ public class NotificationRepository {
     }
 
     /**
-     * Query na partition key — devolve todos os itens de todas as paginas.
+     * Query na partition key generica {@code entityId} (D-80, D-32): id do produto ou do pedido.
+     * Devolve todos os itens de todas as paginas.
      */
-    public List<NotificationRecord> findByProductId(String productId) {
+    public List<NotificationRecord> findByEntityId(String entityId) {
         QueryConditional condition = QueryConditional.keyEqualTo(
-                Key.builder().partitionValue(productId).build());
+                Key.builder().partitionValue(entityId).build());
         return table.query(condition).items().stream().toList();
     }
 }

@@ -40,7 +40,7 @@ class NotificationStoreUnavailableIT extends AbstractIntegrationTest {
 
     @Test
     void dynamoDbFailureReturns503WithoutLeakingSdkDetails() throws Exception {
-        when(notificationRepository.findByProductId(anyString()))
+        when(notificationRepository.findByEntityId(anyString()))
                 .thenThrow(SdkClientException.create("Unable to execute HTTP request"));
         String token = TestJwt.sellerAdminToken();
 

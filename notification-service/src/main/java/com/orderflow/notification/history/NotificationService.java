@@ -6,9 +6,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.orderflow.notification.history.dto.NotificationResponse;
+import com.orderflow.notification.history.dto.OrderLifecycleEvent;
 import com.orderflow.notification.history.dto.StockAdjustedEvent;
 import org.springframework.stereotype.Service;
 
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,6 +31,9 @@ public class NotificationService {
 
     private static final int SANITIZED_VALUE_MAX_LENGTH = 64;
 
+    // Teto dos nomes de ator (createdBy, decidedBy, shippedBy, deliveredBy) e da transportadora.
+    private static final int MAX_ACTOR_LENGTH = 64;
+
     // DynamoDB rejeita itens acima de 400 KB (ValidationException). Um rawPayload assim de grande
     // (ex.: um campo extra inesperado) faz o putItem falhar permanentemente, e como o listener trata
     // qualquer excecao alem de InvalidNotificationEventException como transitoria, a mensagem volta
@@ -44,7 +49,10 @@ public class NotificationService {
         this.objectMapper = objectMapper;
         // FAIL_ON_TRAILING_TOKENS detecta conteudo depois do valor JSON valido — uma mensagem
         // venenosa nao pode passar por valida so porque o primeiro objeto do corpo e bem formado.
-        this.eventReader = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        // USE_BIG_DECIMAL_FOR_FLOATS: o total em dinheiro nao passa por double na arvore.
+        this.eventReader = objectMapper.reader()
+                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     }
 
     public void record(String rawPayload) {
@@ -64,6 +72,18 @@ public class NotificationService {
             throw new InvalidNotificationEventException("Corpo da mensagem nao e um objeto JSON");
         }
 
+        // O tipo decide o contrato: STOCK_ADJUSTED segue o caminho da Fase 3 (particao = produto);
+        // os tipos ORDER_* seguem o NOTIFICATION_EVENT_CONTRACT (particao = pedido, D-80/D-82).
+        JsonNode typeNode = tree.path("eventType");
+        String eventType = typeNode.isTextual() ? typeNode.asText() : null;
+        if (OrderLifecycleEvent.ORDER_CREATED.equals(eventType)) {
+            recordOrderEvent(tree);
+            return;
+        }
+        recordStockAdjusted(tree);
+    }
+
+    private void recordStockAdjusted(JsonNode tree) {
         StockAdjustedEvent event;
         try {
             event = objectMapper.treeToValue(tree, StockAdjustedEvent.class);
@@ -78,7 +98,7 @@ public class NotificationService {
                         event.newQuantityOnHand() == 1 ? "unidade" : "unidades");
 
         NotificationRecord record = new NotificationRecord();
-        record.setProductId(event.productId().toString());
+        record.setEntityId(event.productId().toString());
         record.setSortKey(event.eventType() + SORT_KEY_SEPARATOR + event.eventId());
         record.setEventId(event.eventId().toString());
         record.setEventType(event.eventType());
@@ -91,6 +111,74 @@ public class NotificationService {
         // da a sobrescrita em reentrega de graca. Nao ha leitura previa "ja processei este
         // evento?" — a chave deterministica ja resolve a idempotencia.
         notificationRepository.save(record);
+    }
+
+    /**
+     * Eventos de pedido (D-82): formato invalido, campo obrigatorio ausente ou fora do teto vira
+     * {@link InvalidNotificationEventException} e o evento e descartado inteiro — nada e gravado
+     * parcialmente. A mensagem legivel e montada aqui, a partir dos campos conferidos, nunca
+     * copiada de texto livre do evento.
+     */
+    private void recordOrderEvent(JsonNode tree) {
+        OrderLifecycleEvent event;
+        try {
+            event = objectMapper.treeToValue(tree, OrderLifecycleEvent.class);
+        } catch (JsonProcessingException e) {
+            throw new InvalidNotificationEventException("Evento com um ou mais campos em formato invalido");
+        }
+
+        requireNotNull(event.eventId(), "eventId");
+        requireNotNull(event.orderId(), "orderId");
+        requireNotNull(event.companyId(), "companyId");
+        requireNotNull(event.occurredAt(), "occurredAt");
+
+        String message = orderMessage(event);
+
+        NotificationRecord record = new NotificationRecord();
+        record.setEntityId(event.orderId().toString());
+        record.setCompanyId(event.companyId().toString());
+        record.setSortKey(event.eventType() + SORT_KEY_SEPARATOR + event.eventId());
+        record.setEventId(event.eventId().toString());
+        record.setEventType(event.eventType());
+        record.setRawPayload(serializeTree(tree));
+        record.setMessage(message);
+        record.setOccurredAt(event.occurredAt());
+        record.setRecordedAt(Instant.now());
+
+        // Mesma idempotencia do caminho de produto: chave deterministica + putItem sem condicao.
+        notificationRepository.save(record);
+    }
+
+    private static String orderMessage(OrderLifecycleEvent event) {
+        return switch (event.eventType()) {
+            case OrderLifecycleEvent.ORDER_CREATED -> {
+                requireText(event.createdBy(), "createdBy", MAX_ACTOR_LENGTH);
+                requireNotNull(event.total(), "total");
+                if (event.total().signum() < 0) {
+                    throw new InvalidNotificationEventException("Campo total nao pode ser negativo");
+                }
+                // Valor monetario: sempre duas casas, independente de como o produtor serializou.
+                yield "Pedido criado — total " + event.total().setScale(2, RoundingMode.HALF_UP).toPlainString();
+            }
+            default -> throw new InvalidNotificationEventException(
+                    "Tipo de evento nao suportado: " + sanitizeForLog(event.eventType()));
+        };
+    }
+
+    private static void requireNotNull(Object value, String field) {
+        if (value == null) {
+            throw new InvalidNotificationEventException("Campo " + field + " ausente");
+        }
+    }
+
+    private static void requireText(String value, String field, int maxLength) {
+        if (value == null || value.isBlank()) {
+            throw new InvalidNotificationEventException("Campo " + field + " ausente");
+        }
+        if (value.length() > maxLength) {
+            throw new InvalidNotificationEventException(
+                    "Campo " + field + " excede o tamanho maximo de " + maxLength);
+        }
     }
 
     private void validate(StockAdjustedEvent event) {
@@ -145,8 +233,24 @@ public class NotificationService {
     }
 
     public List<NotificationResponse> history(UUID productId) {
-        List<NotificationRecord> records = new ArrayList<>(
-                notificationRepository.findByProductId(productId.toString()));
+        return toSortedResponses(notificationRepository.findByEntityId(productId.toString()));
+    }
+
+    /**
+     * Linha do tempo do pedido (D-81): so registros de tipo {@code ORDER_*} — um id de produto
+     * consultado por esta rota nao mostra {@code STOCK_ADJUSTED}. A regra de leitura do comprador
+     * (empresa dona do pedido) entra na Task 3.
+     */
+    public List<NotificationResponse> historyForOrder(UUID orderId) {
+        List<NotificationRecord> orderRecords = notificationRepository.findByEntityId(orderId.toString())
+                .stream()
+                .filter(record -> OrderLifecycleEvent.TYPES.contains(record.getEventType()))
+                .toList();
+        return toSortedResponses(orderRecords);
+    }
+
+    private List<NotificationResponse> toSortedResponses(List<NotificationRecord> source) {
+        List<NotificationRecord> records = new ArrayList<>(source);
         // A Query devolve os itens em ordem de sort key (um UUID aleatorio no fim, portanto nao
         // cronologica), e a fila padrao do SQS nao garante ordem de entrega — a ordem cronologica
         // e restaurada aqui, na leitura.
