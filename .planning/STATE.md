@@ -20,10 +20,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-30)
+See: .planning/PROJECT.md (updated 2026-10-01)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 06 — Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
+**Current focus:** Phase 07 — Endurecimento, Observabilidade e Entrega
 
 ## Current Position
 
@@ -157,9 +157,10 @@ None yet.
 
 - [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
-- [Fase 5 → Fase 6]: Padrões do Spring Cloud AWS (`SqsTemplate`/`@SqsListener`, `doNotSendPayloadTypeHeader`, `setPayloadTypeMapper`) já provados na Fase 3 — reusar na saga; o desenho de tabela DynamoDB (partition por agregado + sort `TIPO#eventId`) serve de base para a timeline do pedido (Fase 6).
 - [Fase 5]: WR-03 do review não corrigido — `poll-timeout: 0s` desliga o long polling no `SqsAsyncClient` compartilhado (order e inventory); só afeta custo/latência no SQS real. Separar um cliente dedicado para os listeners faz a auto-configuração do Spring Cloud AWS recuar — tratar como backlog (candidato natural à Fase 7).
 - [Fase 5]: Outbox sem retenção (OUTBOX_RETENTION=none-this-phase) e lápides de reserva sem limpeza (AR-05-02) — documentados como limitações conhecidas.
+- [Fase 6]: Code review (06-REVIEW.md) com 3 warnings não corrigidos — WR-01 `ShipStock` inválido é descartado (ack) com o pedido já SHIPPED, perdendo a baixa sem DLQ; WR-02 `@Recover` de `shipAll`/`releaseAll` com assinaturas idênticas; WR-03 evento `ORDER_*` inválido descartado sem log com `orderId`. Candidatos naturais à Fase 7 (endurecimento) ou a `/gsd-code-review 6 --fix`.
+- [Fase 6]: `workflow.security_enforcement` ligado e `06-SECURITY.md` ainda não existe — rodar `/gsd-secure-phase 6` antes de avançar.
 - [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
@@ -180,6 +181,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T01:40:32.555Z
+Last session: 2026-10-01T23:19:24.577Z
 Stopped at: Phase 6 complete, ready to plan Phase 7
 Resume file: None

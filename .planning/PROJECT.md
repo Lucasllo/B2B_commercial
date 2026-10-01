@@ -26,9 +26,9 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos — *entregue na Fase 4 (escopo por `company_id` do JWT, 404 idêntico para pedido de outra empresa)*
 - [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação) — *entregue na Fase 5 (RESERVING + `ReserveStock` no outbox na mesma transação, relay `SKIP LOCKED`, inventory responde pelo próprio outbox; idempotente por reentrega; E2E com os dois serviços reais)*
 - [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade — *entregue na Fase 5 (CANCELLED com `cancellationCode` e motivo legível; timeout cancela e compensa com `ReleaseStock`; nenhum pedido fica preso em RESERVING)*
-- [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada)
-- [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) — *na Fase 5 o estado intermediário RESERVING foi adicionado entre APPROVED e CONFIRMED/CANCELLED; SHIPPED/DELIVERED chegam na Fase 6*
-- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; na Fase 5 o `STOCK_ADJUSTED` passou a sair pelo outbox; falta ligar os eventos do ciclo de vida do pedido (Fase 6)*
+- [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada) — *entregue na Fase 6 (transportadora simulada atrás de `CarrierGateway` e rastreio S10 com dígito verificador, gravados na mesma transação do CONFIRMED)*
+- [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) — *na Fase 5 o estado intermediário RESERVING foi adicionado entre APPROVED e CONFIRMED/CANCELLED; na Fase 6 SHIPPED/DELIVERED entraram via `POST /orders/{id}/ship` e `/deliver` (só SELLER_ADMIN), com tabela única de 9 transições em `OrderStatus`, 409 `invalid_order_transition` e diagrama travado por teste*
+- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; na Fase 5 o `STOCK_ADJUSTED` passou a sair pelo outbox; na Fase 6 os oito eventos `ORDER_*` saem pelo outbox do order-service e formam a linha do tempo em `GET /notifications/orders/{orderId}` (BUYER só da própria empresa)*
 - [ ] Todo o sistema sobe localmente via docker-compose (microsserviços + Postgres + LocalStack)
 - [ ] Pipeline de CI/CD (GitHub Actions) builda e testa cada serviço a cada push
 - [ ] Decisões arquiteturais documentadas como ADRs em português
@@ -89,6 +89,10 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | Resultado da saga e timeout serializados pela trava da linha do pedido (`PESSIMISTIC_WRITE`), com guarda por estado | Duas fontes de transição sobre o mesmo pedido; a trava por linha evita corrida sem bloquear a empresa inteira | ✓ Good — Fase 5 (`SagaTimeoutIT` cobre resultado tardio) |
 | `ReleaseStock` antes do `ReserveStock` grava lápide no livro de reservas (FK removida) | A fila padrão do SQS não garante ordem; sem lápide, a compensação chegando primeiro deixaria estoque preso | ✓ Good — Fase 5 (`TombstoneReleaseIT`, 5 rodadas concorrentes) |
 | `poll-timeout: 0s` nos listeners SQS (WR-03 do review, não corrigido) | Long polling estourava o timeout compartilhado com a chamada síncrona; separar o cliente SQS exige mudança estrutural | ⚠ Revisitar — custo/latência só no SQS real |
+| Transportadora simulada determinística (SHA-256 do `orderId`) atrás da costura `CarrierGateway`, atribuída na transação do CONFIRMED; rastreio S10 sem UNIQUE no banco (D-71/D-73) | Mantém a logística dentro do order-service sem I/O externo; um UNIQUE criaria laço de reentrega no CONFIRMED | ✓ Good — Fase 6 (ITs + smoke na stack real) |
+| Tabela única de 9 transições em `OrderStatus`, consultada pelo domínio, pela saga e pelos testes do diagrama (D-83) | Uma fonte só para API, saga e documentação; o diagrama Mermaid não consegue divergir do código | ✓ Good — Fase 6 (`OrderStatusDiagramConsistencyTest` + `OrderLifecycleTransitionsIT`) |
+| `ShipStock` pelo outbox; inventory baixa estoque pela quantidade do livro de reservas, idempotente por `stock_reservations.shipped` (D-75) | O livro é a fonte da verdade da quantidade; reentrega não baixa duas vezes | ✓ Good — Fase 6 (`ShipStockConsumptionIT`, `OrderShipmentE2EIT`) |
+| Partição genérica `entityId` na tabela de notificações, compartilhada por histórico de produto e linha do tempo do pedido | Uma tabela para os dois agregados, mantendo a chave determinística da Fase 3 | ✓ Good — Fase 6 (init hook recria a tabela com key-schema antigo) |
 
 ## Evolution
 
@@ -108,4 +112,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-09-30 após a Fase 5*
+*Última atualização: 2026-10-01 após a Fase 6*
