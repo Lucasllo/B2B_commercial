@@ -185,8 +185,8 @@ public class InventoryService {
     }
 
     /**
-     * Liberacao idempotente (D-14): reserva ausente ou ja liberada e no-op silencioso que devolve
-     * o estado atual sem alterar nada.
+     * Liberacao idempotente (D-14): reserva ausente, ja liberada ou ja expedida (D-75) e no-op
+     * silencioso que devolve o estado atual sem alterar nada.
      */
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
@@ -198,7 +198,9 @@ public class InventoryService {
                 .orElseThrow(() -> new InventoryNotFoundException("Inventory not found"));
 
         var reservation = stockReservationRepository.findByProductIdAndReservationId(productId, reservationId).orElse(null);
-        if (reservation == null || reservation.isReleased()) {
+        if (reservation == null || reservation.isReleased() || reservation.isShipped()) {
+            // Ausente, ja liberada ou ja EXPEDIDA (D-75, Pitfall 5): no-op — a reserva expedida
+            // virou baixa fisica e liberar de novo decrementaria quantity_reserved duas vezes.
             return StockResponse.from(inventory);
         }
 
@@ -416,6 +418,14 @@ public class InventoryService {
             var existing = stockReservationRepository.findByProductIdAndReservationId(line.productId(), reservationId);
             if (existing.isPresent()) {
                 StockReservation reservation = existing.get();
+                if (reservation.isShipped()) {
+                    // RELEASE_AFTER_SHIP=ignored (Pitfall 5, D-75): a reserva ja virou baixa fisica;
+                    // liberar de novo decrementaria quantity_reserved duas vezes e "roubaria" a
+                    // reserva de outro pedido do mesmo produto.
+                    log.warn("ReleaseStock ignorado: reserva ja expedida orderId={} productId={} reservationId={}",
+                            orderId, line.productId(), reservationId);
+                    continue;
+                }
                 if (reservation.isReleased()) {
                     continue;
                 }
@@ -536,7 +546,15 @@ public class InventoryService {
      * cujo tipo de parametro corresponda, a excecao real vira {@code
      * ExhaustedRetryException("Cannot locate recovery method")}, escondendo {@code
      * productId}/{@code reservationId}/{@code orderId}. Relanca a excecao original apos registrar um
-     * WARN (permite tambem observar qual {@code @Recover} o Spring Retry resolveu).
+     * WARN.
+     *
+     * <p><b>Observado em {@code ShipStockConsumptionIT} (06-03):</b> {@code shipAll} e {@code
+     * releaseAll} tem a MESMA assinatura de parametros ({@code UUID, String, List}) e ambos
+     * retornam {@code void}, entao o Spring Retry nao distingue os dois {@code @Recover} com {@code
+     * IllegalStateException} pelo tipo — na pratica ele resolveu {@link
+     * #recoverReleaseAllInconsistentBook} (o WARN deste metodo nunca e emitido). O comportamento e
+     * identico (relanca a causa original com {@code orderId}/{@code productId}); este metodo existe
+     * para tornar a intencao explicita e continuar correto se a resolucao mudar.
      */
     @Recover
     public void recoverShipAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
