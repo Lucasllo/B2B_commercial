@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 status: executing
-stopped_at: Completed 06-05-PLAN.md
-last_updated: "2026-10-01T01:05:08.851Z"
+stopped_at: Completed 06-06-PLAN.md
+last_updated: "2026-10-01T01:32:09.361Z"
 last_activity: 2026-09-30
 last_activity_desc: Phase 06 execution started
-state_head: 63526c9e2176710838bb59204f1f45b2f76ea9ec
+state_head: ad4bfd9a95a3161deec0c04d657bf316e0e42128
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 27
+  completed_plans: 28
   percent: 71
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-09-30 — Phase 06 execution started
 
@@ -82,6 +82,7 @@ Progress: [███████░░░] 71%
 | Phase 06 P03 | 45 min | 2 tasks | 9 files |
 | Phase 06 P04 | 14 min | 3 tasks | 15 files |
 | Phase 06 P05 | 11 min | 2 tasks | 15 files |
+| Phase 06 P06 | 75 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,8 @@ Recent decisions affecting current work:
 - [Phase 06]: TIMELINE_ORDER=occurredAt,lifecycle-rank,sortKey nas duas rotas de historico
 - [Phase 06]: TIMELINE_READ_RULE: SELLER_ADMIN lista (vazia sem eventos); BUYER 404 identico se vazia ou algum companyId != JWT; rota de pedido so devolve ORDER_*
 - [Phase 06]: TIMELINE_OCCURRED_AT=transition-column; TIMELINE_ROUTING=explicit-list; TEST_LOCALSTACK_SERVICES=sqs,dynamodb (06-05) — occurredAt vem da coluna gravada pela transicao; o relay roteia ORDER_* por lista explicita; o LocalStack dos ITs do order-service copia os hooks 01 e 02
+- [Phase 06]: 06-06: smoke afirma formato (carrier nao vazio, trackingCode ^[A-Z]{2}[0-9]{9}BR$), nao valor fixo — O rastreio depende do orderId gerado em cada execucao
+- [Phase 06]: 06-06: E2E de expedicao cobre order+inventory; linha do tempo so e provada pelo smoke na stack real (D-86) — notification-service fora do E2E por custo e fragilidade
 
 ### Pending Todos
 
@@ -174,6 +177,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T01:05:08.659Z
-Stopped at: Completed 06-05-PLAN.md
+Last session: 2026-10-01T01:32:09.160Z
+Stopped at: Completed 06-06-PLAN.md
 Resume file: None
