@@ -380,6 +380,40 @@ Ou, para ver a saga inteira de uma vez, na stack real, pelo Gateway:
 bash scripts/smoke-order-saga.sh
 ```
 
+### Ciclo de vida do pedido (Fase 6)
+
+O diagrama abaixo mostra todos os estados por onde um pedido pode passar e o que dispara cada passo.
+Ele é escrito a partir da mesma lista de arestas que o código usa (`OrderStatus.transitions()`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> PENDING_APPROVAL: valor acima do limite de crédito
+    CREATED --> APPROVED: aprovação automática
+    PENDING_APPROVAL --> APPROVED: POST approve do vendedor
+    PENDING_APPROVAL --> REJECTED: POST reject do vendedor
+    APPROVED --> RESERVING: entrada na saga, mesma transação
+    RESERVING --> CONFIRMED: StockReserved
+    RESERVING --> CANCELLED: StockReservationFailed ou timeout
+    CONFIRMED --> SHIPPED: POST ship do vendedor
+    SHIPPED --> DELIVERED: POST deliver do vendedor
+    REJECTED --> [*]
+    CANCELLED --> [*]
+    DELIVERED --> [*]
+```
+
+`CREATED` e `APPROVED` são passos lógicos da mesma transação e **nunca aparecem em repouso na
+API**: o pedido nasce `PENDING_APPROVAL` ou, dentro do limite de crédito, já `RESERVING` (D-45,
+D-50). `CANCELLED` só é alcançado pela saga — falha de reserva ou timeout —, não existe endpoint de
+cancelamento (D-77). `SHIPPED` e `DELIVERED` continuam consumindo crédito (D-37): só a rejeição e o
+cancelamento o liberam. Os estados terminais são `REJECTED`, `CANCELLED` e `DELIVERED`.
+
+O diagrama não é só um desenho: `OrderStatusDiagramConsistencyTest` lê este arquivo e falha se ele
+tiver uma aresta a mais, uma a menos ou um estado que não exista em `OrderStatus`, e a API é
+conferida contra a mesma tabela pelo `OrderLifecycleTransitionsIT`. A versão detalhada, com o
+gatilho, o endpoint ou mensagem e o evento da linha do tempo de cada transição, está em
+[`docs/VISAO-GERAL.md`](docs/VISAO-GERAL.md).
+
 ### Fluxo de demonstração completo
 
 Comandos copiáveis, executados em sequência (`jq` é opcional, só para extrair campos do JSON;
