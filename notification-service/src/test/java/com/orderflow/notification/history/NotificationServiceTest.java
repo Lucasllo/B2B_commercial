@@ -5,6 +5,7 @@ import com.orderflow.notification.history.dto.NotificationResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
@@ -16,6 +17,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -283,6 +285,126 @@ class NotificationServiceTest {
         List<NotificationResponse> timeline = notificationService.historyForOrder(orderId);
 
         assertThat(timeline).extracting(NotificationResponse::eventType).containsExactly("ORDER_CREATED");
+    }
+
+    // ---- Plano 06-04 Task 2: os oito tipos ORDER_*, mensagens e ordem de ciclo de vida (D-82) ----
+
+    private static final String AT = "2026-09-30T12:00:00Z";
+
+    private static String orderBody(String type, String companyId, String occurredAtFragment, String extras) {
+        return """
+                {"eventId":"%s","eventType":"%s"%s,"orderId":"%s","companyId":"%s"%s}
+                """.formatted(UUID.randomUUID(), type, occurredAtFragment, UUID.randomUUID(), companyId, extras);
+    }
+
+    private static String orderBody(String type, String extras) {
+        return orderBody(type, UUID.randomUUID().toString(), ",\"occurredAt\":\"" + AT + "\"", extras);
+    }
+
+    private static Stream<Arguments> validOrderEventsWithMessages() {
+        return Stream.of(
+                arguments("ORDER_PENDING_APPROVAL", "",
+                        "Pedido aguardando aprovação do vendedor — valor acima do limite de crédito disponível"),
+                arguments("ORDER_APPROVED", ",\"decidedBy\":\"SYSTEM\"",
+                        "Pedido aprovado automaticamente — dentro do limite de crédito"),
+                arguments("ORDER_APPROVED", ",\"decidedBy\":\"seller-1\",\"reason\":\"cliente antigo\"",
+                        "Pedido aprovado pelo vendedor seller-1 — motivo: cliente antigo"),
+                arguments("ORDER_APPROVED", ",\"decidedBy\":\"seller-1\"",
+                        "Pedido aprovado pelo vendedor seller-1"),
+                arguments("ORDER_REJECTED", ",\"decidedBy\":\"seller-1\",\"reason\":\"sem histórico\"",
+                        "Pedido rejeitado pelo vendedor seller-1 — motivo: sem histórico"),
+                arguments("ORDER_CONFIRMED", ",\"carrier\":\"Expresso Cerrado\",\"trackingCode\":\"AB123456789BR\"",
+                        "Pedido confirmado — transportadora Expresso Cerrado, rastreio AB123456789BR"),
+                arguments("ORDER_CANCELLED",
+                        ",\"cancellationCode\":\"INSUFFICIENT_STOCK\",\"cancellationReason\":\"Estoque insuficiente: produto SKU-1 — disponível 2, solicitado 5\"",
+                        "Pedido cancelado (INSUFFICIENT_STOCK) — Estoque insuficiente: produto SKU-1 — disponível 2, solicitado 5"),
+                arguments("ORDER_SHIPPED", ",\"shippedBy\":\"seller-1\"",
+                        "Pedido enviado pelo vendedor seller-1"),
+                arguments("ORDER_DELIVERED", ",\"deliveredBy\":\"seller-1\"",
+                        "Pedido entregue — registrado pelo vendedor seller-1"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("validOrderEventsWithMessages")
+    void everyOrderEventTypeProducesItsExactReadableMessage(String type, String extras, String expectedMessage) {
+        notificationService.record(orderBody(type, extras));
+
+        ArgumentCaptor<NotificationRecord> captor = ArgumentCaptor.forClass(NotificationRecord.class);
+        verify(notificationRepository).save(captor.capture());
+        NotificationRecord record = captor.getValue();
+        assertThat(record.getMessage()).isEqualTo(expectedMessage);
+        assertThat(record.getEventType()).isEqualTo(type);
+        assertThat(record.getSortKey()).isEqualTo(type + "#" + record.getEventId());
+        assertThat(record.getCompanyId()).isNotNull();
+    }
+
+    @Test
+    void confirmedMessageIsAssertedLiterally() {
+        notificationService.record(orderBody("ORDER_CONFIRMED",
+                ",\"carrier\":\"Expresso Cerrado\",\"trackingCode\":\"AB123456789BR\""));
+
+        ArgumentCaptor<NotificationRecord> captor = ArgumentCaptor.forClass(NotificationRecord.class);
+        verify(notificationRepository).save(captor.capture());
+        assertThat(captor.getValue().getMessage())
+                .isEqualTo("Pedido confirmado — transportadora Expresso Cerrado, rastreio AB123456789BR");
+    }
+
+    private static Stream<String> invalidOrderEvents() {
+        String ok = UUID.randomUUID().toString();
+        String occurred = ",\"occurredAt\":\"" + AT + "\"";
+        return Stream.of(
+                orderBody("ORDER_REJECTED", ",\"decidedBy\":\"seller-1\""),
+                orderBody("ORDER_CONFIRMED", ",\"carrier\":\"Expresso Cerrado\",\"trackingCode\":\"AB12345678BR\""),
+                orderBody("ORDER_CONFIRMED", ",\"trackingCode\":\"AB123456789BR\""),
+                orderBody("ORDER_CANCELLED", ",\"cancellationCode\":\"insufficient\",\"cancellationReason\":\"x\""),
+                orderBody("ORDER_CANCELLED", ",\"cancellationCode\":\"INSUFFICIENT_STOCK\""),
+                orderBody("ORDER_SHIPPED", ""),
+                orderBody("ORDER_DELIVERED", ""),
+                orderBody("ORDER_APPROVED", ",\"decidedBy\":\"" + "d".repeat(65) + "\""),
+                orderBody("ORDER_REJECTED", ",\"decidedBy\":\"seller-1\",\"reason\":\"" + "r".repeat(501) + "\""),
+                orderBody("ORDER_APPROVED", ok, occurred, ",\"decidedBy\":\"seller-1\"").replace(ok, "nao-e-uuid"),
+                orderBody("ORDER_PENDING_APPROVAL", ok, "", ""));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidOrderEvents")
+    void invalidOrderEventsAreDiscardedWhole(String body) {
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOf(InvalidNotificationEventException.class);
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void orderEventWithControlCharactersInUnsupportedTypeIsSanitizedInException() {
+        String body = orderBody("ORDER_TELEPORTED\\nX", "");
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOf(InvalidNotificationEventException.class)
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("\n"));
+    }
+
+    private NotificationRecord orderRecord(UUID orderId, String type, String occurredAt) {
+        NotificationRecord record = rawRecord(orderId, type + "#" + UUID.randomUUID(), Instant.parse(occurredAt));
+        record.setEventType(type);
+        return record;
+    }
+
+    @Test
+    void historyForOrderBreaksSameInstantTiesByLifecycleRankNotBySortKey() {
+        UUID orderId = UUID.randomUUID();
+        // ORDER_APPROVED#... ordena ANTES de ORDER_CREATED#... na sort key; o rank corrige o empate.
+        NotificationRecord created = orderRecord(orderId, "ORDER_CREATED", "2026-09-30T12:00:00Z");
+        NotificationRecord approved = orderRecord(orderId, "ORDER_APPROVED", "2026-09-30T12:00:00Z");
+        NotificationRecord confirmed = orderRecord(orderId, "ORDER_CONFIRMED", "2026-09-30T12:00:01Z");
+        NotificationRecord shipped = orderRecord(orderId, "ORDER_SHIPPED", "2026-09-30T12:05:00Z");
+        NotificationRecord delivered = orderRecord(orderId, "ORDER_DELIVERED", "2026-09-30T12:10:00Z");
+        when(notificationRepository.findByEntityId(orderId.toString()))
+                .thenReturn(List.of(delivered, shipped, confirmed, approved, created));
+
+        List<NotificationResponse> timeline = notificationService.historyForOrder(orderId);
+
+        assertThat(timeline).extracting(NotificationResponse::eventType)
+                .containsExactly("ORDER_CREATED", "ORDER_APPROVED", "ORDER_CONFIRMED", "ORDER_SHIPPED",
+                        "ORDER_DELIVERED");
     }
 
     private NotificationRecord rawRecord(UUID productId, String sortKey, Instant occurredAt) {

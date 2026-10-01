@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Mapeia evento -> registro, monta a mensagem legivel, valida o evento antes de gravar, e ordena
@@ -33,6 +34,15 @@ public class NotificationService {
 
     // Teto dos nomes de ator (createdBy, decidedBy, shippedBy, deliveredBy) e da transportadora.
     private static final int MAX_ACTOR_LENGTH = 64;
+
+    // Teto de reason e cancellationReason.
+    private static final int MAX_REASON_LENGTH = 500;
+
+    // decidedBy do evento de aprovacao automatica.
+    private static final String SYSTEM_ACTOR = "SYSTEM";
+
+    private static final Pattern TRACKING_CODE = Pattern.compile("^[A-Z]{2}[0-9]{9}BR$");
+    private static final Pattern CANCELLATION_CODE = Pattern.compile("^[A-Z_]{1,40}$");
 
     // DynamoDB rejeita itens acima de 400 KB (ValidationException). Um rawPayload assim de grande
     // (ex.: um campo extra inesperado) faz o putItem falhar permanentemente, e como o listener trata
@@ -76,7 +86,7 @@ public class NotificationService {
         // os tipos ORDER_* seguem o NOTIFICATION_EVENT_CONTRACT (particao = pedido, D-80/D-82).
         JsonNode typeNode = tree.path("eventType");
         String eventType = typeNode.isTextual() ? typeNode.asText() : null;
-        if (OrderLifecycleEvent.ORDER_CREATED.equals(eventType)) {
+        if (eventType != null && OrderLifecycleEvent.TYPES.contains(eventType)) {
             recordOrderEvent(tree);
             return;
         }
@@ -160,9 +170,52 @@ public class NotificationService {
                 // Valor monetario: sempre duas casas, independente de como o produtor serializou.
                 yield "Pedido criado — total " + event.total().setScale(2, RoundingMode.HALF_UP).toPlainString();
             }
+            case OrderLifecycleEvent.ORDER_PENDING_APPROVAL ->
+                    "Pedido aguardando aprovação do vendedor — valor acima do limite de crédito disponível";
+            case OrderLifecycleEvent.ORDER_APPROVED -> {
+                requireText(event.decidedBy(), "decidedBy", MAX_ACTOR_LENGTH);
+                boolean hasReason = event.reason() != null && !event.reason().isBlank();
+                if (hasReason) {
+                    requireText(event.reason(), "reason", MAX_REASON_LENGTH);
+                }
+                if (SYSTEM_ACTOR.equals(event.decidedBy())) {
+                    yield "Pedido aprovado automaticamente — dentro do limite de crédito";
+                }
+                yield "Pedido aprovado pelo vendedor " + event.decidedBy()
+                        + (hasReason ? " — motivo: " + event.reason() : "");
+            }
+            case OrderLifecycleEvent.ORDER_REJECTED -> {
+                requireText(event.decidedBy(), "decidedBy", MAX_ACTOR_LENGTH);
+                requireText(event.reason(), "reason", MAX_REASON_LENGTH);
+                yield "Pedido rejeitado pelo vendedor " + event.decidedBy() + " — motivo: " + event.reason();
+            }
+            case OrderLifecycleEvent.ORDER_CONFIRMED -> {
+                requireText(event.carrier(), "carrier", MAX_ACTOR_LENGTH);
+                requirePattern(event.trackingCode(), "trackingCode", TRACKING_CODE);
+                yield "Pedido confirmado — transportadora " + event.carrier() + ", rastreio " + event.trackingCode();
+            }
+            case OrderLifecycleEvent.ORDER_CANCELLED -> {
+                requirePattern(event.cancellationCode(), "cancellationCode", CANCELLATION_CODE);
+                requireText(event.cancellationReason(), "cancellationReason", MAX_REASON_LENGTH);
+                yield "Pedido cancelado (" + event.cancellationCode() + ") — " + event.cancellationReason();
+            }
+            case OrderLifecycleEvent.ORDER_SHIPPED -> {
+                requireText(event.shippedBy(), "shippedBy", MAX_ACTOR_LENGTH);
+                yield "Pedido enviado pelo vendedor " + event.shippedBy();
+            }
+            case OrderLifecycleEvent.ORDER_DELIVERED -> {
+                requireText(event.deliveredBy(), "deliveredBy", MAX_ACTOR_LENGTH);
+                yield "Pedido entregue — registrado pelo vendedor " + event.deliveredBy();
+            }
             default -> throw new InvalidNotificationEventException(
                     "Tipo de evento nao suportado: " + sanitizeForLog(event.eventType()));
         };
+    }
+
+    private static void requirePattern(String value, String field, Pattern pattern) {
+        if (value == null || !pattern.matcher(value).matches()) {
+            throw new InvalidNotificationEventException("Campo " + field + " ausente ou em formato invalido");
+        }
     }
 
     private static void requireNotNull(Object value, String field) {
@@ -249,12 +302,36 @@ public class NotificationService {
         return toSortedResponses(orderRecords);
     }
 
+    /**
+     * Posicao do tipo no ciclo de vida do pedido, usada como desempate entre eventos do MESMO
+     * instante (Pitfall 1). Na criacao, {@code ORDER_CREATED} e a decisao automatica
+     * ({@code ORDER_APPROVED}/{@code ORDER_PENDING_APPROVAL}) saem com o mesmo {@code now}; sem o
+     * rank, a sort key ({@code eventType#eventId}) poria {@code ORDER_APPROVED} antes de
+     * {@code ORDER_CREATED}. Tipos fora do ciclo de pedido (ex.: {@code STOCK_ADJUSTED}) valem 0.
+     */
+    private static int lifecycleRank(String eventType) {
+        if (eventType == null) {
+            return 0;
+        }
+        return switch (eventType) {
+            case OrderLifecycleEvent.ORDER_CREATED -> 1;
+            case OrderLifecycleEvent.ORDER_PENDING_APPROVAL -> 2;
+            case OrderLifecycleEvent.ORDER_APPROVED, OrderLifecycleEvent.ORDER_REJECTED -> 3;
+            case OrderLifecycleEvent.ORDER_CONFIRMED, OrderLifecycleEvent.ORDER_CANCELLED -> 4;
+            case OrderLifecycleEvent.ORDER_SHIPPED -> 5;
+            case OrderLifecycleEvent.ORDER_DELIVERED -> 6;
+            default -> 0;
+        };
+    }
+
     private List<NotificationResponse> toSortedResponses(List<NotificationRecord> source) {
         List<NotificationRecord> records = new ArrayList<>(source);
         // A Query devolve os itens em ordem de sort key (um UUID aleatorio no fim, portanto nao
         // cronologica), e a fila padrao do SQS nao garante ordem de entrega — a ordem cronologica
         // e restaurada aqui, na leitura.
+        // TIMELINE_ORDER = occurredAt, rank de ciclo de vida, sortKey (aplicado as duas rotas).
         records.sort(Comparator.comparing(NotificationRecord::getOccurredAt)
+                .thenComparingInt(record -> lifecycleRank(record.getEventType()))
                 .thenComparing(NotificationRecord::getSortKey));
 
         List<NotificationResponse> responses = new ArrayList<>();
