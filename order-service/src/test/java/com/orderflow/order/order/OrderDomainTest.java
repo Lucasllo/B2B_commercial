@@ -414,7 +414,7 @@ class OrderDomainTest {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         for (OrderStatus from : OrderStatus.values()) {
-            if (from == OrderStatus.CONFIRMED || from == OrderStatus.DELIVERED) {
+            if (from == OrderStatus.CONFIRMED) {
                 continue;
             }
             Order order = orderIn(from);
@@ -444,6 +444,60 @@ class OrderDomainTest {
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
         assertThat(order.getShippedAt()).isNull();
         assertThat(order.getShippedBy()).isNull();
+    }
+
+    @Test
+    void deliverFromShippedRecordsDeliveredAtAndDeliveredByAndKeepsTheShipmentFieldsUntouched() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = orderIn(OrderStatus.SHIPPED);
+        OffsetDateTime shippedAt = order.getShippedAt();
+        String shippedBy = order.getShippedBy();
+
+        OffsetDateTime deliverInstant = now.plusSeconds(20);
+        order.deliver("seller-8", deliverInstant);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.DELIVERED);
+        assertThat(order.getDeliveredAt()).isEqualTo(deliverInstant);
+        assertThat(order.getDeliveredBy()).isEqualTo("seller-8");
+        assertThat(order.getShippedAt()).isEqualTo(shippedAt);
+        assertThat(order.getShippedBy()).isEqualTo(shippedBy);
+    }
+
+    @Test
+    void deliverFromAnyStatusOtherThanShippedThrowsInvalidTransitionWithFromAndToAndChangesNothing() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        for (OrderStatus from : OrderStatus.values()) {
+            if (from == OrderStatus.SHIPPED) {
+                continue;
+            }
+            Order order = orderIn(from);
+            List<Object> before = snapshot(order);
+
+            assertThatThrownBy(() -> order.deliver("seller-8", now))
+                    .as("deliver from %s", from)
+                    .isInstanceOfSatisfying(InvalidOrderTransitionException.class, ex -> {
+                        assertThat(ex.getFrom()).isEqualTo(from);
+                        assertThat(ex.getTo()).isEqualTo(OrderStatus.DELIVERED);
+                        assertThat(ex.getMessage())
+                                .isEqualTo("Order cannot transition from " + from + " to DELIVERED");
+                    });
+
+            assertThat(snapshot(order)).as("deliver from %s must not change anything", from).isEqualTo(before);
+        }
+    }
+
+    @Test
+    void deliverWithNullOrBlankDeliveredByThrowsIllegalArgumentExceptionAndLeavesTheOrderShipped() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = orderIn(OrderStatus.SHIPPED);
+
+        assertThatThrownBy(() -> order.deliver(null, now)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> order.deliver("  ", now)).isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+        assertThat(order.getDeliveredAt()).isNull();
+        assertThat(order.getDeliveredBy()).isNull();
     }
 
     private void assertRejected(OrderStatus from, String method, Class<? extends RuntimeException> expected,
@@ -497,7 +551,13 @@ class OrderDomainTest {
                 order.confirm(now.plusSeconds(2), assignment());
                 order.ship("seller-1", now.plusSeconds(3));
             }
-            default -> throw new IllegalArgumentException("not reachable yet: " + target);
+            case DELIVERED -> {
+                order.approveAutomatically(now);
+                order.startReservation(now.plusSeconds(1));
+                order.confirm(now.plusSeconds(2), assignment());
+                order.ship("seller-1", now.plusSeconds(3));
+                order.deliver("seller-1", now.plusSeconds(4));
+            }
         }
         return order;
     }

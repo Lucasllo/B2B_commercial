@@ -266,6 +266,22 @@ public class Order {
     }
 
     /**
+     * Entrega registrada pelo vendedor (ORD-10, D-74) — só a partir de {@code SHIPPED}; qualquer
+     * outro estado lança {@link InvalidOrderTransitionException} sem tocar em nenhum campo (D-77).
+     * Mesmo molde de {@link #ship}: {@code deliveredBy} (claim {@code sub}) é obrigatório e os campos
+     * de expedição não mudam. {@code DELIVERED} é terminal e segue em {@link
+     * OrderStatus#CREDIT_CONSUMING} (D-37) — nenhum endpoint desta fase libera o crédito.
+     */
+    public void deliver(String deliveredBy, OffsetDateTime now) {
+        if (deliveredBy == null || deliveredBy.isBlank()) {
+            throw new IllegalArgumentException("deliveredBy must not be blank when delivering an order");
+        }
+        moveTo(OrderStatus.DELIVERED, () -> new InvalidOrderTransitionException(status, OrderStatus.DELIVERED));
+        this.deliveredAt = now;
+        this.deliveredBy = deliveredBy;
+    }
+
+    /**
      * ÚNICO ponto da classe que atribui {@code this.status} (D-83, ORD-10): consulta a tabela única
      * {@link OrderStatus#canTransitionTo} e, se a aresta não existe, lança a exceção fornecida ANTES
      * de tocar em qualquer campo — assim uma transição recusada nunca deixa o agregado pela metade.

@@ -34,6 +34,12 @@ public class OrderShipmentController {
         return orderShipmentService.ship(orderId, requireSellerId(jwt));
     }
 
+    @PostMapping("/{orderId}/deliver")
+    @PreAuthorize("hasRole('SELLER_ADMIN')")
+    public OrderResponse deliver(@PathVariable UUID orderId, @AuthenticationPrincipal Jwt jwt) {
+        return orderShipmentService.deliver(orderId, requireSellerId(jwt));
+    }
+
     /** Lê o claim {@code sub} do JWT; ausente ou em branco lança {@link AccessDeniedException} (403). */
     private String requireSellerId(Jwt jwt) {
         String sub = jwt.getSubject();

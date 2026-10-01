@@ -278,4 +278,68 @@ class OrderShipmentIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
     }
+
+    // -----------------------------------------------------------------------------------------
+    // Task 2 — POST /orders/{id}/deliver
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    void deliverMovesAShippedOrderToDeliveredWithoutAnyFurtherStockCommandAndStillConsumesCredit() throws Exception {
+        TestOrder order = createConfirmedOrder(new BigDecimal("2000.00"), new BigDecimal("600.00"), "SKU-DLV-1");
+        UUID shipper = UUID.randomUUID();
+        UUID deliverer = UUID.randomUUID();
+        JsonNode shipped = ship(order.orderId(), shipper);
+        sagaQueues().awaitCommandsForOrder(order.orderId(), "ShipStock", 1);
+        int outboxRowsAfterShip = outboxRowCount(order.orderId());
+
+        MvcResult result = mockMvc.perform(post("/orders/{orderId}/deliver", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken(deliverer)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode delivered = objectMapper.readTree(result.getResponse().getContentAsString());
+
+        assertThat(delivered.get("status").asText()).isEqualTo("DELIVERED");
+        assertThat(delivered.get("deliveredBy").asText()).isEqualTo(deliverer.toString());
+        assertThat(delivered.get("deliveredAt").isNull()).isFalse();
+        assertThat(delivered.get("shippedBy").asText()).isEqualTo(shipper.toString());
+        assertThat(instant(delivered, "shippedAt")).isEqualTo(instant(shipped, "shippedAt"));
+        JsonNode reread = getOrder(order.orderId());
+        assertThat(reread.get("status").asText()).isEqualTo("DELIVERED");
+        assertThat(instant(reread, "deliveredAt")).isEqualTo(instant(delivered, "deliveredAt"));
+
+        // /deliver nao grava nada no outbox e nenhum comando de estoque a mais chega a fila.
+        assertThat(outboxRowCount(order.orderId())).isEqualTo(outboxRowsAfterShip);
+        assertThat(outboxRowCount(order.orderId(), "ShipStock")).isEqualTo(1);
+        assertThat(sagaQueues().drainCommandsForOrderDuring(order.orderId(), "ShipStock", Duration.ofSeconds(3)))
+                .isEmpty();
+
+        // DELIVERED continua consumindo credito: 1200.00 ja consumidos + 1500.00 estoura o limite de 2000.00.
+        UUID secondProductId = UUID.randomUUID();
+        stub().registerProduct(secondProductId, "SKU-DLV-1B", "Produto 2", new BigDecimal("1500.00"), "ACTIVE");
+        mockMvc.perform(post("/orders")
+                        .header("Authorization", "Bearer " + TestJwt.buyerToken(order.companyId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":"%s","quantity":1}]}
+                                """.formatted(secondProductId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
+    }
+
+    @Test
+    void deliverTwiceIsA409FromDeliveredToDelivered() throws Exception {
+        TestOrder order = createConfirmedOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-DLV-2");
+        ship(order.orderId(), UUID.randomUUID());
+        String sellerToken = TestJwt.sellerAdminToken();
+
+        mockMvc.perform(post("/orders/{orderId}/deliver", order.orderId())
+                        .header("Authorization", "Bearer " + sellerToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/orders/{orderId}/deliver", order.orderId())
+                        .header("Authorization", "Bearer " + sellerToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("invalid_order_transition"))
+                .andExpect(jsonPath("$.message").value("Order cannot transition from DELIVERED to DELIVERED"));
+    }
 }

@@ -52,6 +52,15 @@ public class OrderShipmentService {
         return OrderResponse.from(order);
     }
 
+    @Transactional
+    public OrderResponse deliver(UUID orderId, String sellerId) {
+        Order order = lockOrder(orderId);
+
+        order.deliver(sellerId, currentInstant());
+
+        return OrderResponse.from(order);
+    }
+
     private Order lockOrder(UUID orderId) {
         return orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new OrderNotFoundException("Order not found"));
