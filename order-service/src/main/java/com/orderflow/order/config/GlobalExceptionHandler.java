@@ -4,6 +4,7 @@ import com.orderflow.order.client.AuthServiceUnavailableException;
 import com.orderflow.order.client.CatalogServiceUnavailableException;
 import com.orderflow.order.order.exception.DuplicateOrderItemsException;
 import com.orderflow.order.order.exception.InvalidOrderItemsException;
+import com.orderflow.order.order.exception.InvalidOrderTransitionException;
 import com.orderflow.order.order.exception.OrderNotFoundException;
 import com.orderflow.order.order.exception.OrderNotPendingException;
 import com.orderflow.order.order.exception.OrderTotalOutOfRangeException;
@@ -81,6 +82,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleNotPending(OrderNotPendingException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(errorBody("order_not_pending", "Order is not pending approval"));
+    }
+
+    /**
+     * Ação de ciclo de vida ({@code ship}, {@code deliver}) fora da aresta da tabela de transições
+     * (D-77, INVALID_TRANSITION_ERROR). A mensagem só leva nomes de enum (T-06-08).
+     */
+    @ExceptionHandler(InvalidOrderTransitionException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidTransition(InvalidOrderTransitionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("invalid_order_transition", ex.getMessage()));
     }
 
     /**

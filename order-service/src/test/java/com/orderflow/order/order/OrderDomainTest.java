@@ -1,6 +1,7 @@
 package com.orderflow.order.order;
 
 import com.orderflow.order.credit.CreditPolicy;
+import com.orderflow.order.order.exception.InvalidOrderTransitionException;
 import com.orderflow.order.order.exception.OrderNotPendingException;
 import com.orderflow.order.shipping.CarrierAssignment;
 import com.orderflow.order.shipping.TrackingCodes;
@@ -387,6 +388,64 @@ class OrderDomainTest {
         }
     }
 
+    @Test
+    void shipFromConfirmedRecordsShippedAtAndShippedByAndKeepsTheFulfillmentFieldsUntouched() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = orderIn(OrderStatus.CONFIRMED);
+        String carrier = order.getCarrier();
+        String trackingCode = order.getTrackingCode();
+        OffsetDateTime confirmedAt = order.getConfirmedAt();
+
+        OffsetDateTime shipInstant = now.plusSeconds(10);
+        order.ship("seller-7", shipInstant);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+        assertThat(order.getShippedAt()).isEqualTo(shipInstant);
+        assertThat(order.getShippedBy()).isEqualTo("seller-7");
+        assertThat(order.getCarrier()).isEqualTo(carrier);
+        assertThat(order.getTrackingCode()).isEqualTo(trackingCode);
+        assertThat(order.getConfirmedAt()).isEqualTo(confirmedAt);
+        assertThat(order.getDeliveredAt()).isNull();
+        assertThat(order.getDeliveredBy()).isNull();
+    }
+
+    @Test
+    void shipFromAnyStatusOtherThanConfirmedThrowsInvalidTransitionWithFromAndToAndChangesNothing() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        for (OrderStatus from : OrderStatus.values()) {
+            if (from == OrderStatus.CONFIRMED || from == OrderStatus.DELIVERED) {
+                continue;
+            }
+            Order order = orderIn(from);
+            List<Object> before = snapshot(order);
+
+            assertThatThrownBy(() -> order.ship("seller-7", now))
+                    .as("ship from %s", from)
+                    .isInstanceOfSatisfying(InvalidOrderTransitionException.class, ex -> {
+                        assertThat(ex.getFrom()).isEqualTo(from);
+                        assertThat(ex.getTo()).isEqualTo(OrderStatus.SHIPPED);
+                        assertThat(ex.getMessage())
+                                .isEqualTo("Order cannot transition from " + from + " to SHIPPED");
+                    });
+
+            assertThat(snapshot(order)).as("ship from %s must not change anything", from).isEqualTo(before);
+        }
+    }
+
+    @Test
+    void shipWithNullOrBlankShippedByThrowsIllegalArgumentExceptionAndLeavesTheOrderConfirmed() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = orderIn(OrderStatus.CONFIRMED);
+
+        assertThatThrownBy(() -> order.ship(null, now)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> order.ship("   ", now)).isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(order.getShippedAt()).isNull();
+        assertThat(order.getShippedBy()).isNull();
+    }
+
     private void assertRejected(OrderStatus from, String method, Class<? extends RuntimeException> expected,
                                 java.util.function.Consumer<Order> call) {
         Order order = orderIn(from);
@@ -403,7 +462,8 @@ class OrderDomainTest {
         return java.util.Arrays.asList(order.getStatus(), order.getDecidedBy(), order.getDecidedAt(),
                 order.getReason(), order.getReservationStartedAt(), order.getConfirmedAt(), order.getCancelledAt(),
                 order.getCancellationCode(), order.getCancellationReason(), order.getCarrier(),
-                order.getTrackingCode());
+                order.getTrackingCode(), order.getShippedAt(), order.getShippedBy(), order.getDeliveredAt(),
+                order.getDeliveredBy());
     }
 
     private Order orderIn(OrderStatus target) {
@@ -430,6 +490,12 @@ class OrderDomainTest {
                 order.approveAutomatically(now);
                 order.startReservation(now.plusSeconds(1));
                 order.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now.plusSeconds(2));
+            }
+            case SHIPPED -> {
+                order.approveAutomatically(now);
+                order.startReservation(now.plusSeconds(1));
+                order.confirm(now.plusSeconds(2), assignment());
+                order.ship("seller-1", now.plusSeconds(3));
             }
             default -> throw new IllegalArgumentException("not reachable yet: " + target);
         }

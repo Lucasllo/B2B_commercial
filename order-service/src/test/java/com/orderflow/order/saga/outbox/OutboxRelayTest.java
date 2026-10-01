@@ -78,6 +78,21 @@ class OutboxRelayTest {
     }
 
     @Test
+    void pendingShipStockEventIsSentToTheInventoryCommandsQueueAndMarkedPublished() {
+        OutboxEvent shipStock = pendingEvent("ShipStock");
+        when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(shipStock));
+        when(sqsOperations.send(eq(QUEUE_NAME), eq(shipStock.getPayload()))).thenReturn(null);
+
+        OutboxRelay relay = new OutboxRelay(outboxEventRepository, sqsOperations, BATCH_SIZE, QUEUE_NAME);
+        int published = relay.publishPendingBatch();
+
+        assertThat(published).isEqualTo(1);
+        assertThat(shipStock.getPublishedAt()).isNotNull();
+        assertThat(shipStock.getAttempts()).isZero();
+        verify(sqsOperations).send(eq(QUEUE_NAME), eq(shipStock.getPayload()));
+    }
+
+    @Test
     void relayRequestsExactlyTheConfiguredBatchSizeAndReturnsTheNumberOfEventsPublished() {
         when(outboxEventRepository.lockNextBatch(anyInt())).thenReturn(List.of());
 

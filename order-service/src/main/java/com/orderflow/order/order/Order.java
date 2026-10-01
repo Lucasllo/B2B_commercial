@@ -1,5 +1,6 @@
 package com.orderflow.order.order;
 
+import com.orderflow.order.order.exception.InvalidOrderTransitionException;
 import com.orderflow.order.order.exception.OrderNotPendingException;
 import com.orderflow.order.shipping.CarrierAssignment;
 import jakarta.persistence.CascadeType;
@@ -242,6 +243,26 @@ public class Order {
         this.confirmedAt = now;
         this.carrier = assignment.carrier();
         this.trackingCode = assignment.trackingCode();
+    }
+
+    /**
+     * Expedição pelo vendedor (ORD-10, D-74) — só a partir de {@code CONFIRMED}; qualquer outro
+     * estado lança {@link InvalidOrderTransitionException} sem tocar em nenhum campo (D-77).
+     * {@code shippedBy} é o claim {@code sub} do JWT e é obrigatório: nulo ou em branco lança {@link
+     * IllegalArgumentException} antes de qualquer mudança. Transportadora, rastreio e {@code
+     * confirmedAt} não mudam (D-76).
+     *
+     * <p>D-75: a baixa física do estoque é assíncrona — o pedido vai direto a {@code SHIPPED}, sem
+     * estado intermediário, e o comando {@code ShipStock} é gravado no outbox por quem chama, na
+     * mesma transação. {@code SHIPPED} continua em {@link OrderStatus#CREDIT_CONSUMING} (D-37).
+     */
+    public void ship(String shippedBy, OffsetDateTime now) {
+        if (shippedBy == null || shippedBy.isBlank()) {
+            throw new IllegalArgumentException("shippedBy must not be blank when shipping an order");
+        }
+        moveTo(OrderStatus.SHIPPED, () -> new InvalidOrderTransitionException(status, OrderStatus.SHIPPED));
+        this.shippedAt = now;
+        this.shippedBy = shippedBy;
     }
 
     /**

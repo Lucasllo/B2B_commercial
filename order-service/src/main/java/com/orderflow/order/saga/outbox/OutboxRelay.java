@@ -1,6 +1,7 @@
 package com.orderflow.order.saga.outbox;
 
 import com.orderflow.order.saga.messaging.dto.ReserveStockCommand;
+import com.orderflow.order.saga.messaging.dto.ShipStockCommand;
 import io.awspring.cloud.sqs.operations.SqsOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,12 +70,14 @@ public class OutboxRelay {
     }
 
     /**
-     * {@code ReserveStock} (esta task) e {@code ReleaseStock} (D-63, 05-04) vão para {@code
-     * inventory-commands-queue}; qualquer outro {@code eventType} é erro de programação — tratado
-     * como falha do próprio evento (nunca derruba o lote), nunca envia para fila nenhuma.
+     * {@code ReserveStock}, {@code ReleaseStock} (D-63) e {@code ShipStock} (D-75, baixa física na
+     * expedição) vão para {@code inventory-commands-queue}; qualquer outro {@code eventType} é erro
+     * de programação — tratado como falha do próprio evento (nunca derruba o lote), nunca envia
+     * para fila nenhuma.
      */
     private String resolveQueue(String eventType) {
-        if (ReserveStockCommand.EVENT_TYPE.equals(eventType) || RELEASE_STOCK_EVENT_TYPE.equals(eventType)) {
+        if (ReserveStockCommand.EVENT_TYPE.equals(eventType) || RELEASE_STOCK_EVENT_TYPE.equals(eventType)
+                || ShipStockCommand.EVENT_TYPE.equals(eventType)) {
             return inventoryCommandsQueue;
         }
         throw new IllegalStateException("No queue configured for outbox eventType '" + eventType + "'");
