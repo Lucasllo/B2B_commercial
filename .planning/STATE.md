@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-10-01T00:06:37.219Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-10-01T00:20:36.894Z"
 last_activity: 2026-09-30
 last_activity_desc: Phase 06 execution started
-state_head: 4bcfa22fa3a97644921b2e31fb6e66988608fb40
+state_head: 8c98787789e2404839423d1b388aaf60db67e0ba
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 23
+  completed_plans: 24
   percent: 71
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-09-30 — Phase 06 execution started
 
@@ -78,6 +78,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P05 | 95min | 2 tasks | 18 files |
 | Phase 05 P06 | 30min | 2 tasks | 5 files |
 | Phase 06 P01 | 17min | 2 tasks | 17 files |
+| Phase 06 P02 | 22 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,7 @@ Recent decisions affecting current work:
 - [Phase 06]: TRACKING_CODE_UNIQUENESS=probabilistic; sem UNIQUE no banco para nao criar laco de reentrega no CONFIRMED
 - [Phase 06]: LEGACY_TRACKING_BACKFILL; pedidos CONFIRMED legados recebem Transportadora Legada e codigo LG+9 digitos de md5
 - [Phase 06]: ORDER_RESPONSE_CONTRACT inclui carrier,trackingCode,shippedAt,shippedBy,deliveredAt,deliveredBy entre cancelledAt e items; tabela unica de 9 transicoes em OrderStatus (D-83)
+- [Phase 06]: SHIPMENT_LOCK=order-row: /ship and /deliver lock the order row only (no company_credit_lock); INVALID_TRANSITION_ERROR=409 invalid_order_transition; ShipStock command goes through the outbox to inventory-commands-queue (D-75)
 
 ### Pending Todos
 
@@ -163,6 +165,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T00:06:37.022Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-10-01T00:20:36.220Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
