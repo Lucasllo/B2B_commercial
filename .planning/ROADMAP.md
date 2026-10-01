@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Primeira Integração Assíncrona — Histórico de Notificações** - Um evento publicado no SQS vira registro consultável no DynamoDB, provando o encanamento antes da saga (completed 2026-09-23)
 - [x] **Phase 4: Núcleo do Pedido — Criação e Aprovação por Limite de Crédito** - O comprador cria pedidos do catálogo e a regra de aprovação por crédito funciona, ainda sem saga (completed 2026-09-25)
 - [x] **Phase 5: Saga de Reserva de Estoque — Outbox, Compensação e Confirmação** - O Core Value: reserva assíncrona com Transactional Outbox terminando sempre em CONFIRMED ou CANCELLED (completed 2026-09-30)
-- [ ] **Phase 6: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido** - Transportadora simulada, rastreio, SHIPPED/DELIVERED e a linha do tempo completa nas notificações
+- [x] **Phase 6: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido** - Transportadora simulada, rastreio, SHIPPED/DELIVERED e a linha do tempo completa nas notificações (completed 2026-10-01)
 - [ ] **Phase 7: Endurecimento, Observabilidade e Entrega** - OpenAPI por serviço, Correlation-ID nos logs, testes completos, pipeline de CI verde e ADRs em português
 
 ## Phase Details
@@ -186,7 +186,7 @@ Plans:
   3. Consultando o histórico de notificações de um pedido, aparece a linha do tempo completa: criado, aprovado (quando houve aprovação), confirmado ou cancelado, enviado e entregue.
   4. O fluxo de status CREATED → PENDING_APPROVAL → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) está documentado com diagrama e corresponde exatamente ao comportamento real da API.
 
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano com IT usa LocalStack; 06-07 vem por último para documentar o que já foi demonstrado.*
@@ -247,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
-| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | In Progress|  |
+| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | Complete    | 2026-10-01 |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 
 ## Coverage
