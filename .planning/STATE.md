@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-10-01T00:35:08.596Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-10-01T00:50:28.433Z"
 last_activity: 2026-09-30
 last_activity_desc: Phase 06 execution started
-state_head: 657ace6dd590675f0a1c6c1f125d59557fbd19f0
+state_head: cadaab74bf8503e787dab317a25c5846937daebc
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 25
+  completed_plans: 26
   percent: 71
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-09-30 — Phase 06 execution started
 
@@ -80,6 +80,7 @@ Progress: [███████░░░] 71%
 | Phase 06 P01 | 17min | 2 tasks | 17 files |
 | Phase 06 P02 | 22 min | 2 tasks | 11 files |
 | Phase 06 P03 | 45 min | 2 tasks | 9 files |
+| Phase 06 P04 | 14 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,10 @@ Recent decisions affecting current work:
 - [Phase 06]: ORDER_RESPONSE_CONTRACT inclui carrier,trackingCode,shippedAt,shippedBy,deliveredAt,deliveredBy entre cancelledAt e items; tabela unica de 9 transicoes em OrderStatus (D-83)
 - [Phase 06]: SHIPMENT_LOCK=order-row: /ship and /deliver lock the order row only (no company_credit_lock); INVALID_TRANSITION_ERROR=409 invalid_order_transition; ShipStock command goes through the outbox to inventory-commands-queue (D-75)
 - [Phase 06]: 06-03: SHIP_STOCK_ANOMALY=missing-or-released-throws; SHIP_STOCK_ADJUSTED_EVENT=none; RELEASE_AFTER_SHIP=ignored (shipAll baixa on_hand+reserved pela quantidade do livro, idempotente por stock_reservations.shipped) — D-75/D-57: baixa fisica adiada da Fase 5; livro e a fonte da quantidade; CHECK released+shipped e rede de seguranca
+- [Phase 06]: NOTIFICATION_PK=entityId: particao generica da tabela notification-history (produto ou pedido); NotificationResponse.entityId
+- [Phase 06]: PRODUCT_HISTORY_ROUTE=kept: GET /notifications/{productId} inalterado, so SELLER_ADMIN
+- [Phase 06]: TIMELINE_ORDER=occurredAt,lifecycle-rank,sortKey nas duas rotas de historico
+- [Phase 06]: TIMELINE_READ_RULE: SELLER_ADMIN lista (vazia sem eventos); BUYER 404 identico se vazia ou algum companyId != JWT; rota de pedido so devolve ORDER_*
 
 ### Pending Todos
 
@@ -167,6 +172,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T00:35:08.329Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-10-01T00:50:28.233Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
