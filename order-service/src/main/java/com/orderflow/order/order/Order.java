@@ -145,16 +145,17 @@ public class Order {
      * então o status persistido de um pedido novo dentro do limite é sempre {@code RESERVING}.
      */
     public void approveAutomatically(OffsetDateTime now) {
-        requireCreated();
-        this.status = OrderStatus.APPROVED;
+        if (this.status != OrderStatus.CREATED) {
+            throw notIn(OrderStatus.CREATED);
+        }
+        moveTo(OrderStatus.APPROVED, () -> notIn(OrderStatus.CREATED));
         this.decidedBy = SYSTEM_DECIDER;
         this.decidedAt = now;
         this.reason = AUTO_APPROVAL_REASON;
     }
 
     public void holdForApproval() {
-        requireCreated();
-        this.status = OrderStatus.PENDING_APPROVAL;
+        moveTo(OrderStatus.PENDING_APPROVAL, () -> notIn(OrderStatus.CREATED));
     }
 
     /**
@@ -166,8 +167,10 @@ public class Order {
      * APPROVED} está em {@link OrderStatus#CREDIT_CONSUMING}. Motivo em branco é gravado como nulo.
      */
     public void approveManually(String decidedBy, String reason, OffsetDateTime now) {
-        requirePendingApproval();
-        this.status = OrderStatus.APPROVED;
+        if (this.status != OrderStatus.PENDING_APPROVAL) {
+            throw new OrderNotPendingException();
+        }
+        moveTo(OrderStatus.APPROVED, OrderNotPendingException::new);
         this.decidedBy = decidedBy;
         this.decidedAt = now;
         this.reason = blankToNull(reason);
@@ -185,8 +188,7 @@ public class Order {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("reason must not be blank when rejecting an order");
         }
-        requirePendingApproval();
-        this.status = OrderStatus.REJECTED;
+        moveTo(OrderStatus.REJECTED, OrderNotPendingException::new);
         this.decidedBy = decidedBy;
         this.decidedAt = now;
         this.reason = reason;
@@ -196,13 +198,12 @@ public class Order {
      * Ponto de entrada único da saga (D-48, chamado só por {@link
      * com.orderflow.order.saga.ReservationSagaStarter#start}) — exige {@code APPROVED} (o passo
      * lógico da decisão, D-50); qualquer outro estado é erro de programação, nunca resposta ao
-     * cliente ({@link IllegalStateException}, mesmo estilo de {@link #requireCreated}), porque
+     * cliente ({@link IllegalStateException}, mesmo estilo de {@link #holdForApproval}), porque
      * {@link com.orderflow.order.saga.ReservationSagaStarter} é sempre chamado logo depois de
      * {@link #approveAutomatically}/{@code approveManually} dentro da mesma transação.
      */
     public void startReservation(OffsetDateTime now) {
-        requireApproved();
-        this.status = OrderStatus.RESERVING;
+        moveTo(OrderStatus.RESERVING, () -> notIn(OrderStatus.APPROVED));
         this.reservationStartedAt = now;
     }
 
@@ -216,8 +217,7 @@ public class Order {
      * saga (D-53).
      */
     public void cancel(CancellationCode code, String reason, OffsetDateTime now) {
-        requireReserving();
-        this.status = OrderStatus.CANCELLED;
+        moveTo(OrderStatus.CANCELLED, () -> notIn(OrderStatus.RESERVING));
         this.cancellationCode = code;
         this.cancellationReason = reason;
         this.cancelledAt = now;
@@ -238,35 +238,33 @@ public class Order {
         if (assignment == null) {
             throw new IllegalArgumentException("a confirmed order requires a carrier assignment");
         }
-        requireReserving();
-        this.status = OrderStatus.CONFIRMED;
+        moveTo(OrderStatus.CONFIRMED, () -> notIn(OrderStatus.RESERVING));
         this.confirmedAt = now;
         this.carrier = assignment.carrier();
         this.trackingCode = assignment.trackingCode();
     }
 
-    private void requireCreated() {
-        if (this.status != OrderStatus.CREATED) {
-            throw new IllegalStateException("Order " + id + " is not CREATED (status=" + status + ")");
+    /**
+     * ÚNICO ponto da classe que atribui {@code this.status} (D-83, ORD-10): consulta a tabela única
+     * {@link OrderStatus#canTransitionTo} e, se a aresta não existe, lança a exceção fornecida ANTES
+     * de tocar em qualquer campo — assim uma transição recusada nunca deixa o agregado pela metade.
+     * (A fábrica {@link #create} atribui o status inicial ao objeto recém-criado.)
+     *
+     * <p>Guarda de gatilho nas duas aprovações: {@code APPROVED} tem duas origens na tabela ({@code
+     * CREATED}, pela aprovação automática, e {@code PENDING_APPROVAL}, pela manual), e cada método
+     * representa UMA aresta — então {@link #approveAutomatically} só vale a partir de {@code
+     * CREATED} e {@link #approveManually} só a partir de {@code PENDING_APPROVAL}, verificado antes
+     * deste método. Toda outra aresta tem origem única na tabela, e a tabela basta como guarda.
+     */
+    private void moveTo(OrderStatus target, java.util.function.Supplier<? extends RuntimeException> rejection) {
+        if (!this.status.canTransitionTo(target)) {
+            throw rejection.get();
         }
+        this.status = target;
     }
 
-    private void requireReserving() {
-        if (this.status != OrderStatus.RESERVING) {
-            throw new IllegalStateException("Order " + id + " is not RESERVING (status=" + status + ")");
-        }
-    }
-
-    private void requireApproved() {
-        if (this.status != OrderStatus.APPROVED) {
-            throw new IllegalStateException("Order " + id + " is not APPROVED (status=" + status + ")");
-        }
-    }
-
-    private void requirePendingApproval() {
-        if (this.status != OrderStatus.PENDING_APPROVAL) {
-            throw new OrderNotPendingException();
-        }
+    private IllegalStateException notIn(OrderStatus expected) {
+        return new IllegalStateException("Order " + id + " is not " + expected + " (status=" + status + ")");
     }
 
     private static String blankToNull(String value) {

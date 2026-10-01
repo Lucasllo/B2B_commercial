@@ -12,11 +12,13 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Prova isolada da migração de dados D-51 (JUnit puro, sem contexto Spring — a migração precisa
@@ -108,6 +110,76 @@ class OrderSagaMigrationIT {
             // PENDING_APPROVAL e REJECTED ficam intocados e sem linha no outbox.
             assertOrderUntouched(connection, pendingOrderId, "PENDING_APPROVAL");
             assertOrderUntouched(connection, rejectedOrderId, "REJECTED");
+        }
+    }
+
+    @Test
+    void applyingV3OverAV2BaseBackfillsConfirmedOrdersAndTheCheckRefusesConfirmedWithoutCarrier()
+            throws Exception {
+        dropSchemaIfExists();
+
+        FluentConfiguration config = Flyway.configure()
+                .dataSource(OrderTestInfrastructure.POSTGRES.getJdbcUrl(),
+                        OrderTestInfrastructure.POSTGRES.getUsername(),
+                        OrderTestInfrastructure.POSTGRES.getPassword())
+                .schemas(SCHEMA)
+                .defaultSchema(SCHEMA)
+                .createSchemas(true)
+                .locations("classpath:db/migration");
+
+        // Só até a V2 — base de desenvolvimento anterior à Fase 6, com um CONFIRMED sem transportadora.
+        config.target("2");
+        config.load().migrate();
+
+        UUID confirmedOrderId = UUID.randomUUID();
+        UUID reservingOrderId = UUID.randomUUID();
+        try (Connection connection = openConnection()) {
+            insertOrderAt(connection, confirmedOrderId, "CONFIRMED", true);
+            insertOrderAt(connection, reservingOrderId, "RESERVING", false);
+        }
+
+        config.target(MigrationVersion.LATEST);
+        config.load().migrate();
+
+        try (Connection connection = openConnection()) {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT carrier, tracking_code FROM " + SCHEMA + ".orders WHERE id = ?")) {
+                ps.setObject(1, confirmedOrderId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString("carrier")).isEqualTo("Transportadora Legada");
+                    assertThat(rs.getString("tracking_code")).matches("^[A-Z]{2}[0-9]{9}BR$");
+                }
+                ps.setObject(1, reservingOrderId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getString("carrier")).isNull();
+                    assertThat(rs.getString("tracking_code")).isNull();
+                }
+            }
+
+            // D-70 como invariante de banco: zerar a transportadora de um CONFIRMED é recusado.
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE " + SCHEMA + ".orders SET carrier = NULL WHERE id = ?")) {
+                ps.setObject(1, confirmedOrderId);
+                assertThatThrownBy(ps::executeUpdate)
+                        .isInstanceOf(SQLException.class)
+                        .hasMessageContaining("chk_orders_shipping_assigned");
+            }
+        }
+    }
+
+    private void insertOrderAt(Connection connection, UUID id, String status, boolean confirmed) throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO " + SCHEMA + ".orders (id, company_id, status, total, created_by, created_at, "
+                        + "reservation_started_at, confirmed_at) "
+                        + "VALUES (?, ?, ?, ?, 'legacy-tester', now(), now(), "
+                        + (confirmed ? "now()" : "NULL") + ")")) {
+            ps.setObject(1, id);
+            ps.setObject(2, UUID.randomUUID());
+            ps.setString(3, status);
+            ps.setBigDecimal(4, new java.math.BigDecimal("35.00"));
+            ps.executeUpdate();
         }
     }
 

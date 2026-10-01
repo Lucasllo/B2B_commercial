@@ -121,10 +121,15 @@ class CreditLockAndExposureIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("RESERVING"));
     }
 
+    /**
+     * Carrier e tracking_code sempre preenchidos: a V3 (D-70) recusa CONFIRMED/SHIPPED/DELIVERED sem
+     * eles (chk_orders_shipping_assigned), e os demais status aceitam os campos sem problema.
+     */
     private void insertOrder(UUID companyId, OrderStatus status, String total) {
         jdbcTemplate.update(
-                "INSERT INTO \"order\".orders (id, company_id, status, total, created_by, created_at) "
-                        + "VALUES (?, ?, ?, ?, 'tester', now())",
+                "INSERT INTO \"order\".orders (id, company_id, status, total, created_by, created_at, "
+                        + "carrier, tracking_code) "
+                        + "VALUES (?, ?, ?, ?, 'tester', now(), 'Norte Entregas', 'AB123456785BR')",
                 UUID.randomUUID(), companyId, status.name(), new BigDecimal(total));
     }
 }

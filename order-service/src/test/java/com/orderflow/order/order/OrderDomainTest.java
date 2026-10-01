@@ -337,6 +337,105 @@ class OrderDomainTest {
         assertThat(order.getTrackingCode()).isNull();
     }
 
+    @Test
+    void triggerGuardsKeepApproveAutomaticallyAndApproveManuallyApartDespiteSharingTheApprovedTarget() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        // PENDING_APPROVAL -> APPROVED é aresta da tabela, mas approveAutomatically é a aresta CREATED -> APPROVED.
+        Order pending = orderIn(OrderStatus.PENDING_APPROVAL);
+        assertThat(OrderStatus.PENDING_APPROVAL.canTransitionTo(OrderStatus.APPROVED)).isTrue();
+        assertThatThrownBy(() -> pending.approveAutomatically(now)).isInstanceOf(IllegalStateException.class);
+        assertThat(pending.getStatus()).isEqualTo(OrderStatus.PENDING_APPROVAL);
+
+        // CREATED -> APPROVED é aresta da tabela, mas approveManually é a aresta PENDING_APPROVAL -> APPROVED.
+        Order created = orderIn(OrderStatus.CREATED);
+        assertThat(OrderStatus.CREATED.canTransitionTo(OrderStatus.APPROVED)).isTrue();
+        assertThatThrownBy(() -> created.approveManually("seller-1", "x", now))
+                .isInstanceOf(OrderNotPendingException.class);
+        assertThat(created.getStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(created.getDecidedBy()).isNull();
+    }
+
+    @Test
+    void everyTransitionMethodCalledFromAStatusTheTableForbidsThrowsTheExpectedExceptionAndChangesNothing() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        CarrierAssignment assignment = assignment();
+        OrderStatus[] reachable = {
+                OrderStatus.CREATED, OrderStatus.PENDING_APPROVAL, OrderStatus.APPROVED, OrderStatus.REJECTED,
+                OrderStatus.RESERVING, OrderStatus.CONFIRMED, OrderStatus.CANCELLED};
+
+        for (OrderStatus from : reachable) {
+            if (from != OrderStatus.CREATED) {
+                assertRejected(from, "holdForApproval", IllegalStateException.class, Order::holdForApproval);
+                assertRejected(from, "approveAutomatically", IllegalStateException.class,
+                        o -> o.approveAutomatically(now));
+            }
+            if (from != OrderStatus.PENDING_APPROVAL) {
+                assertRejected(from, "approveManually", OrderNotPendingException.class,
+                        o -> o.approveManually("seller-1", "x", now));
+                assertRejected(from, "reject", OrderNotPendingException.class,
+                        o -> o.reject("seller-1", "x", now));
+            }
+            if (from != OrderStatus.APPROVED) {
+                assertRejected(from, "startReservation", IllegalStateException.class, o -> o.startReservation(now));
+            }
+            if (from != OrderStatus.RESERVING) {
+                assertRejected(from, "confirm", IllegalStateException.class, o -> o.confirm(now, assignment));
+                assertRejected(from, "cancel", IllegalStateException.class,
+                        o -> o.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now));
+            }
+        }
+    }
+
+    private void assertRejected(OrderStatus from, String method, Class<? extends RuntimeException> expected,
+                                java.util.function.Consumer<Order> call) {
+        Order order = orderIn(from);
+        List<Object> before = snapshot(order);
+
+        assertThatThrownBy(() -> call.accept(order))
+                .as("%s from %s", method, from)
+                .isInstanceOf(expected);
+
+        assertThat(snapshot(order)).as("%s from %s must not change anything", method, from).isEqualTo(before);
+    }
+
+    private List<Object> snapshot(Order order) {
+        return java.util.Arrays.asList(order.getStatus(), order.getDecidedBy(), order.getDecidedAt(),
+                order.getReason(), order.getReservationStartedAt(), order.getConfirmedAt(), order.getCancelledAt(),
+                order.getCancellationCode(), order.getCancellationReason(), order.getCarrier(),
+                order.getTrackingCode());
+    }
+
+    private Order orderIn(OrderStatus target) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);
+        switch (target) {
+            case CREATED -> { }
+            case PENDING_APPROVAL -> order.holdForApproval();
+            case APPROVED -> order.approveAutomatically(now);
+            case REJECTED -> {
+                order.holdForApproval();
+                order.reject("seller-1", "motivo", now);
+            }
+            case RESERVING -> {
+                order.approveAutomatically(now);
+                order.startReservation(now.plusSeconds(1));
+            }
+            case CONFIRMED -> {
+                order.approveAutomatically(now);
+                order.startReservation(now.plusSeconds(1));
+                order.confirm(now.plusSeconds(2), assignment());
+            }
+            case CANCELLED -> {
+                order.approveAutomatically(now);
+                order.startReservation(now.plusSeconds(1));
+                order.cancel(CancellationCode.INSUFFICIENT_STOCK, "x", now.plusSeconds(2));
+            }
+            default -> throw new IllegalArgumentException("not reachable yet: " + target);
+        }
+        return order;
+    }
+
     private CarrierAssignment assignment() {
         return new CarrierAssignment("Norte Entregas", TrackingCodes.fromDigest(new byte[32]));
     }

@@ -66,7 +66,7 @@ public class OrderSagaService {
             return;
         }
         Order order = maybeOrder.get();
-        if (order.getStatus() != OrderStatus.RESERVING) {
+        if (!order.getStatus().canTransitionTo(OrderStatus.CANCELLED)) {
             log.info("Resultado de falha ignorado (duplicata ou tardio) orderId={} status={}",
                     order.getId(), order.getStatus());
             return;
@@ -109,7 +109,7 @@ public class OrderSagaService {
                     "Campo items do StockReserved nao bate com os itens do pedido orderId=" + order.getId());
         }
 
-        if (order.getStatus() == OrderStatus.RESERVING) {
+        if (order.getStatus().canTransitionTo(OrderStatus.CONFIRMED)) {
             OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
             // D-70: transportadora e rastreio entram na MESMA transação e sob a MESMA trava de
             // linha do CONFIRMED. O gateway é determinístico, sem I/O e sem exceção (D-72); só este
@@ -150,7 +150,7 @@ public class OrderSagaService {
             return;
         }
         Order order = maybeOrder.get();
-        if (order.getStatus() != OrderStatus.RESERVING
+        if (!order.getStatus().canTransitionTo(OrderStatus.CANCELLED)
                 || order.getReservationStartedAt() == null
                 || !order.getReservationStartedAt().isBefore(cutoff)) {
             return;
