@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 6
+current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-09-30T23:45:29.513Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-10-01T00:06:37.219Z"
 last_activity: 2026-09-30
-last_activity_desc: Phase 5 complete, transitioned to Phase 6
-state_head: f38fad15d7cea09250ae2734eacc6381c96d7234
+last_activity_desc: Phase 06 execution started
+state_head: 4bcfa22fa3a97644921b2e31fb6e66988608fb40
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 22
+  completed_plans: 23
   percent: 71
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 
 ## Current Position
 
-Phase: 6 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — READY TO EXECUTE
-Plan: Not started
+Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-09-30 — Phase 5 complete, transitioned to Phase 6
+Last activity: 2026-09-30 — Phase 06 execution started
 
 Progress: [███████░░░] 71%
 
@@ -77,6 +77,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P04 | 110min | 3 tasks | 27 files |
 | Phase 05 P05 | 95min | 2 tasks | 18 files |
 | Phase 05 P06 | 30min | 2 tasks | 5 files |
+| Phase 06 P01 | 17min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 05]: E2E_CONFIG_STRATEGY/E2E_FLYWAY_LOCATIONS provados no módulo e2e-tests (05-05) — dois contextos Spring reais isolados via spring.config.location real + overrides + argumentos de linha de comando, sem depender da resolução ambígua de classpath:application.yml entre os dois jars
 - [Phase 05]: [Phase 05]: [Rule 1 - Bug] Consulta a flyway_schema_history do E2eContextsSmokeIT ajustada para version IS NOT NULL — o Flyway grava uma linha adicional (type SCHEMA, version nulo) para o evento de criação do schema
 - [Phase 05]: [Phase 05]: OUTBOX_RETENTION=none-this-phase - linhas publicadas do outbox nao sao apagadas nesta fase; documentado como limitacao conhecida
+- [Phase 06]: CARRIER_ALGORITHM=sha256-orderId; CARRIER_LIST de cinco nomes ficticios sem acento
+- [Phase 06]: TRACKING_CODE_UNIQUENESS=probabilistic; sem UNIQUE no banco para nao criar laco de reentrega no CONFIRMED
+- [Phase 06]: LEGACY_TRACKING_BACKFILL; pedidos CONFIRMED legados recebem Transportadora Legada e codigo LG+9 digitos de md5
+- [Phase 06]: ORDER_RESPONSE_CONTRACT inclui carrier,trackingCode,shippedAt,shippedBy,deliveredAt,deliveredBy entre cancelledAt e items; tabela unica de 9 transicoes em OrderStatus (D-83)
 
 ### Pending Todos
 
@@ -158,6 +163,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-30T22:50:08.296Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-ciclo-de-vida-completo-expedi-o-entrega-e-hist-rico-do-pedid/06-CONTEXT.md
+Last session: 2026-10-01T00:06:37.022Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None

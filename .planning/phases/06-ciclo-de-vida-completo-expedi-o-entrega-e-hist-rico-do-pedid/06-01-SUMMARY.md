@@ -51,7 +51,7 @@ key-files:
 
 key-decisions:
   - "ORDER_RESPONSE_CONTRACT=id,companyId,status,total,createdBy,createdAt,decidedBy,decidedAt,reason,cancellationCode,cancellationReason,confirmedAt,cancelledAt,carrier,trackingCode,shippedAt,shippedBy,deliveredAt,deliveredBy,items[...]"
-  - "CARRIER_LIST=Expresso Cerrado,TransSul Cargas,Rapido Paulista,Norte Entregas,Litoral Log (fficticias, sem acento)"
+  - "CARRIER_LIST=Expresso Cerrado,TransSul Cargas,Rapido Paulista,Norte Entregas,Litoral Log (ficticias, sem acento)"
   - "CARRIER_ALGORITHM=sha256-orderId (bytes 0-1 escolhem a transportadora, bytes 2-3 as letras, bytes 4-11 o serial, digito S10, sufixo BR)"
   - "TRACKING_CODE_UNIQUENESS=probabilistic (sem UNIQUE no banco; violacao dentro da transacao do CONFIRMED viraria laco de reentrega)"
   - "LEGACY_TRACKING_BACKFILL=Transportadora Legada + LG + 9 digitos de md5(id::text) + BR (casa o padrao, nao reproduz o digito S10)"
