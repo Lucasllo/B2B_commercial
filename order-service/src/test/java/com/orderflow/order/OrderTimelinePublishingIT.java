@@ -3,6 +3,7 @@ package com.orderflow.order;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orderflow.order.support.NotificationEventsQueue;
+import com.orderflow.order.support.OrderSagaQueues;
 import com.orderflow.order.support.TestJwt;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -193,5 +194,238 @@ class OrderTimelinePublishingIT extends AbstractIntegrationTest {
         assertThat(delivered.stream().map(e -> e.get("eventType").asText()).toList())
                 .containsExactlyInAnyOrder("ORDER_CREATED", "ORDER_PENDING_APPROVAL");
         awaitAllPublishedWithoutFailures(order.orderId());
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Task 2 - demais transicoes (aprovacao manual, rejeicao, confirmacao, cancelamento, envio, entrega)
+    // -----------------------------------------------------------------------------------------
+
+    @Value("${orderflow.messaging.inventory-commands-queue}")
+    private String inventoryCommandsQueue;
+
+    @Value("${orderflow.messaging.order-events-queue}")
+    private String orderEventsQueue;
+
+    private OrderSagaQueues sagaQueues() {
+        return new OrderSagaQueues(sqsAsyncClient, objectMapper, inventoryCommandsQueue, orderEventsQueue);
+    }
+
+    private JsonNode awaitStatus(UUID orderId, String expectedStatus) {
+        JsonNode[] holder = new JsonNode[1];
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(500)).untilAsserted(() -> {
+            JsonNode order = getOrder(orderId);
+            assertThat(order.get("status").asText()).isEqualTo(expectedStatus);
+            holder[0] = order;
+        });
+        return holder[0];
+    }
+
+    private void publishStockReserved(TestOrder order, int quantity) {
+        sagaQueues().publishResult(Map.of(
+                "eventId", UUID.randomUUID().toString(),
+                "eventType", "StockReserved",
+                "occurredAt", Instant.now().toString(),
+                "orderId", order.orderId().toString(),
+                "reservationId", order.orderId().toString(),
+                "items", List.of(Map.of("productId", order.productId().toString(), "quantity", quantity))));
+    }
+
+    private void publishInsufficientStock(TestOrder order, int requested) {
+        sagaQueues().publishResult(Map.of(
+                "eventId", UUID.randomUUID().toString(),
+                "eventType", "StockReservationFailed",
+                "occurredAt", Instant.now().toString(),
+                "orderId", order.orderId().toString(),
+                "reservationId", order.orderId().toString(),
+                "reasonCode", "INSUFFICIENT_STOCK",
+                "failures", List.of(Map.of(
+                        "productId", order.productId().toString(),
+                        "requested", requested,
+                        "available", 0))));
+    }
+
+    private TestOrder createConfirmedOrder(String sku) throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), sku, 2, "RESERVING");
+        publishStockReserved(order, 2);
+        awaitStatus(order.orderId(), "CONFIRMED");
+        return order;
+    }
+
+    private long rowCount(UUID orderId, String eventType) {
+        return outboxTypes(orderId).stream().filter(eventType::equals).count();
+    }
+
+    private long timelineRowCount(UUID orderId) {
+        return outboxTypes(orderId).stream().filter(t -> t.startsWith("ORDER_")).count();
+    }
+
+    private Map<String, Object> singleRow(UUID orderId, String eventType) {
+        List<Map<String, Object>> rows = outboxRows(orderId).stream()
+                .filter(r -> eventType.equals(r.get("event_type"))).toList();
+        assertThat(rows).hasSize(1);
+        return rows.get(0);
+    }
+
+    @Test
+    void manualApprovalWritesApprovedWithTheSellerAndReasonThenReserveStock() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("100.00"), new BigDecimal("150.00"), "SKU-TLN-3", 1,
+                "PENDING_APPROVAL");
+        UUID sellerId = UUID.randomUUID();
+
+        mockMvc.perform(post("/orders/{orderId}/approve", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken(sellerId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason":"cliente antigo"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESERVING"));
+
+        assertThat(outboxTypes(order.orderId()))
+                .containsExactly("ORDER_CREATED", "ORDER_PENDING_APPROVAL", "ORDER_APPROVED", "ReserveStock");
+        JsonNode approved = payloadOf(singleRow(order.orderId(), "ORDER_APPROVED"));
+        assertThat(approved.get("decidedBy").asText()).isEqualTo(sellerId.toString());
+        assertThat(approved.get("reason").asText()).isEqualTo("cliente antigo");
+        assertThat(Instant.parse(approved.get("occurredAt").asText()))
+                .isEqualTo(instant(getOrder(order.orderId()), "decidedAt"));
+    }
+
+    @Test
+    void rejectionWritesRejectedWithTheReasonAndNeverReserveStock() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("100.00"), new BigDecimal("150.00"), "SKU-TLN-4", 1,
+                "PENDING_APPROVAL");
+        UUID sellerId = UUID.randomUUID();
+
+        mockMvc.perform(post("/orders/{orderId}/reject", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken(sellerId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason":"sem historico de pagamento"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"));
+
+        assertThat(outboxTypes(order.orderId()))
+                .containsExactly("ORDER_CREATED", "ORDER_PENDING_APPROVAL", "ORDER_REJECTED");
+        JsonNode rejected = payloadOf(singleRow(order.orderId(), "ORDER_REJECTED"));
+        assertThat(rejected.get("decidedBy").asText()).isEqualTo(sellerId.toString());
+        assertThat(rejected.get("reason").asText()).isEqualTo("sem historico de pagamento");
+        assertThat(Instant.parse(rejected.get("occurredAt").asText()))
+                .isEqualTo(instant(getOrder(order.orderId()), "decidedAt"));
+        assertThat(rowCount(order.orderId(), "ReserveStock")).isZero();
+    }
+
+    @Test
+    void stockReservedWritesConfirmedWithCarrierAndTrackingAndADuplicateWritesNothing() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-TLN-5", 2, "RESERVING");
+
+        publishStockReserved(order, 2);
+        JsonNode confirmed = awaitStatus(order.orderId(), "CONFIRMED");
+
+        JsonNode event = payloadOf(singleRow(order.orderId(), "ORDER_CONFIRMED"));
+        assertThat(event.get("carrier").asText()).isEqualTo(confirmed.get("carrier").asText());
+        assertThat(event.get("trackingCode").asText()).isEqualTo(confirmed.get("trackingCode").asText());
+        assertThat(Instant.parse(event.get("occurredAt").asText())).isEqualTo(instant(confirmed, "confirmedAt"));
+        assertThat(event.has("decidedBy")).isFalse();
+
+        publishStockReserved(order, 2);
+        Thread.sleep(3000);
+
+        assertThat(rowCount(order.orderId(), "ORDER_CONFIRMED")).isEqualTo(1);
+    }
+
+    @Test
+    void reservationFailureWritesCancelledAndALateStockReservedOnlyAddsReleaseStock() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-TLN-6", 2, "RESERVING");
+
+        publishInsufficientStock(order, 2);
+        JsonNode cancelled = awaitStatus(order.orderId(), "CANCELLED");
+
+        JsonNode event = payloadOf(singleRow(order.orderId(), "ORDER_CANCELLED"));
+        assertThat(event.get("cancellationCode").asText()).isEqualTo("INSUFFICIENT_STOCK");
+        assertThat(event.get("cancellationReason").asText()).isEqualTo(cancelled.get("cancellationReason").asText());
+        assertThat(Instant.parse(event.get("occurredAt").asText())).isEqualTo(instant(cancelled, "cancelledAt"));
+        long timelineRowsBefore = timelineRowCount(order.orderId());
+
+        publishStockReserved(order, 2);
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(300)).untilAsserted(() ->
+                assertThat(rowCount(order.orderId(), "ReleaseStock")).isEqualTo(1));
+
+        // Sucesso tardio nao e transicao do pedido: nenhuma linha ORDER_* nova.
+        assertThat(timelineRowCount(order.orderId())).isEqualTo(timelineRowsBefore);
+        assertThat(rowCount(order.orderId(), "ORDER_CONFIRMED")).isZero();
+    }
+
+    @Test
+    void reservationTimeoutWritesCancelledWithTheTimeoutCode() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-TLN-7", 1, "RESERVING");
+
+        jdbcTemplate.update("UPDATE \"order\".orders SET reservation_started_at = ? WHERE id = ?",
+                OffsetDateTime.now().minus(Duration.ofHours(1)), order.orderId());
+        JsonNode cancelled = awaitStatus(order.orderId(), "CANCELLED");
+
+        JsonNode event = payloadOf(singleRow(order.orderId(), "ORDER_CANCELLED"));
+        assertThat(event.get("cancellationCode").asText()).isEqualTo("RESERVATION_TIMEOUT");
+        assertThat(event.get("cancellationReason").asText()).isEqualTo(cancelled.get("cancellationReason").asText());
+        assertThat(Instant.parse(event.get("occurredAt").asText())).isEqualTo(instant(cancelled, "cancelledAt"));
+    }
+
+    @Test
+    void shipAndDeliverWriteShippedAndDeliveredWithTheSellerThatActed() throws Exception {
+        TestOrder order = createConfirmedOrder("SKU-TLN-8");
+        UUID shipper = UUID.randomUUID();
+        UUID deliverer = UUID.randomUUID();
+
+        mockMvc.perform(post("/orders/{orderId}/ship", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken(shipper)))
+                .andExpect(status().isOk());
+        JsonNode shipped = payloadOf(singleRow(order.orderId(), "ORDER_SHIPPED"));
+        assertThat(shipped.get("shippedBy").asText()).isEqualTo(shipper.toString());
+        assertThat(Instant.parse(shipped.get("occurredAt").asText()))
+                .isEqualTo(instant(getOrder(order.orderId()), "shippedAt"));
+        assertThat(rowCount(order.orderId(), "ShipStock")).isEqualTo(1);
+
+        mockMvc.perform(post("/orders/{orderId}/deliver", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken(deliverer)))
+                .andExpect(status().isOk());
+        JsonNode delivered = payloadOf(singleRow(order.orderId(), "ORDER_DELIVERED"));
+        assertThat(delivered.get("deliveredBy").asText()).isEqualTo(deliverer.toString());
+        assertThat(Instant.parse(delivered.get("occurredAt").asText()))
+                .isEqualTo(instant(getOrder(order.orderId()), "deliveredAt"));
+    }
+
+    @Test
+    void fullJourneyWritesExactlyFiveTimelineRowsAllPublishedAndDeliveredToTheQueue() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-TLN-9", 2, "RESERVING");
+        publishStockReserved(order, 2);
+        awaitStatus(order.orderId(), "CONFIRMED");
+        mockMvc.perform(post("/orders/{orderId}/ship", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/orders/{orderId}/deliver", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken()))
+                .andExpect(status().isOk());
+
+        List<String> timeline = outboxTypes(order.orderId()).stream().filter(t -> t.startsWith("ORDER_")).toList();
+        assertThat(timeline).containsExactly(
+                "ORDER_CREATED", "ORDER_APPROVED", "ORDER_CONFIRMED", "ORDER_SHIPPED", "ORDER_DELIVERED");
+
+        List<JsonNode> delivered = notificationQueue().awaitEventsForOrder(order.orderId(), 5);
+        assertThat(delivered.stream().map(e -> e.get("eventType").asText()).toList())
+                .containsExactlyInAnyOrder(
+                        "ORDER_CREATED", "ORDER_APPROVED", "ORDER_CONFIRMED", "ORDER_SHIPPED", "ORDER_DELIVERED");
+        awaitAllPublishedWithoutFailures(order.orderId());
+    }
+
+    @Test
+    void refusedShipWritesNoShippedRow() throws Exception {
+        TestOrder order = createOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"), "SKU-TLN-10", 1, "RESERVING");
+
+        mockMvc.perform(post("/orders/{orderId}/ship", order.orderId())
+                        .header("Authorization", "Bearer " + TestJwt.sellerAdminToken()))
+                .andExpect(status().isConflict());
+
+        assertThat(rowCount(order.orderId(), "ORDER_SHIPPED")).isZero();
+        assertThat(rowCount(order.orderId(), "ShipStock")).isZero();
     }
 }

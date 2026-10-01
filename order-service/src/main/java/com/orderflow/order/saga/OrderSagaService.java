@@ -12,6 +12,7 @@ import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
 import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
 import com.orderflow.order.saga.outbox.OutboxWriter;
 import com.orderflow.order.shipping.CarrierGateway;
+import com.orderflow.order.timeline.OrderTimelineEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,12 +45,14 @@ public class OrderSagaService {
     private final OrderRepository orderRepository;
     private final OutboxWriter outboxWriter;
     private final CarrierGateway carrierGateway;
+    private final OrderTimelineEvents orderTimelineEvents;
 
     public OrderSagaService(OrderRepository orderRepository, OutboxWriter outboxWriter,
-                            CarrierGateway carrierGateway) {
+                            CarrierGateway carrierGateway, OrderTimelineEvents orderTimelineEvents) {
         this.orderRepository = orderRepository;
         this.outboxWriter = outboxWriter;
         this.carrierGateway = carrierGateway;
+        this.orderTimelineEvents = orderTimelineEvents;
     }
 
     /**
@@ -57,6 +60,7 @@ public class OrderSagaService {
      * RESERVING}. Pedido ausente é consumido e registrado em log (não há o que fazer com ele, e
      * reentregar só o levaria à DLQ). Status diferente de RESERVING é duplicata/resultado tardio
      * — ignorado sem alterar nada (D-64), inclusive se já CANCELLED por um resultado anterior.
+     * D-78: a transição grava {@code ORDER_CANCELLED} na mesma transação (D-79).
      */
     @Transactional
     public void applyReservationFailed(StockReservationFailedEvent event) {
@@ -75,6 +79,8 @@ public class OrderSagaService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
         String reason = CancellationReasons.forFailure(event.reasonCode(), event.failures(), order);
         order.cancel(CancellationCode.valueOf(event.reasonCode()), reason, now);
+        // D-78/D-79: ORDER_CANCELLED nasce na MESMA transação (e sob a mesma trava de linha) do CANCELLED.
+        orderTimelineEvents.cancelled(order);
     }
 
     /**
@@ -95,6 +101,8 @@ public class OrderSagaService {
      * deixá-lo órfão. A liberação é idempotente no inventory-service (lápide e livro, 05-04), então
      * emitir um {@code ReleaseStock} a cada entrega duplicada de um sucesso tardio é seguro.
      * Qualquer outro status (ex.: já {@code CONFIRMED}) é duplicata — ignorada sem alterar nada.
+     * D-78: só o ramo que confirma grava {@code ORDER_CONFIRMED} (mesma transação, D-79); o sucesso
+     * tardio e a duplicata não são transição do pedido e não geram evento de linha do tempo.
      */
     @Transactional
     public void applyStockReserved(StockReservedEvent event) {
@@ -115,6 +123,9 @@ public class OrderSagaService {
             // linha do CONFIRMED. O gateway é determinístico, sem I/O e sem exceção (D-72); só este
             // ramo o chama, então duplicata e sucesso tardio nunca reatribuem.
             order.confirm(now, carrierGateway.assign(order.getId()));
+            // D-78/D-79: ORDER_CONFIRMED (com transportadora e rastreio) só neste ramo - o ramo
+            // CANCELLED do ReleaseStock tardio e o de duplicata não são transição do pedido.
+            orderTimelineEvents.confirmed(order);
             return;
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
@@ -141,7 +152,8 @@ public class OrderSagaService {
      *
      * <p>Cancela com {@link CancellationCode#RESERVATION_TIMEOUT} e grava, na MESMA transação, um
      * {@code ReleaseStock} no outbox — compensa uma reserva que possa ter acontecido tarde (se não
-     * aconteceu, vira lápide no inventory-service, D-66, 05-04 Task 2).
+     * aconteceu, vira lápide no inventory-service, D-66, 05-04 Task 2). D-78: grava também {@code
+     * ORDER_CANCELLED} (mesma transação, D-79).
      */
     @Transactional
     public void expireReservation(UUID orderId, OffsetDateTime cutoff) {
@@ -158,6 +170,8 @@ public class OrderSagaService {
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
         order.cancel(CancellationCode.RESERVATION_TIMEOUT, CancellationReasons.forTimeout(), now);
+        // D-78/D-79: ORDER_CANCELLED nasce na mesma transação do CANCELLED por timeout.
+        orderTimelineEvents.cancelled(order);
 
         UUID eventId = UUID.randomUUID();
         ReleaseStockCommand command = ReleaseStockCommand.from(

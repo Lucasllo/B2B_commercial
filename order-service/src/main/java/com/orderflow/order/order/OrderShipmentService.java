@@ -4,6 +4,7 @@ import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
 import com.orderflow.order.saga.messaging.dto.ShipStockCommand;
 import com.orderflow.order.saga.outbox.OutboxWriter;
+import com.orderflow.order.timeline.OrderTimelineEvents;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,18 +27,22 @@ import java.util.UUID;
  *
  * <p>D-75: {@link #ship} grava o comando {@code ShipStock} no outbox na MESMA transação que grava
  * {@code SHIPPED} (sem dual-write, T-06-07); o relay é o único caminho de envio ao SQS. O pedido não
- * espera a baixa física e não existe estado intermediário. {@link #deliver} não grava nada no
- * outbox nesta fase.
+ * espera a baixa física e não existe estado intermediário. {@link #deliver} não grava comando de
+ * estoque nenhum. Desde 06-05 ambas gravam também o evento de linha do tempo ({@code ORDER_SHIPPED}
+ * / {@code ORDER_DELIVERED}, D-78) no outbox, na mesma transação da transição (D-79).
  */
 @Service
 public class OrderShipmentService {
 
     private final OrderRepository orderRepository;
     private final OutboxWriter outboxWriter;
+    private final OrderTimelineEvents orderTimelineEvents;
 
-    public OrderShipmentService(OrderRepository orderRepository, OutboxWriter outboxWriter) {
+    public OrderShipmentService(OrderRepository orderRepository, OutboxWriter outboxWriter,
+                                OrderTimelineEvents orderTimelineEvents) {
         this.orderRepository = orderRepository;
         this.outboxWriter = outboxWriter;
+        this.orderTimelineEvents = orderTimelineEvents;
     }
 
     @Transactional
@@ -49,14 +54,18 @@ public class OrderShipmentService {
 
         ShipStockCommand command = ShipStockCommand.from(order, UUID.randomUUID(), now.toInstant());
         outboxWriter.enqueue(command.eventId(), ShipStockCommand.EVENT_TYPE, order.getId().toString(), command);
+        // D-78/D-79: além da baixa física, a linha do tempo ganha ORDER_SHIPPED na mesma transação.
+        orderTimelineEvents.shipped(order);
         return OrderResponse.from(order);
     }
 
+    /** D-78/D-79: grava {@code ORDER_DELIVERED} no outbox, na mesma transação que grava {@code DELIVERED}. */
     @Transactional
     public OrderResponse deliver(UUID orderId, String sellerId) {
         Order order = lockOrder(orderId);
 
         order.deliver(sellerId, currentInstant());
+        orderTimelineEvents.delivered(order);
 
         return OrderResponse.from(order);
     }

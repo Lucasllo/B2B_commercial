@@ -4,6 +4,7 @@ import com.orderflow.order.credit.CompanyCreditLocker;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
 import com.orderflow.order.saga.ReservationSagaStarter;
+import com.orderflow.order.timeline.OrderTimelineEvents;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,23 +39,30 @@ public class OrderDecisionService {
     private final CompanyCreditLocker creditLocker;
     private final EntityManager entityManager;
     private final ReservationSagaStarter sagaStarter;
+    private final OrderTimelineEvents orderTimelineEvents;
 
     public OrderDecisionService(OrderRepository orderRepository, CompanyCreditLocker creditLocker,
-                                 EntityManager entityManager, ReservationSagaStarter sagaStarter) {
+                                 EntityManager entityManager, ReservationSagaStarter sagaStarter,
+                                 OrderTimelineEvents orderTimelineEvents) {
         this.orderRepository = orderRepository;
         this.creditLocker = creditLocker;
         this.entityManager = entityManager;
         this.sagaStarter = sagaStarter;
+        this.orderTimelineEvents = orderTimelineEvents;
     }
 
     /**
      * Depois de {@code approveManually}, entra na saga (D-48) com o mesmo instante já gravado em
      * {@code decidedAt} — mesma transação que adquiriu a trava da empresa e fez o {@code refresh}.
      * {@link #reject} não muda: rejeição nunca inicia a saga.
+     *
+     * <p>D-78: a aprovação grava {@code ORDER_APPROVED} (com {@code decidedBy} do vendedor) no
+     * outbox, na mesma transação da transição (D-79), ANTES do comando {@code ReserveStock}.
      */
     @Transactional
     public OrderResponse approve(UUID orderId, String sellerId, String reason) {
         Order order = decide(orderId, o -> o.approveManually(sellerId, reason, currentInstant()));
+        orderTimelineEvents.approved(order);
         sagaStarter.start(order, order.getDecidedAt());
         return OrderResponse.from(order);
     }
@@ -63,10 +71,14 @@ public class OrderDecisionService {
      * Mesmo fluxo de {@link #approve} (busca → trava → releitura → instante → transição). A
      * rejeição não muda a exposição (D-37), mas passa pela trava assim mesmo: é o que serializa
      * uma aprovação e uma rejeição disparadas juntas no mesmo pedido.
+     *
+     * <p>D-78: a rejeição grava {@code ORDER_REJECTED} (decisor e motivo) no outbox, na mesma
+     * transação da transição (D-79); nenhum {@code ReserveStock} é gravado.
      */
     @Transactional
     public OrderResponse reject(UUID orderId, String sellerId, String reason) {
         Order order = decide(orderId, o -> o.reject(sellerId, reason, currentInstant()));
+        orderTimelineEvents.rejected(order);
         return OrderResponse.from(order);
     }
 
