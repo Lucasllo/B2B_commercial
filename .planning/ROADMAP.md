@@ -186,7 +186,7 @@ Plans:
   3. Consultando o histórico de notificações de um pedido, aparece a linha do tempo completa: criado, aprovado (quando houve aprovação), confirmado ou cancelado, enviado e entregue.
   4. O fluxo de status CREATED → PENDING_APPROVAL → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) está documentado com diagrama e corresponde exatamente ao comportamento real da API.
 
-**Plans:** 4/7 plans executed
+**Plans:** 5/7 plans executed
 
 Plans:
 *Todos em sequência — a sessão do LocalStack Hobby é única por token e todo plano com IT usa LocalStack; 06-07 vem por último para documentar o que já foi demonstrado.*
@@ -209,7 +209,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 06-05-PLAN.md — order-service: toda transição persistida grava seu evento `ORDER_*` no outbox e o relay os entrega na `notification-events-queue` existente (ORD-10)
+- [x] 06-05-PLAN.md — order-service: toda transição persistida grava seu evento `ORDER_*` no outbox e o relay os entrega na `notification-events-queue` existente (ORD-10)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -247,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Primeira Integração Assíncrona — Histórico de Notificações | 3/3 | Complete    | 2026-09-23 |
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
-| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 4/7 | In Progress|  |
+| 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 5/7 | In Progress|  |
 | 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
 
 ## Coverage

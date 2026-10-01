@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido
 status: executing
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-10-01T00:50:28.433Z"
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-10-01T01:05:08.851Z"
 last_activity: 2026-09-30
 last_activity_desc: Phase 06 execution started
-state_head: cadaab74bf8503e787dab317a25c5846937daebc
+state_head: 63526c9e2176710838bb59204f1f45b2f76ea9ec
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 26
+  completed_plans: 27
   percent: 71
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 ## Current Position
 
 Phase: 06 (Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-09-30 — Phase 06 execution started
 
@@ -81,6 +81,7 @@ Progress: [███████░░░] 71%
 | Phase 06 P02 | 22 min | 2 tasks | 11 files |
 | Phase 06 P03 | 45 min | 2 tasks | 9 files |
 | Phase 06 P04 | 14 min | 3 tasks | 15 files |
+| Phase 06 P05 | 11 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,7 @@ Recent decisions affecting current work:
 - [Phase 06]: PRODUCT_HISTORY_ROUTE=kept: GET /notifications/{productId} inalterado, so SELLER_ADMIN
 - [Phase 06]: TIMELINE_ORDER=occurredAt,lifecycle-rank,sortKey nas duas rotas de historico
 - [Phase 06]: TIMELINE_READ_RULE: SELLER_ADMIN lista (vazia sem eventos); BUYER 404 identico se vazia ou algum companyId != JWT; rota de pedido so devolve ORDER_*
+- [Phase 06]: TIMELINE_OCCURRED_AT=transition-column; TIMELINE_ROUTING=explicit-list; TEST_LOCALSTACK_SERVICES=sqs,dynamodb (06-05) — occurredAt vem da coluna gravada pela transicao; o relay roteia ORDER_* por lista explicita; o LocalStack dos ITs do order-service copia os hooks 01 e 02
 
 ### Pending Todos
 
@@ -172,6 +174,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T00:50:28.233Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-10-01T01:05:08.659Z
+Stopped at: Completed 06-05-PLAN.md
 Resume file: None
