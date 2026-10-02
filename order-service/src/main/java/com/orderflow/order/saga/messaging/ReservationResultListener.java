@@ -1,5 +1,6 @@
 package com.orderflow.order.saga.messaging;
 
+import com.orderflow.order.observability.CorrelationContext;
 import com.orderflow.order.saga.OrderSagaService;
 import com.orderflow.order.saga.messaging.dto.StockReservationFailedEvent;
 import com.orderflow.order.saga.messaging.dto.StockReservedEvent;
@@ -7,6 +8,7 @@ import io.awspring.cloud.sqs.annotation.SqsListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,16 +39,20 @@ public class ReservationResultListener {
     }
 
     @SqsListener("${orderflow.messaging.order-events-queue}")
-    public void onMessage(String payload) {
-        try {
-            Object event = sagaEventParser.parse(payload);
-            if (event instanceof StockReservationFailedEvent failed) {
-                orderSagaService.applyReservationFailed(failed);
-            } else if (event instanceof StockReservedEvent reserved) {
-                orderSagaService.applyStockReserved(reserved);
+    public void onMessage(String payload,
+                          @Header(name = CorrelationContext.SQS_ATTRIBUTE, required = false) String correlationId) {
+        try (var scope = CorrelationContext.open(correlationId)) {
+            log.info("Mensagem recebida da fila '{}'", queueName);
+            try {
+                Object event = sagaEventParser.parse(payload);
+                if (event instanceof StockReservationFailedEvent failed) {
+                    orderSagaService.applyReservationFailed(failed);
+                } else if (event instanceof StockReservedEvent reserved) {
+                    orderSagaService.applyStockReserved(reserved);
+                }
+            } catch (InvalidSagaMessageException e) {
+                log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
             }
-        } catch (InvalidSagaMessageException e) {
-            log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
         }
     }
 }

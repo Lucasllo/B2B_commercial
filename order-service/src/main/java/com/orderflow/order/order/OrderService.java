@@ -2,6 +2,7 @@ package com.orderflow.order.order;
 
 import com.orderflow.order.credit.CompanyCreditLocker;
 import com.orderflow.order.credit.CreditPolicy;
+import com.orderflow.order.observability.CorrelationContext;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.dto.OrderSummaryResponse;
 import com.orderflow.order.order.exception.OrderNotFoundException;
@@ -62,6 +63,7 @@ public class OrderService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
 
         Order order = Order.create(companyId, createdBy, pricedItems, now);
+        order.recordCorrelationId(CorrelationContext.current());
 
         BigDecimal exposure = orderRepository.sumTotalByCompanyIdAndStatusIn(companyId, OrderStatus.CREDIT_CONSUMING);
         if (exposure == null) {

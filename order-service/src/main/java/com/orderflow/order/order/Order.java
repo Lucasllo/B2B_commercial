@@ -148,6 +148,9 @@ public class Order {
      * requisição que criou o pedido não é substituído por transições posteriores.
      */
     public void recordCorrelationId(String correlationId) {
+        if (this.correlationId == null) {
+            this.correlationId = correlationId;
+        }
     }
 
     /**

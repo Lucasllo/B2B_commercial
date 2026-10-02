@@ -1,5 +1,6 @@
 package com.orderflow.order.saga;
 
+import com.orderflow.order.observability.CorrelationContext;
 import com.orderflow.order.order.CancellationCode;
 import com.orderflow.order.order.Order;
 import com.orderflow.order.order.OrderItem;
@@ -81,6 +82,7 @@ public class OrderSagaService {
         order.cancel(CancellationCode.valueOf(event.reasonCode()), reason, now);
         // D-78/D-79: ORDER_CANCELLED nasce na MESMA transação (e sob a mesma trava de linha) do CANCELLED.
         orderTimelineEvents.cancelled(order);
+        log.info("Pedido cancelado orderId={} code={}", order.getId(), event.reasonCode());
     }
 
     /**
@@ -126,6 +128,7 @@ public class OrderSagaService {
             // D-78/D-79: ORDER_CONFIRMED (com transportadora e rastreio) só neste ramo - o ramo
             // CANCELLED do ReleaseStock tardio e o de duplicata não são transição do pedido.
             orderTimelineEvents.confirmed(order);
+            log.info("Pedido confirmado orderId={}", order.getId());
             return;
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
@@ -168,15 +171,18 @@ public class OrderSagaService {
             return;
         }
 
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
-        order.cancel(CancellationCode.RESERVATION_TIMEOUT, CancellationReasons.forTimeout(), now);
-        // D-78/D-79: ORDER_CANCELLED nasce na mesma transação do CANCELLED por timeout.
-        orderTimelineEvents.cancelled(order);
+        try (var scope = CorrelationContext.open(order.getCorrelationId())) {
+            OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+            order.cancel(CancellationCode.RESERVATION_TIMEOUT, CancellationReasons.forTimeout(), now);
+            // D-78/D-79: ORDER_CANCELLED nasce na mesma transação do CANCELLED por timeout.
+            orderTimelineEvents.cancelled(order);
 
-        UUID eventId = UUID.randomUUID();
-        ReleaseStockCommand command = ReleaseStockCommand.from(
-                order, eventId, now.toInstant(), ReleaseStockCommand.RESERVATION_TIMEOUT);
-        outboxWriter.enqueue(command.eventId(), ReleaseStockCommand.EVENT_TYPE, order.getId().toString(), command);
+            UUID eventId = UUID.randomUUID();
+            ReleaseStockCommand command = ReleaseStockCommand.from(
+                    order, eventId, now.toInstant(), ReleaseStockCommand.RESERVATION_TIMEOUT);
+            outboxWriter.enqueue(command.eventId(), ReleaseStockCommand.EVENT_TYPE, order.getId().toString(), command);
+            log.info("Pedido cancelado por timeout orderId={}", order.getId());
+        }
     }
 
     /** Compara por (productId → quantity), independente de ordem — {@code STOCK_RESERVED_ITEMS_CHECK}. */
