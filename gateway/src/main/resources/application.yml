@@ -13,6 +13,40 @@ spring:
           # Não sobrescrever routes[N].uri por propriedade: uma segunda fonte substitui a lista
           # inteira e a subida falha (Pitfall 4). O IT troca só estes placeholders.
           routes:
+            # Docs antes das rotas de negócio (D-87). Predicado só Path — Method cobrindo todos
+            # os verbos já derrubou a subida do springdoc (issue #2506, Unexpected value: TRACE).
+            # O Gateway não tem Spring Security (D-05), então estes caminhos não precisam de
+            # permitAll aqui; os serviços continuam liberando só os caminhos de docs (D-91).
+            - id: auth-docs
+              uri: ${orderflow.gateway.upstream.auth:http://auth-service:8081}
+              predicates:
+                - Path=/docs/auth/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+            - id: catalog-docs
+              uri: ${orderflow.gateway.upstream.catalog:http://catalog-service:8082}
+              predicates:
+                - Path=/docs/catalog/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+            - id: inventory-docs
+              uri: ${orderflow.gateway.upstream.inventory:http://inventory-service:8083}
+              predicates:
+                - Path=/docs/inventory/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+            - id: notification-docs
+              uri: ${orderflow.gateway.upstream.notification:http://notification-service:8084}
+              predicates:
+                - Path=/docs/notification/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+            - id: order-docs
+              uri: ${orderflow.gateway.upstream.order:http://order-service:8085}
+              predicates:
+                - Path=/docs/order/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
             - id: auth-service-route
               uri: ${orderflow.gateway.upstream.auth:http://auth-service:8081}
               predicates:
@@ -49,6 +83,23 @@ spring:
 logging:
   pattern:
     correlation: "[%X{correlationId:-}] "
+
+# O /v3/api-docs do próprio Gateway não entra no dropdown: não há API de negócio aqui (D-87).
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: auth-service
+        url: /docs/auth/v3/api-docs
+      - name: catalog-service
+        url: /docs/catalog/v3/api-docs
+      - name: inventory-service
+        url: /docs/inventory/v3/api-docs
+      - name: notification-service
+        url: /docs/notification/v3/api-docs
+      - name: order-service
+        url: /docs/order/v3/api-docs
+    urls-primary-name: order-service
 
 management:
   endpoints:
