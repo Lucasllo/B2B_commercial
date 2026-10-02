@@ -129,6 +129,17 @@ class CorrelationIdPropagationIT extends AbstractIntegrationTest {
         assertThat(outboxCorrelationId(second.orderId(), "ORDER_CONFIRMED")).isNotEqualTo("cid-a").isNotBlank();
     }
 
+    @Test
+    void postOrdersForwardsTheCorrelationIdToCatalogAndCreditLimit() throws Exception {
+        PlacedOrder order = placeWithinLimitOrder("it-sync-cid-5", "SKU-CID-SYNC");
+
+        assertThat(stub().requests())
+                .filteredOn(request -> request.path().equals("/products/" + order.productId())
+                        || request.path().equals("/companies/" + order.companyId() + "/credit-limit"))
+                .isNotEmpty()
+                .allSatisfy(request -> assertThat(request.correlationIdHeader()).isEqualTo("it-sync-cid-5"));
+    }
+
     private UUID createWithinLimitOrder(String correlationId, String sku) throws Exception {
         return placeWithinLimitOrder(correlationId, sku).orderId();
     }
@@ -154,7 +165,7 @@ class CorrelationIdPropagationIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andReturn();
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
-        return new PlacedOrder(UUID.fromString(json.get("id").asText()), productId);
+        return new PlacedOrder(UUID.fromString(json.get("id").asText()), productId, companyId);
     }
 
     private void awaitOrderStatus(UUID orderId, String expected) {
@@ -185,6 +196,6 @@ class CorrelationIdPropagationIT extends AbstractIntegrationTest {
         return new OrderSagaQueues(sqsAsyncClient, objectMapper, inventoryCommandsQueue, orderEventsQueue);
     }
 
-    private record PlacedOrder(UUID orderId, UUID productId) {
+    private record PlacedOrder(UUID orderId, UUID productId, UUID companyId) {
     }
 }

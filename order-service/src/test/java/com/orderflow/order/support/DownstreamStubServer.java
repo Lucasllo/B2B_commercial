@@ -54,7 +54,7 @@ public final class DownstreamStubServer {
     private record CreditLimitRecord(UUID companyId, BigDecimal creditLimit) {
     }
 
-    public record RecordedRequest(String method, String path, String authorizationHeader) {
+    public record RecordedRequest(String method, String path, String authorizationHeader, String correlationIdHeader) {
     }
 
     // JsonGenerator.Feature (não SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN, depreciado) —
@@ -241,8 +241,9 @@ public final class DownstreamStubServer {
 
     private void record(HttpExchange exchange) {
         String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+        String correlationId = exchange.getRequestHeaders().getFirst("X-Correlation-Id");
         recordedRequests.add(new RecordedRequest(
-                exchange.getRequestMethod(), exchange.getRequestURI().getPath(), authorization));
+                exchange.getRequestMethod(), exchange.getRequestURI().getPath(), authorization, correlationId));
     }
 
     private void sendJson(HttpExchange exchange, int statusCode, Object body) throws IOException {
