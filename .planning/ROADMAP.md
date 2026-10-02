@@ -233,7 +233,42 @@ Plans:
   4. Todo serviço tem testes unitários cobrindo suas regras de negócio centrais e ao menos um teste de integração contra dependência real (PostgreSQL ou LocalStack), sem lacunas herdadas das fases anteriores.
   5. As decisões-chave (saga por orquestração em vez de coreografia, outbox em vez de publicação direta, LocalStack em vez de AWS real, ausência deliberada de service discovery/config server) estão registradas como ADRs em português, cada uma com ao menos uma alternativa rejeitada e o motivo.
 
-**Plans**: TBD
+**Plans:** 11 plans
+
+Plans:
+*No máximo um plano com Testcontainers LocalStack por onda (sessão única do LocalStack Hobby por token, D-101); planos sem LocalStack rodam em paralelo, sem módulo Maven em comum na mesma onda.*
+
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — gateway: Correlation-ID nasce/valida no Gateway (header único no pedido e na resposta, MDC, log de acesso), Swagger UI única com rotas `/docs/<svc>/v3/api-docs`, URIs parametrizadas e primeiros testes do gateway (unitário + IT); estudos 27 e 28 (QUAL-01, QUAL-02, TEST-01, TEST-02)
+- [ ] 07-02-PLAN.md — order-service: Correlation-ID HTTP → MDC → coluna no outbox (V4) → atributo SQS `correlationId`, listener de resultados com MDC, timeout herda `orders.correlation_id`, interceptor do `RestClient` (QUAL-02, TEST-01, TEST-02)
+- [ ] 07-03-PLAN.md — catalog e auth: OpenAPI "contratos + erros" com `ErrorResponse`, `server` `/api`, login público e JWKS oculto, travado por `OpenApiDocsIT` (QUAL-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 07-04-PLAN.md — inventory-service: atributo SQS → MDC no consumidor, outbox com Correlation-ID (V5), filtro HTTP e E2E `CorrelationIdE2EIT` provando o mesmo ID em order e inventory (QUAL-02, TEST-01, TEST-02)
+- [ ] 07-05-PLAN.md — catalog e auth: filtro de Correlation-ID recebendo o ID repassado pelo order-service e testes unitários das regras centrais (`ProductService`, `CompanyService`, `CompanyGuard`, `TokenService`) (QUAL-02, TEST-01, TEST-02)
+- [ ] 07-06-PLAN.md — 11 ADRs MADR em português (os 4 do critério 5 primeiro), índice e `scripts/check-adrs.sh`; gate de API externa (INFRA-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 07-07-PLAN.md — notification-service: Correlation-ID do atributo SQS nos logs de recebimento/registro, filtro HTTP, WR-03 (descarte com `orderId`/`eventType`) e OpenAPI (QUAL-01, QUAL-02, TEST-01, TEST-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 07-08-PLAN.md — order e inventory: OpenAPI "contratos + erros" com o enum real de `OrderStatus` e as 7 + 4 operações travadas por teste (QUAL-01)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 07-09-PLAN.md — inventory-service: WR-01 (`ShipStock` inválido vai à DLQ) e WR-02 (`@Recover` por nome em `shipAll`/`releaseAll`) com testes (TEST-01, TEST-02)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 07-10-PLAN.md — matriz regra → teste (`07-COVERAGE.md`) com `scripts/check-coverage-matrix.sh`, lacunas fechadas (estoque e orquestração do pedido) e reactor inteiro verde (TEST-01, TEST-02)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 07-11-PLAN.md — entrega: `scripts/smoke-correlation-id.sh` na stack real, pipeline `.github/workflows/ci.yml` (LocalStack em sequência, e2e no fim, falha visível sem token, relatórios), README "Para avaliadores" e docs (INFRA-02, QUAL-01, QUAL-02)
 
 ## Progress
 
@@ -248,7 +283,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | Complete    | 2026-10-01 |
-| 7. Endurecimento, Observabilidade e Entrega | 0/TBD | Not started | - |
+| 7. Endurecimento, Observabilidade e Entrega | 0/11 | Not started | - |
 
 ## Coverage
 
