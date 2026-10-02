@@ -1,11 +1,14 @@
 package com.orderflow.gateway;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orderflow.gateway.support.UpstreamStubServer;
 import com.orderflow.gateway.support.UpstreamStubServer.CapturedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -26,7 +29,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Prova o Gateway de verdade contra cinco upstreams HTTP (D-106, TEST-01, TEST-02): a tabela
  * de rotas do {@code application.yml} (URIs trocadas por {@link DynamicPropertySource}, sem
  * reescrever a lista), um único {@code X-Correlation-Id} no serviço e na resposta mesmo
- * quando o stub ecoa o header, e a linha de acesso com o ID — exceto em {@code /actuator}.
+ * quando o stub ecoa o header, a linha de acesso com o ID — exceto em {@code /actuator} — e a
+ * Swagger UI única: o dropdown lista os cinco specs e cada {@code /docs/<svc>/v3/api-docs}
+ * chega só no stub daquele serviço, já com {@code StripPrefix} nas rotas de negócio.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ExtendWith(OutputCaptureExtension.class)
@@ -49,6 +54,9 @@ class GatewayRoutingIT {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @DynamicPropertySource
     static void upstreams(DynamicPropertyRegistry registry) {
@@ -126,6 +134,83 @@ class GatewayRoutingIT {
         String logged = output.toString();
         assertThat(logged).contains("GET /api/orders/abc -> 200");
         assertThat(logged).doesNotContain("token=secret").doesNotContain("super-secret");
+    }
+
+    @Test
+    void swaggerConfigListsExactlyTheFiveServiceSpecs() throws Exception {
+        HttpResponse<String> response = send("/v3/api-docs/swagger-config");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(response.body());
+        JsonNode urls = json.get("urls");
+        assertThat(urls).hasSize(5);
+        List<String> services = List.of("auth", "catalog", "inventory", "notification", "order");
+        for (int i = 0; i < services.size(); i++) {
+            String service = services.get(i);
+            assertThat(urls.get(i).get("name").asText()).isEqualTo(service + "-service");
+            assertThat(urls.get(i).get("url").asText()).isEqualTo("/docs/" + service + "/v3/api-docs");
+        }
+        assertThat(json.path("urls.primaryName").asText()).isEqualTo("order-service");
+    }
+
+    @Test
+    void swaggerUiHtmlRedirectsToTheIndex() throws Exception {
+        HttpResponse<String> redirect = send("/swagger-ui.html");
+
+        assertThat(redirect.statusCode()).isEqualTo(302);
+        assertThat(redirect.headers().firstValue("Location").orElse("")).endsWith("/swagger-ui/index.html");
+
+        HttpResponse<String> index = send("/swagger-ui/index.html");
+        assertThat(index.statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void eachDocsRouteFetchesOnlyThatServiceSpec() throws Exception {
+        record Spec(String service, UpstreamStubServer stub) {
+        }
+        List<Spec> specs = List.of(
+                new Spec("auth", AUTH),
+                new Spec("catalog", CATALOG),
+                new Spec("inventory", INVENTORY),
+                new Spec("notification", NOTIFICATION),
+                new Spec("order", ORDER));
+        for (Spec spec : specs) {
+            STUBS.forEach(UpstreamStubServer::reset);
+            HttpResponse<String> response = send("/docs/" + spec.service + "/v3/api-docs");
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(objectMapper.readTree(response.body()).path("info").path("title").asText())
+                    .isEqualTo(spec.service + "-service");
+            assertThat(spec.stub.requests()).hasSize(1);
+            assertThat(spec.stub.requests().getFirst().path()).isEqualTo("/v3/api-docs");
+            for (UpstreamStubServer other : STUBS) {
+                if (other != spec.stub) {
+                    assertThat(other.requests()).isEmpty();
+                }
+            }
+        }
+    }
+
+    @Test
+    void businessRoutesStripTheApiPrefixOntoTheRightStub() throws Exception {
+        assertRouted("/api/auth/login", AUTH, "/auth/login");
+        assertRouted("/api/companies/x", AUTH, "/companies/x");
+        assertRouted("/api/products/x", CATALOG, "/products/x");
+        assertRouted("/api/inventory/x", INVENTORY, "/inventory/x");
+        assertRouted("/api/notifications/x", NOTIFICATION, "/notifications/x");
+        assertRouted("/api/orders/x", ORDER, "/orders/x");
+    }
+
+    private void assertRouted(String path, UpstreamStubServer stub, String upstreamPath) throws Exception {
+        STUBS.forEach(UpstreamStubServer::reset);
+        HttpResponse<String> response = send(path);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(stub.requests()).hasSize(1);
+        assertThat(stub.requests().getFirst().path()).isEqualTo(upstreamPath);
+        for (UpstreamStubServer other : STUBS) {
+            if (other != stub) {
+                assertThat(other.requests()).isEmpty();
+            }
+        }
     }
 
     private CapturedRequest onlyOrderRequest() {

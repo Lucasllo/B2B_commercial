@@ -98,3 +98,7 @@ pasta é para consulta própria durante o aprendizado.
     Gateway, por que o MDC do SLF4J é por thread e precisa ser limpo, por que o valor do
     cliente é validado antes de entrar no log, e como esse mesmo ID atravessa o SQS pela
     coluna do outbox em vez de "pular" de thread em thread
+28. [OpenAPI agregado no Gateway](28-openapi-agregado-no-gateway.md) — por que o avaliador
+    abre uma Swagger UI só, como o dropdown busca cada spec em `/docs/<svc>/v3/api-docs` na
+    mesma origem, por que esse prefixo não é `/api`, e por que o "Try it out" passa pelo
+    Gateway com `server` `/api`
