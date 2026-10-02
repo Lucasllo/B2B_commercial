@@ -31,7 +31,7 @@
     {
       "number": "6",
       "name": "Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "7",
@@ -42,7 +42,7 @@
   "next": {
     "command": "/gsd:progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 6 of 7 · 71% · executing"
+    "reason": "Phase 7 of 7 · 73% · executing"
   },
-  "updated_at": "2026-09-30T23:45:29.595Z"
+  "updated_at": "2026-10-02T00:42:14.755Z"
 }
