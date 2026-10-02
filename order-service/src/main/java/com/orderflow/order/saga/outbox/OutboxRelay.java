@@ -1,5 +1,6 @@
 package com.orderflow.order.saga.outbox;
 
+import com.orderflow.order.observability.CorrelationContext;
 import com.orderflow.order.saga.messaging.dto.ReserveStockCommand;
 import com.orderflow.order.saga.messaging.dto.ShipStockCommand;
 import com.orderflow.order.timeline.OrderLifecycleEvent;
@@ -7,6 +8,8 @@ import io.awspring.cloud.sqs.operations.SqsOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,10 @@ import java.util.List;
  * OutboxEvent#recordFailure} + log WARN citando {@code eventId}/{@code eventType}/fila, nunca o
  * payload (T-05-03) — e o laço segue para os demais (T-05-02): nunca engole a falha sem registrar,
  * e nunca derruba o lote inteiro por um evento que falhou.
+ *
+ * <p>O Correlation-ID sai da LINHA do outbox, não do MDC: o relay roda em thread {@code @Scheduled},
+ * sem requisição HTTP (D-94). Cada evento abre o próprio escopo para a linha de log e o fecha
+ * antes do próximo, para dois IDs não se misturarem na mesma thread.
  */
 @Component
 public class OutboxRelay {
@@ -59,9 +66,16 @@ public class OutboxRelay {
         for (OutboxEvent event : batch) {
             try {
                 String queueName = resolveQueue(event.getEventType());
-                sqsOperations.send(queueName, event.getPayload());
-                event.markPublished(OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS));
-                published++;
+                try (var scope = CorrelationContext.open(event.getCorrelationId())) {
+                    Message<String> message = MessageBuilder.withPayload(event.getPayload())
+                            .setHeader(CorrelationContext.SQS_ATTRIBUTE, event.getCorrelationId())
+                            .build();
+                    sqsOperations.send(queueName, message);
+                    log.info("Evento outbox publicado eventId={} eventType={} fila='{}'",
+                            event.getId(), event.getEventType(), queueName);
+                    event.markPublished(OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS));
+                    published++;
+                }
             } catch (RuntimeException e) {
                 log.warn("Falha ao publicar evento outbox eventId={} eventType={} na fila '{}' — "
                                 + "tentativa {} registrada, será reprocessado no próximo ciclo do relay",
