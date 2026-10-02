@@ -1,6 +1,7 @@
 package com.orderflow.order.config;
 
 import com.orderflow.order.config.ClientProperties.Downstream;
+import com.orderflow.order.observability.CorrelationContext;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,6 +39,10 @@ public class ClientConfig {
      * produção a partir desta mesma fábrica — com o mesmo {@link JdkClientHttpRequestFactory} e os
      * mesmos timeouts explícitos — em vez de uma cópia, para que o teste de porta fechada exercite
      * exatamente o código que roda em produção, não uma reimplementação que poderia divergir.
+     *
+     * <p>O interceptor copia o Correlation-ID do MDC para {@code X-Correlation-Id} quando há um
+     * (D-96). Sem MDC o header não sai. O catalog-service e o auth-service registram o mesmo ID
+     * com o filtro deles (07-05).
      */
     public static RestClient buildRestClient(Downstream downstream) {
         HttpClient httpClient = HttpClient.newBuilder()
@@ -51,6 +56,13 @@ public class ClientConfig {
         return RestClient.builder()
                 .baseUrl(downstream.baseUrl().toString())
                 .requestFactory(requestFactory)
+                .requestInterceptor((request, body, execution) -> {
+                    String id = CorrelationContext.current();
+                    if (id != null) {
+                        request.getHeaders().set(CorrelationContext.HEADER, id);
+                    }
+                    return execution.execute(request, body);
+                })
                 .build();
     }
 }
