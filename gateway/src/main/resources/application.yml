@@ -10,37 +10,45 @@ spring:
     gateway:
       server:
         webmvc:
+          # Não sobrescrever routes[N].uri por propriedade: uma segunda fonte substitui a lista
+          # inteira e a subida falha (Pitfall 4). O IT troca só estes placeholders.
           routes:
             - id: auth-service-route
-              uri: http://auth-service:8081
+              uri: ${orderflow.gateway.upstream.auth:http://auth-service:8081}
               predicates:
                 - Path=/api/auth/**,/api/companies/**
               filters:
                 - StripPrefix=1
             - id: catalog-service-route
-              uri: http://catalog-service:8082
+              uri: ${orderflow.gateway.upstream.catalog:http://catalog-service:8082}
               predicates:
                 - Path=/api/products/**
               filters:
                 - StripPrefix=1
             - id: inventory-service-route
-              uri: http://inventory-service:8083
+              uri: ${orderflow.gateway.upstream.inventory:http://inventory-service:8083}
               predicates:
                 - Path=/api/inventory/**
               filters:
                 - StripPrefix=1
             - id: notification-service-route
-              uri: http://notification-service:8084
+              uri: ${orderflow.gateway.upstream.notification:http://notification-service:8084}
               predicates:
                 - Path=/api/notifications/**
               filters:
                 - StripPrefix=1
             - id: order-service-route
-              uri: http://order-service:8085
+              uri: ${orderflow.gateway.upstream.order:http://order-service:8085}
               predicates:
                 - Path=/api/orders/**
               filters:
                 - StripPrefix=1
+
+# O mesmo padrão vai para os 5 serviços: imprime [correlationId] depois da thread quando o MDC
+# está preenchido, e nada quando não está (D-97).
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
 
 management:
   endpoints:
