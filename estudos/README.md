@@ -94,3 +94,7 @@ pasta é para consulta própria durante o aprendizado.
     a tabela `outbox_event` e o relay com `FOR UPDATE SKIP LOCKED`, as filas com DLQ, a
     reserva tudo-ou-nada do `inventory-service`, a idempotência pelo estado do pedido, a
     compensação com `ReleaseStock` e o que ainda falta no plano 05-04
+27. [Correlation-ID e MDC](27-correlation-id-e-mdc.md) — o identificador que nasce no
+    Gateway, por que o MDC do SLF4J é por thread e precisa ser limpo, por que o valor do
+    cliente é validado antes de entrar no log, e como esse mesmo ID atravessa o SQS pela
+    coluna do outbox em vez de "pular" de thread em thread
