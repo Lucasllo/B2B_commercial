@@ -1,10 +1,13 @@
 package com.orderflow.order.saga.outbox;
 
+import com.orderflow.order.observability.CorrelationContext;
 import io.awspring.cloud.sqs.operations.SqsOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.messaging.Message;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -17,13 +20,14 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Testes unitários (Mockito, sem Spring, T-05-02) de {@link OutboxRelay} — isolamento de falha por
- * evento: uma exceção no envio de um evento nunca impede a publicação dos demais do mesmo lote, e
- * um {@code eventType} desconhecido é tratado como falha do evento, nunca enviado a fila nenhuma.
+ * evento, roteamento por tipo, e o message attribute {@code correlationId} lido da linha do outbox
+ * (D-94). O envio é {@code send(String, Message)}: o corpo comparado por {@code getPayload()}.
  */
 @ExtendWith(MockitoExtension.class)
 class OutboxRelayTest {
@@ -46,9 +50,9 @@ class OutboxRelayTest {
         when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(first, second, third));
 
         doThrow(new RuntimeException("simulated SQS failure"))
-                .when(sqsOperations).send(eq(QUEUE_NAME), eq(first.getPayload()));
-        when(sqsOperations.send(eq(QUEUE_NAME), eq(second.getPayload()))).thenReturn(null);
-        when(sqsOperations.send(eq(QUEUE_NAME), eq(third.getPayload()))).thenReturn(null);
+                .when(sqsOperations).send(eq(QUEUE_NAME), payloadEq(first.getPayload()));
+        when(sqsOperations.send(eq(QUEUE_NAME), payloadEq(second.getPayload()))).thenReturn(null);
+        when(sqsOperations.send(eq(QUEUE_NAME), payloadEq(third.getPayload()))).thenReturn(null);
 
         OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
@@ -75,14 +79,14 @@ class OutboxRelayTest {
         assertThat(unknown.getPublishedAt()).isNull();
         assertThat(unknown.getAttempts()).isEqualTo(1);
         assertThat(unknown.getLastError()).isNotBlank();
-        verify(sqsOperations, org.mockito.Mockito.never()).send(anyString(), any());
+        verify(sqsOperations, never()).send(anyString(), any());
     }
 
     @Test
     void pendingShipStockEventIsSentToTheInventoryCommandsQueueAndMarkedPublished() {
         OutboxEvent shipStock = pendingEvent("ShipStock");
         when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(shipStock));
-        when(sqsOperations.send(eq(QUEUE_NAME), eq(shipStock.getPayload()))).thenReturn(null);
+        when(sqsOperations.send(eq(QUEUE_NAME), payloadEq(shipStock.getPayload()))).thenReturn(null);
 
         OutboxRelay relay = newRelay();
         int published = relay.publishPendingBatch();
@@ -90,7 +94,8 @@ class OutboxRelayTest {
         assertThat(published).isEqualTo(1);
         assertThat(shipStock.getPublishedAt()).isNotNull();
         assertThat(shipStock.getAttempts()).isZero();
-        verify(sqsOperations).send(eq(QUEUE_NAME), eq(shipStock.getPayload()));
+        Message<String> sent = captureSent(QUEUE_NAME);
+        assertThat(sent.getPayload()).isEqualTo(shipStock.getPayload());
     }
 
     @Test
@@ -119,12 +124,13 @@ class OutboxRelayTest {
 
         assertThat(published).isEqualTo(11);
         for (OutboxEvent event : timeline) {
-            verify(sqsOperations).send(eq(NOTIFICATION_QUEUE_NAME), eq(event.getPayload()));
+            assertThat(captureSent(NOTIFICATION_QUEUE_NAME, event.getPayload()).getPayload())
+                    .isEqualTo(event.getPayload());
             assertThat(event.getPublishedAt()).isNotNull();
             assertThat(event.getAttempts()).isZero();
         }
         for (OutboxEvent event : commands) {
-            verify(sqsOperations).send(eq(QUEUE_NAME), eq(event.getPayload()));
+            assertThat(captureSent(QUEUE_NAME, event.getPayload()).getPayload()).isEqualTo(event.getPayload());
             assertThat(event.getPublishedAt()).isNotNull();
         }
     }
@@ -142,8 +148,36 @@ class OutboxRelayTest {
         assertThat(teleported.getAttempts()).isEqualTo(1);
         assertThat(teleported.getLastError()).isNotBlank();
         assertThat(created.getPublishedAt()).isNotNull();
-        verify(sqsOperations).send(eq(NOTIFICATION_QUEUE_NAME), eq(created.getPayload()));
-        verify(sqsOperations, org.mockito.Mockito.never()).send(anyString(), eq(teleported.getPayload()));
+        assertThat(captureSent(NOTIFICATION_QUEUE_NAME).getPayload()).isEqualTo(created.getPayload());
+        verify(sqsOperations, never()).send(anyString(), payloadEq(teleported.getPayload()));
+    }
+
+    @Test
+    void eventWithCorrelationIdSendsItAsMessageHeader() {
+        OutboxEvent event = pendingEvent("ReserveStock", "cid-1");
+        when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(event));
+        when(sqsOperations.send(eq(QUEUE_NAME), payloadEq(event.getPayload()))).thenReturn(null);
+
+        int published = newRelay().publishPendingBatch();
+
+        assertThat(published).isEqualTo(1);
+        Message<String> sent = captureSent(QUEUE_NAME);
+        assertThat(sent.getPayload()).isEqualTo(event.getPayload());
+        assertThat(sent.getHeaders().get(CorrelationContext.SQS_ATTRIBUTE)).isEqualTo("cid-1");
+    }
+
+    @Test
+    void eventWithoutCorrelationIdSendsMessageWithoutThatHeader() {
+        OutboxEvent event = pendingEvent("ReserveStock", null);
+        when(outboxEventRepository.lockNextBatch(BATCH_SIZE)).thenReturn(List.of(event));
+        when(sqsOperations.send(eq(QUEUE_NAME), payloadEq(event.getPayload()))).thenReturn(null);
+
+        int published = newRelay().publishPendingBatch();
+
+        assertThat(published).isEqualTo(1);
+        Message<String> sent = captureSent(QUEUE_NAME);
+        assertThat(sent.getPayload()).isEqualTo(event.getPayload());
+        assertThat(sent.getHeaders().containsKey(CorrelationContext.SQS_ATTRIBUTE)).isFalse();
     }
 
     private OutboxRelay newRelay() {
@@ -152,9 +186,36 @@ class OutboxRelayTest {
     }
 
     private OutboxEvent pendingEvent(String eventType) {
+        return pendingEvent(eventType, null);
+    }
+
+    private OutboxEvent pendingEvent(String eventType, String correlationId) {
         UUID id = UUID.randomUUID();
         String payload = "{\"eventId\":\"" + id + "\",\"eventType\":\"" + eventType + "\"}";
         return OutboxEvent.pending(id, eventType, UUID.randomUUID().toString(), payload,
-                OffsetDateTime.now(ZoneOffset.UTC));
+                OffsetDateTime.now(ZoneOffset.UTC), correlationId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Message<String> payloadEq(String payload) {
+        return org.mockito.ArgumentMatchers.argThat(message ->
+                message != null && payload.equals(message.getPayload()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Message<String> captureSent(String queueName) {
+        ArgumentCaptor<Message<String>> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sqsOperations).send(eq(queueName), captor.capture());
+        return captor.getValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Message<String> captureSent(String queueName, String payload) {
+        ArgumentCaptor<Message<String>> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sqsOperations, org.mockito.Mockito.atLeastOnce()).send(eq(queueName), captor.capture());
+        return captor.getAllValues().stream()
+                .filter(message -> payload.equals(message.getPayload()))
+                .findFirst()
+                .orElseThrow();
     }
 }

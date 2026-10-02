@@ -54,8 +54,17 @@ public class OutboxEvent {
     @Column(name = "last_error", length = LAST_ERROR_MAX_LENGTH)
     private String lastError;
 
+    /** Correlation-ID da transação que gravou a linha (D-94). Nulo em linhas legadas, sem backfill. */
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
     public static OutboxEvent pending(UUID id, String eventType, String aggregateId, String payload,
                                        OffsetDateTime createdAt) {
+        return pending(id, eventType, aggregateId, payload, createdAt, null);
+    }
+
+    public static OutboxEvent pending(UUID id, String eventType, String aggregateId, String payload,
+                                       OffsetDateTime createdAt, String correlationId) {
         OutboxEvent event = new OutboxEvent();
         event.id = id;
         event.eventType = eventType;
@@ -63,6 +72,7 @@ public class OutboxEvent {
         event.payload = payload;
         event.createdAt = createdAt;
         event.attempts = 0;
+        event.correlationId = correlationId;
         return event;
     }
 

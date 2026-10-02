@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -61,6 +62,33 @@ public final class OrderSagaQueues {
     }
 
     /**
+     * Espera o comando {@code eventType} daquele pedido na {@code inventory-commands-queue} e devolve
+     * o message attribute {@code correlationId} (String), ou nulo quando a mensagem não traz o atributo.
+     */
+    public String awaitCommandCorrelationId(UUID orderId, String eventType) {
+        return awaitQueuedCommand(orderId, eventType).correlationId();
+    }
+
+    /**
+     * Mesma espera de {@link #awaitCommandCorrelationId}, devolvendo também o corpo para o teste
+     * afirmar que o envelope de negócio não ganhou campo novo.
+     */
+    public QueuedCommand awaitQueuedCommand(UUID orderId, String eventType) {
+        List<QueuedCommand> matches = new ArrayList<>();
+        String queueUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(inventoryCommandsQueue)).join().queueUrl();
+        await().atMost(Duration.ofSeconds(15))
+                .pollInterval(Duration.ofMillis(500))
+                .untilAsserted(() -> {
+                    drainQueuedCommandsOnce(queueUrl, orderId, eventType, matches);
+                    assertThat(matches).isNotEmpty();
+                });
+        return matches.get(0);
+    }
+
+    public record QueuedCommand(JsonNode body, String correlationId) {
+    }
+
+    /**
      * Espera até {@code expectedCount} comandos do {@code eventType} pedido para {@code orderId}
      * aparecerem na {@code inventory-commands-queue}, até 15 segundos, lendo e apagando até 10
      * mensagens por chamada.
@@ -89,6 +117,28 @@ public final class OrderSagaQueues {
             drainCommandsOnce(queueUrl, orderId, eventType, matches);
         }
         return matches;
+    }
+
+    private void drainQueuedCommandsOnce(String queueUrl, UUID orderId, String eventType, List<QueuedCommand> matches) {
+        var response = sqsAsyncClient.receiveMessage(r -> r.queueUrl(queueUrl)
+                .maxNumberOfMessages(10)
+                .waitTimeSeconds(1)
+                .messageAttributeNames("All")).join();
+        for (Message message : response.messages()) {
+            sqsAsyncClient.deleteMessage(r -> r.queueUrl(queueUrl).receiptHandle(message.receiptHandle())).join();
+            JsonNode body;
+            try {
+                body = objectMapper.readTree(message.body());
+            } catch (Exception e) {
+                continue;
+            }
+            if (body.has("orderId") && orderId.toString().equals(body.get("orderId").asText())
+                    && body.has("eventType") && eventType.equals(body.get("eventType").asText())) {
+                MessageAttributeValue attribute = message.messageAttributes().get("correlationId");
+                String correlationId = attribute == null ? null : attribute.stringValue();
+                matches.add(new QueuedCommand(body, correlationId));
+            }
+        }
     }
 
     private void drainCommandsOnce(String queueUrl, UUID orderId, String eventType, List<JsonNode> matches) {
