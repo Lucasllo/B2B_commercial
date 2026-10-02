@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 7
+current_phase: 07
 current_phase_name: Endurecimento, Observabilidade e Entrega
 status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-10-02T00:42:14.686Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-10-02T02:47:40.852Z"
 last_activity: 2026-10-01
-last_activity_desc: Phase 6 complete, transitioned to Phase 7
-state_head: 97a88dfdd9a350bf5fdc244d14c7d3e46383fb7c
+last_activity_desc: Phase 07 execution resumed (wave continue)
+state_head: 46918df9d14a91326689e2a32e4d8a91a1914c0f
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 40
-  completed_plans: 29
-  percent: 73
+  completed_plans: 30
+  percent: 75
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-10-01)
 
 ## Current Position
 
-Phase: 7 (Endurecimento, Observabilidade e Entrega) — READY TO EXECUTE
-Plan: Not started
+Phase: 07 (Endurecimento, Observabilidade e Entrega) — EXECUTING
+Plan: 2 of 11
 Status: Ready to execute
-Last activity: 2026-10-01 — Phase 6 complete, transitioned to Phase 7
+Last activity: 2026-10-01 — Phase 07 execution resumed (wave continue)
 
-Progress: [███████░░░] 73%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [███████░░░] 73%
 | Phase 06 P05 | 11 min | 2 tasks | 15 files |
 | Phase 06 P06 | 75 min | 2 tasks | 3 files |
 | Phase 06 P07 | 40 min | 3 tasks | 4 files |
+| Phase 07 P01 | 19min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,9 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-06: smoke afirma formato (carrier nao vazio, trackingCode ^[A-Z]{2}[0-9]{9}BR$), nao valor fixo — O rastreio depende do orderId gerado em cada execucao
 - [Phase 06]: 06-06: E2E de expedicao cobre order+inventory; linha do tempo so e provada pelo smoke na stack real (D-86) — notification-service fora do E2E por custo e fragilidade
 - [Phase 06]: 06-07: diagramas stateDiagram-v2 do README e da visao geral conferidos por OrderStatusDiagramConsistencyTest contra OrderStatus.transitions(); 'corresponde exatamente' = diagrama x tabela (este teste) + API x tabela (OrderLifecycleTransitionsIT) — Mantem documentacao e codigo travados pela mesma tabela unica (D-83)
+- [Phase 07]: CORRELATION_HEADER=X-Correlation-Id; CORRELATION_ID_PATTERN=[A-Za-z0-9-]{1,64}; CORRELATION_LOG_PATTERN=[%X{correlationId:-}]
+- [Phase 07]: GATEWAY_RESPONSE_HEADER_OWNER=gateway — um unico X-Correlation-Id na resposta, eco do servico ignorado
+- [Phase 07]: DOCS_ROUTES=/docs/<svc>/v3/api-docs com SetPath=/v3/api-docs; SWAGGER_PRIMARY=order-service
 
 ### Pending Todos
 
@@ -181,6 +185,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-01T23:33:33.468Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-endurecimento-observabilidade-e-entrega/07-CONTEXT.md
+Last session: 2026-10-02T02:47:40.617Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None

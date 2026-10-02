@@ -46,8 +46,8 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Quality & Observability
 
-- [ ] **QUAL-01**: Documentação OpenAPI/Swagger disponível para cada serviço
-- [ ] **QUAL-02**: Correlation-ID é gerado no API Gateway e propagado nos logs de todos os serviços envolvidos em uma requisição
+- [x] **QUAL-01**: Documentação OpenAPI/Swagger disponível para cada serviço
+- [x] **QUAL-02**: Correlation-ID é gerado no API Gateway e propagado nos logs de todos os serviços envolvidos em uma requisição
 
 ### Infrastructure
 
@@ -57,8 +57,8 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 ### Testing
 
-- [ ] **TEST-01**: Cada serviço possui testes unitários cobrindo as regras de negócio centrais (JUnit + Mockito)
-- [ ] **TEST-02**: Cada serviço possui testes de integração contra dependências reais via Testcontainers
+- [x] **TEST-01**: Cada serviço possui testes unitários cobrindo as regras de negócio centrais (JUnit + Mockito)
+- [x] **TEST-02**: Cada serviço possui testes de integração contra dependências reais via Testcontainers
 - [x] **TEST-03**: Ao menos um teste E2E/contrato verifica o fluxo completo da saga (criação do pedido → reserva de estoque com sucesso ou falha → status final)
 
 ## v2 Requirements
@@ -125,13 +125,13 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | ORD-10 | Phase 6 | Complete |
 | NOTF-01 | Phase 3 | Complete |
 | NOTF-02 | Phase 3 | Complete |
-| QUAL-01 | Phase 7 | Pending |
-| QUAL-02 | Phase 7 | Pending |
+| QUAL-01 | Phase 7 | Complete |
+| QUAL-02 | Phase 7 | Complete |
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 7 | Pending |
 | INFRA-03 | Phase 7 | Pending |
-| TEST-01 | Phase 7 | Pending |
-| TEST-02 | Phase 7 | Pending |
+| TEST-01 | Phase 7 | Complete |
+| TEST-02 | Phase 7 | Complete |
 | TEST-03 | Phase 5 | Complete |
 
 **Coverage:**
