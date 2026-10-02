@@ -1,6 +1,7 @@
 package com.orderflow.catalog.product.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -22,10 +23,15 @@ import java.math.BigDecimal;
  * {@code must_haves.prohibitions} do plano 02-01.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "Payload de criação de produto. O status nasce ACTIVE no servidor; um campo status extra é ignorado.")
 public record CreateProductRequest(
+        @Schema(description = "Código único do produto no catálogo", example = "CAD-200")
         @NotBlank @Size(max = 64) String sku,
+        @Schema(description = "Nome exibido para o comprador", example = "Caderno universitário 200 folhas")
         @NotBlank @Size(max = 255) String name,
+        @Schema(description = "Descrição livre, opcional", example = "Capa dura, pauta universitária")
         @Size(max = 1000) String description,
+        @Schema(description = "Preço unitário com duas casas decimais", example = "19.90")
         @NotNull @DecimalMin(value = "0.00") @Digits(integer = 17, fraction = 2) BigDecimal price
 ) {
 }

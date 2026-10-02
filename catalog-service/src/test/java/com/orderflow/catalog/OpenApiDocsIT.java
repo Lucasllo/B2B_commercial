@@ -1,7 +1,7 @@
 package com.orderflow.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.orderflow.catalog.product.ProductStatus;
 import org.junit.jupiter.api.Test;
 
@@ -144,7 +144,7 @@ class OpenApiDocsIT extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString(StandardCharsets.UTF_8);
-        return new ObjectMapper().readTree(body);
+        return JsonMapper.builder().build().readTree(body);
     }
 
     private static JsonNode operation(JsonNode paths, String path, String method) {
