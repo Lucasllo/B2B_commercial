@@ -62,6 +62,16 @@ class OrderDomainTest {
     }
 
     @Test
+    void recordCorrelationIdStoresTheCreationIdAndIgnoresALaterValue() {
+        Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), OffsetDateTime.now(ZoneOffset.UTC));
+
+        order.recordCorrelationId("cid-1");
+        order.recordCorrelationId("other-id");
+
+        assertThat(order.getCorrelationId()).isEqualTo("cid-1");
+    }
+
+    @Test
     void approveAutomaticallyRecordsSystemDeciderReasonAndInstant() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         Order order = Order.create(UUID.randomUUID(), "buyer-1", List.of(pricedItem()), now);

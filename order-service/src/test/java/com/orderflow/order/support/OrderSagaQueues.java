@@ -40,7 +40,26 @@ public final class OrderSagaQueues {
 
     /** Envia um resultado de reserva (mapa serializado como JSON) direto na {@code order-events-queue}. */
     public void publishResult(Map<String, Object> body) {
-        publishRaw(orderEventsQueue, toJson(body));
+        publishResult(body, null);
+    }
+
+    /**
+     * Igual a {@link #publishResult(Map)}, e quando {@code correlationId} não é nulo anexa o message
+     * attribute {@code correlationId} (DataType String).
+     */
+    public void publishResult(Map<String, Object> body, String correlationId) {
+        String queueUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(orderEventsQueue)).join().queueUrl();
+        String json = toJson(body);
+        if (correlationId == null) {
+            sqsAsyncClient.sendMessage(r -> r.queueUrl(queueUrl).messageBody(json)).join();
+            return;
+        }
+        sqsAsyncClient.sendMessage(r -> r.queueUrl(queueUrl)
+                .messageBody(json)
+                .messageAttributes(Map.of("correlationId", MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(correlationId)
+                        .build()))).join();
     }
 
     /** Envia um corpo cru (JSON inválido incluso, de propósito) na {@code order-events-queue}. */

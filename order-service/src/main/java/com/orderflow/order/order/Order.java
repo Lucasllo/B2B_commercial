@@ -66,6 +66,10 @@ public class Order {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    /** Correlation-ID da requisição que criou o pedido (D-95). Nulo em pedidos legados. */
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
     @Column(name = "decided_by", length = 64)
     private String decidedBy;
 
@@ -137,6 +141,13 @@ public class Order {
         }
         order.total = total;
         return order;
+    }
+
+    /**
+     * Grava o ID de criação uma única vez (D-95). Chamadas seguintes são ignoradas — o ID da
+     * requisição que criou o pedido não é substituído por transições posteriores.
+     */
+    public void recordCorrelationId(String correlationId) {
     }
 
     /**

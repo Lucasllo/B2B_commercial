@@ -63,18 +63,27 @@ class SagaTimeoutIT extends AbstractIntegrationTest {
     }
 
     private ReservingOrder createReservingOrder(BigDecimal creditLimit, BigDecimal price, String sku) throws Exception {
+        return createReservingOrder(creditLimit, price, sku, null);
+    }
+
+    private ReservingOrder createReservingOrder(BigDecimal creditLimit, BigDecimal price, String sku,
+                                                 String correlationId) throws Exception {
         UUID companyId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         String buyerToken = TestJwt.buyerToken(companyId);
         stub().registerCreditLimit(companyId, creditLimit);
         stub().registerProduct(productId, sku, "Produto " + sku, price, "ACTIVE");
 
-        MvcResult result = mockMvc.perform(post("/orders")
-                        .header("Authorization", "Bearer " + buyerToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"items":[{"productId":"%s","quantity":1}]}
-                                """.formatted(productId)))
+        var request = post("/orders")
+                .header("Authorization", "Bearer " + buyerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"items":[{"productId":"%s","quantity":1}]}
+                        """.formatted(productId));
+        if (correlationId != null) {
+            request = request.header("X-Correlation-Id", correlationId);
+        }
+        MvcResult result = mockMvc.perform(request)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andReturn();
@@ -211,5 +220,21 @@ class SagaTimeoutIT extends AbstractIntegrationTest {
                                 """.formatted(secondProductId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVING"));
+    }
+
+    @Test
+    void timeoutReusesTheCreationCorrelationIdOnReleaseStockAndOrderCancelled() throws Exception {
+        ReservingOrder order = createReservingOrder(new BigDecimal("1000.00"), new BigDecimal("100.00"),
+                "SKU-TO-CID", "it-timeout-cid-4");
+        rewindReservationStartedAt(order.orderId(), Duration.ofHours(1));
+        awaitStatus(order.orderId(), "CANCELLED");
+
+        String attribute = sagaQueues().awaitCommandCorrelationId(order.orderId(), "ReleaseStock");
+        assertThat(attribute).isEqualTo("it-timeout-cid-4");
+
+        String cancelled = jdbcTemplate.queryForObject(
+                "SELECT correlation_id FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = 'ORDER_CANCELLED'",
+                String.class, order.orderId().toString());
+        assertThat(cancelled).isEqualTo("it-timeout-cid-4");
     }
 }

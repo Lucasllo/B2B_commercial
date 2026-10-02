@@ -1,5 +1,7 @@
 package com.orderflow.order;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orderflow.order.support.OrderSagaQueues;
 import com.orderflow.order.support.OrderSagaQueues.QueuedCommand;
 import com.orderflow.order.support.TestJwt;
@@ -12,14 +14,17 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -78,7 +83,57 @@ class CorrelationIdPropagationIT extends AbstractIntegrationTest {
         assertThat(attribute).isEqualTo(stored);
     }
 
+    @Test
+    void createdOrderStoresTheRequestCorrelationId() throws Exception {
+        UUID orderId = createWithinLimitOrder("it-order-cid-2", "SKU-CID-3");
+
+        String stored = jdbcTemplate.queryForObject(
+                "SELECT correlation_id FROM \"order\".orders WHERE id = ?", String.class, orderId);
+        assertThat(stored).isEqualTo("it-order-cid-2");
+    }
+
+    @Test
+    void stockReservedWithAttributeConfirmsAndKeepsThatIdOnTheOutbox(CapturedOutput output) throws Exception {
+        PlacedOrder order = placeWithinLimitOrder(null, "SKU-CID-4");
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), order.productId()), "it-result-cid-3");
+
+        awaitOrderStatus(order.orderId(), "CONFIRMED");
+        String stored = outboxCorrelationId(order.orderId(), "ORDER_CONFIRMED");
+        assertThat(stored).isEqualTo("it-result-cid-3");
+
+        String logs = output.getOut() + output.getErr();
+        assertThat(logs).containsPattern("\\[it-result-cid-3\\].*Mensagem recebida");
+        assertThat(logs).containsPattern("\\[it-result-cid-3\\].*Pedido confirmado");
+    }
+
+    @Test
+    void stockReservedWithoutAttributeStillConfirmsWithAGeneratedOutboxId() throws Exception {
+        PlacedOrder order = placeWithinLimitOrder(null, "SKU-CID-5");
+        sagaQueues().publishResult(stockReservedBody(order.orderId(), order.productId()));
+
+        awaitOrderStatus(order.orderId(), "CONFIRMED");
+        String stored = outboxCorrelationId(order.orderId(), "ORDER_CONFIRMED");
+        assertThat(stored).matches(UUID_PATTERN);
+    }
+
+    @Test
+    void aFollowingMessageWithoutAttributeDoesNotReuseThePreviousId() throws Exception {
+        PlacedOrder first = placeWithinLimitOrder(null, "SKU-CID-6A");
+        PlacedOrder second = placeWithinLimitOrder(null, "SKU-CID-6B");
+        sagaQueues().publishResult(stockReservedBody(first.orderId(), first.productId()), "cid-a");
+        sagaQueues().publishResult(stockReservedBody(second.orderId(), second.productId()));
+
+        awaitOrderStatus(first.orderId(), "CONFIRMED");
+        awaitOrderStatus(second.orderId(), "CONFIRMED");
+        assertThat(outboxCorrelationId(first.orderId(), "ORDER_CONFIRMED")).isEqualTo("cid-a");
+        assertThat(outboxCorrelationId(second.orderId(), "ORDER_CONFIRMED")).isNotEqualTo("cid-a").isNotBlank();
+    }
+
     private UUID createWithinLimitOrder(String correlationId, String sku) throws Exception {
+        return placeWithinLimitOrder(correlationId, sku).orderId();
+    }
+
+    private PlacedOrder placeWithinLimitOrder(String correlationId, String sku) throws Exception {
         UUID companyId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         String buyerToken = TestJwt.buyerToken(companyId);
@@ -99,10 +154,37 @@ class CorrelationIdPropagationIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("RESERVING"))
                 .andReturn();
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
-        return UUID.fromString(json.get("id").asText());
+        return new PlacedOrder(UUID.fromString(json.get("id").asText()), productId);
+    }
+
+    private void awaitOrderStatus(UUID orderId, String expected) {
+        await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(500)).untilAsserted(() -> {
+            String status = jdbcTemplate.queryForObject(
+                    "SELECT status FROM \"order\".orders WHERE id = ?", String.class, orderId);
+            assertThat(status).isEqualTo(expected);
+        });
+    }
+
+    private String outboxCorrelationId(UUID orderId, String eventType) {
+        return jdbcTemplate.queryForObject(
+                "SELECT correlation_id FROM \"order\".outbox_event WHERE aggregate_id = ? AND event_type = ?",
+                String.class, orderId.toString(), eventType);
+    }
+
+    private static Map<String, Object> stockReservedBody(UUID orderId, UUID productId) {
+        return Map.of(
+                "eventId", UUID.randomUUID().toString(),
+                "eventType", "StockReserved",
+                "occurredAt", Instant.now().toString(),
+                "orderId", orderId.toString(),
+                "reservationId", orderId.toString(),
+                "items", List.of(Map.of("productId", productId.toString(), "quantity", 1)));
     }
 
     private OrderSagaQueues sagaQueues() {
         return new OrderSagaQueues(sqsAsyncClient, objectMapper, inventoryCommandsQueue, orderEventsQueue);
+    }
+
+    private record PlacedOrder(UUID orderId, UUID productId) {
     }
 }
