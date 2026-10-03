@@ -36,3 +36,7 @@ alternativa rejeitada, a fase de origem, os links, as decisões citadas e este �
 | [0002](0002-transactional-outbox-em-vez-de-publicacao-direta.md) | Transactional Outbox em vez de publicação direta no SQS | Aceito | Fase 3 e Fase 5 |
 | [0003](0003-localstack-em-vez-de-aws-real.md) | LocalStack em vez de AWS real | Aceito | Fase 1 e Fase 3 |
 | [0004](0004-sem-service-discovery-nem-config-server.md) | Sem service discovery nem config server | Aceito | Fase 1 |
+| [0005](0005-jwt-auto-emitido-e-validado-localmente.md) | JWT auto-emitido pelo auth-service e validado localmente pelos resource servers | Aceito | Fase 1 |
+| [0006](0006-dynamodb-para-o-historico-de-notificacoes.md) | DynamoDB para o histórico de notificações | Aceito | Fase 3 e Fase 6 |
+| [0007](0007-credito-serializado-por-empresa.md) | Decisão de crédito serializada por empresa (`company_credit_lock`) | Aceito | Fase 4 |
+| [0008](0008-correlation-id-proprio-em-vez-de-tracing-distribuido.md) | Correlation-ID próprio em vez de tracing distribuído | Aceito | Fase 7 |
