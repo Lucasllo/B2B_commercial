@@ -46,7 +46,13 @@ public class NotificationService {
     private static final String SYSTEM_ACTOR = "SYSTEM";
 
     private static final Pattern TRACKING_CODE = Pattern.compile("^[A-Z]{2}[0-9]{9}BR$");
-    private static final Pattern CANCELLATION_CODE = Pattern.compile("^[A-Z_]{1,40}$");
+    private static final Pattern UUID_TEXT = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+    // orderId ausente ou fora do formato UUID em evento ORDER_* descartado (WR03_ORDER_ID_FALLBACK).
+    private static final String ORDER_ID_FALLBACK = "?";
+
+    private static final Pattern CANCELLATION_CODE =Pattern.compile("^[A-Z_]{1,40}$");
 
     // DynamoDB rejeita itens acima de 400 KB (ValidationException). Um rawPayload assim de grande
     // (ex.: um campo extra inesperado) faz o putItem falhar permanentemente, e como o listener trata
@@ -91,10 +97,34 @@ public class NotificationService {
         JsonNode typeNode = tree.path("eventType");
         String eventType = typeNode.isTextual() ? typeNode.asText() : null;
         if (eventType != null && OrderLifecycleEvent.TYPES.contains(eventType)) {
-            recordOrderEvent(tree);
+            recordOrderEventWithContext(tree, eventType);
             return;
         }
         recordStockAdjusted(tree);
+    }
+
+    /**
+     * D-107 / WR-03: o descarte de um evento {@code ORDER_*} inválido continua (fila sem DLQ,
+     * {@code DLQ-01} é v2), mas passa a ser rastreável por pedido. O {@code orderId} é extraído de
+     * forma tolerante — só o texto que casa um UUID vira valor; ausente ou fora do formato vira
+     * {@code ?} (WR03_ORDER_ID_FALLBACK) — e o {@code eventType} passa por {@code sanitizeForLog}
+     * (T-07-24). Nunca vai o payload bruto (T-07-25) e nada é gravado parcialmente.
+     */
+    private void recordOrderEventWithContext(JsonNode tree, String eventType) {
+        try {
+            recordOrderEvent(tree);
+        } catch (InvalidNotificationEventException e) {
+            throw new InvalidNotificationEventException(
+                    e.getMessage(), tolerantOrderId(tree), sanitizeForLog(eventType));
+        }
+    }
+
+    private static String tolerantOrderId(JsonNode tree) {
+        JsonNode node = tree.path("orderId");
+        if (node.isTextual() && UUID_TEXT.matcher(node.asText()).matches()) {
+            return node.asText();
+        }
+        return ORDER_ID_FALLBACK;
     }
 
     private void recordStockAdjusted(JsonNode tree) {

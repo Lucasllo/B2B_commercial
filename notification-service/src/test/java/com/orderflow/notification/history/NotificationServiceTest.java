@@ -455,6 +455,66 @@ class NotificationServiceTest {
                         "ORDER_DELIVERED");
     }
 
+    // WR-03 / D-107: o descarte de ORDER_* inválido carrega orderId e eventType sanitizados.
+
+    @Test
+    void invalidOrderEventCarriesTheValidOrderIdAndEventTypeAndSavesNothing() {
+        UUID orderId = UUID.randomUUID();
+        // ORDER_CONFIRMED sem companyId
+        String body = """
+                {"eventId":"%s","eventType":"ORDER_CONFIRMED","occurredAt":"2026-09-30T12:00:00Z","orderId":"%s","carrier":"Expresso Cerrado","trackingCode":"AB123456789BR"}
+                """.formatted(UUID.randomUUID(), orderId);
+
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOfSatisfying(InvalidNotificationEventException.class, e -> {
+                    assertThat(e.getOrderId()).isEqualTo(orderId.toString());
+                    assertThat(e.getEventType()).isEqualTo("ORDER_CONFIRMED");
+                });
+
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void invalidOrderEventWithoutOrderIdReportsAQuestionMark() {
+        String body = """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00Z","companyId":"%s","createdBy":"buyer-1","total":40.00}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOfSatisfying(InvalidNotificationEventException.class, e -> {
+                    assertThat(e.getOrderId()).isEqualTo("?");
+                    assertThat(e.getEventType()).isEqualTo("ORDER_CREATED");
+                });
+    }
+
+    @Test
+    void invalidOrderEventWithANonUuidOrderIdNeverCarriesTheRawValue() {
+        // \\r\\n no texto do bloco vira o escape JSON \r\n, ou seja, CR e LF reais no valor decodificado.
+        String body = """
+                {"eventId":"%s","eventType":"ORDER_CREATED","occurredAt":"2026-09-30T12:00:00Z","orderId":"nao-e-uuid\\r\\nX","companyId":"%s","createdBy":"buyer-1","total":40.00}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOfSatisfying(InvalidNotificationEventException.class, e -> {
+                    assertThat(e.getOrderId()).isEqualTo("?");
+                    assertThat(e.getOrderId()).doesNotContain("\r", "\n", "nao-e-uuid");
+                });
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void invalidStockAdjustedKeepsTheProductPathWithoutOrderContext() {
+        String body = """
+                {"eventId":"%s","eventType":"STOCK_ADJUSTED","occurredAt":"2026-09-22T12:00:00Z","previousQuantityOnHand":1,"newQuantityOnHand":2}
+                """.formatted(UUID.randomUUID());
+
+        assertThatThrownBy(() -> notificationService.record(body))
+                .isInstanceOfSatisfying(InvalidNotificationEventException.class, e -> {
+                    assertThat(e.getOrderId()).isNull();
+                    assertThat(e.getEventType()).isNull();
+                });
+    }
+
     private NotificationRecord rawRecord(UUID productId, String sortKey, Instant occurredAt) {
         NotificationRecord record = new NotificationRecord();
         record.setEntityId(productId.toString());

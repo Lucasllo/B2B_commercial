@@ -23,6 +23,11 @@ import org.springframework.stereotype.Component;
  * gravacao no DynamoDB) nao e capturada aqui — sem confirmacao, a mensagem volta a fila depois do
  * timeout de visibilidade, e como a gravacao e idempotente por chave, a reentrega e segura.
  *
+ * <p>D-107 / WR-03: o descarte continua (fila sem DLQ, {@code DLQ-01} e v2), mas o WARN agora traz
+ * {@code orderId} e {@code eventType} do evento {@code ORDER_*} invalido, ja sanitizados pelo
+ * servico, para que a linha do tempo incompleta de um pedido possa ser investigada. Nunca se loga
+ * o payload bruto.
+ *
  * <p>O atributo SQS {@code correlationId} abre o escopo de MDC de cada mensagem (D-94, D-97): o ID
  * so entra no log se casar o formato esperado; a thread do listener e reutilizada, entao o escopo
  * restaura o MDC ao fim (T-07-23).
@@ -49,9 +54,14 @@ public class NotificationEventListener {
             try {
                 notificationService.record(payload);
             } catch (InvalidNotificationEventException e) {
-                log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
+                log.warn("Mensagem descartada da fila '{}' orderId={} eventType={}: {}", queueName,
+                        orDash(e.getOrderId()), orDash(e.getEventType()), e.getMessage());
             }
         }
+    }
+
+    private static String orDash(String value) {
+        return value == null ? "-" : value;
     }
 
     /** Sobrecarga sem atributo e sem {@code @SqsListener}: delega com ID nulo (o escopo gera um UUID). */
