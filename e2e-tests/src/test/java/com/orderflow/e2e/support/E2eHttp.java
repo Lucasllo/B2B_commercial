@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Métodos pequenos sobre {@link HttpClient} (JDK, {@code HTTP_1_1} — mesmo estilo dos clientes de
@@ -42,9 +43,16 @@ public final class E2eHttp {
     }
 
     public static Response postJson(String url, String bearerToken, Object body) {
+        return postJson(url, bearerToken, body, Map.of());
+    }
+
+    public static Response postJson(String url, String bearerToken, Object body, Map<String, String> extraHeaders) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(writeJson(body)));
+        if (extraHeaders != null) {
+            extraHeaders.forEach(builder::header);
+        }
         authorize(builder, bearerToken);
         return send(builder.build());
     }

@@ -1,5 +1,6 @@
 package com.orderflow.inventory.saga.messaging;
 
+import com.orderflow.inventory.observability.CorrelationContext;
 import com.orderflow.inventory.saga.messaging.dto.ReleaseStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ReserveStockCommand;
 import com.orderflow.inventory.saga.messaging.dto.ShipStockCommand;
@@ -8,6 +9,7 @@ import io.awspring.cloud.sqs.annotation.SqsListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -43,26 +45,39 @@ public class ReservationCommandListener {
         this.queueName = queueName;
     }
 
-    @SqsListener("${orderflow.messaging.inventory-commands-queue}")
+    /**
+     * Compatibilidade de testes unitários que chamam o listener sem o atributo SQS (Pitfall 5,
+     * {@code LISTENER_COMPAT_OVERLOAD}). Sem {@code @SqsListener}: o container registra só o método
+     * anotado.
+     */
     public void onMessage(String payload) {
-        Object command;
-        try {
-            command = sagaCommandParser.parse(payload);
-        } catch (InvalidSagaMessageException e) {
-            log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
-            return;
-        }
-        if (command instanceof ReserveStockCommand reserveStock) {
-            inventoryService.reserveAll(reserveStock.orderId(), reserveStock.reservationId(), reserveStock.items());
-            return;
-        }
-        if (command instanceof ReleaseStockCommand releaseStock) {
-            inventoryService.releaseAll(releaseStock.orderId(), releaseStock.reservationId(), releaseStock.items());
-            return;
-        }
-        if (command instanceof ShipStockCommand shipStock) {
-            // Baixa fisica pelo livro (D-75) — sem resposta; anomalia tecnica propaga (reentrega -> DLQ).
-            inventoryService.shipAll(shipStock.orderId(), shipStock.reservationId(), shipStock.items());
+        onMessage(payload, null);
+    }
+
+    @SqsListener("${orderflow.messaging.inventory-commands-queue}")
+    public void onMessage(String payload,
+                          @Header(name = CorrelationContext.SQS_ATTRIBUTE, required = false) String correlationId) {
+        try (var scope = CorrelationContext.open(correlationId)) {
+            log.info("Mensagem recebida da fila '{}'", queueName);
+            Object command;
+            try {
+                command = sagaCommandParser.parse(payload);
+            } catch (InvalidSagaMessageException e) {
+                log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
+                return;
+            }
+            if (command instanceof ReserveStockCommand reserveStock) {
+                inventoryService.reserveAll(reserveStock.orderId(), reserveStock.reservationId(), reserveStock.items());
+                return;
+            }
+            if (command instanceof ReleaseStockCommand releaseStock) {
+                inventoryService.releaseAll(releaseStock.orderId(), releaseStock.reservationId(), releaseStock.items());
+                return;
+            }
+            if (command instanceof ShipStockCommand shipStock) {
+                // Baixa fisica pelo livro (D-75) — sem resposta; anomalia tecnica propaga (reentrega -> DLQ).
+                inventoryService.shipAll(shipStock.orderId(), shipStock.reservationId(), shipStock.items());
+            }
         }
     }
 }

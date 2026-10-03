@@ -2,6 +2,7 @@ package com.orderflow.inventory.saga.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orderflow.inventory.observability.CorrelationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,7 @@ public class OutboxWriter {
             throw new IllegalStateException("Failed to serialize outbox payload for event " + eventId, e);
         }
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
-        outboxEventRepository.save(OutboxEvent.pending(eventId, eventType, aggregateId, json, now));
+        outboxEventRepository.save(OutboxEvent.pending(eventId, eventType, aggregateId, json, now,
+                CorrelationContext.current()));
     }
 }
