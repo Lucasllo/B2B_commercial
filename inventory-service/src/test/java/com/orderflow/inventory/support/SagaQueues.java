@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -48,8 +50,41 @@ public final class SagaQueues {
     }
 
     public void sendCommand(String json) {
+        sendCommand(json, null);
+    }
+
+    /**
+     * Igual a {@link #sendCommand(String)}, e quando {@code correlationId} não é nulo anexa o message
+     * attribute {@code correlationId} (DataType String).
+     */
+    public void sendCommand(String json, String correlationId) {
         String queueUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(inventoryCommandsQueue)).join().queueUrl();
-        sqsAsyncClient.sendMessage(r -> r.queueUrl(queueUrl).messageBody(json)).join();
+        if (correlationId == null) {
+            sqsAsyncClient.sendMessage(r -> r.queueUrl(queueUrl).messageBody(json)).join();
+            return;
+        }
+        sqsAsyncClient.sendMessage(r -> r.queueUrl(queueUrl)
+                .messageBody(json)
+                .messageAttributes(Map.of("correlationId", MessageAttributeValue.builder()
+                        .dataType("String")
+                        .stringValue(correlationId)
+                        .build()))).join();
+    }
+
+    /**
+     * Espera o resultado daquele pedido na {@code order-events-queue} e devolve o message attribute
+     * {@code correlationId} (String), ou nulo quando a mensagem não traz o atributo.
+     */
+    public String awaitResultCorrelationId(UUID orderId) {
+        List<String> found = new ArrayList<>();
+        String queueUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(orderEventsQueue)).join().queueUrl();
+        await().atMost(Duration.ofSeconds(15))
+                .pollInterval(Duration.ofMillis(500))
+                .untilAsserted(() -> {
+                    drainResultCorrelationOnce(queueUrl, orderId, found);
+                    assertThat(found).isNotEmpty();
+                });
+        return found.get(0);
     }
 
     /**
@@ -91,6 +126,26 @@ public final class SagaQueues {
             drainOnce(queueUrl, Set.of(orderId), matches);
         }
         return matches;
+    }
+
+    private void drainResultCorrelationOnce(String queueUrl, UUID orderId, List<String> found) {
+        var response = sqsAsyncClient.receiveMessage(r -> r.queueUrl(queueUrl)
+                .maxNumberOfMessages(10)
+                .waitTimeSeconds(1)
+                .messageAttributeNames("All")).join();
+        for (Message message : response.messages()) {
+            sqsAsyncClient.deleteMessage(r -> r.queueUrl(queueUrl).receiptHandle(message.receiptHandle())).join();
+            JsonNode body;
+            try {
+                body = objectMapper.readTree(message.body());
+            } catch (Exception e) {
+                continue;
+            }
+            if (body.has("orderId") && orderId.equals(UUID.fromString(body.get("orderId").asText()))) {
+                MessageAttributeValue attribute = message.messageAttributes().get("correlationId");
+                found.add(attribute == null ? null : attribute.stringValue());
+            }
+        }
     }
 
     private void drainOnce(String queueUrl, Set<UUID> orderIds, List<JsonNode> matches) {

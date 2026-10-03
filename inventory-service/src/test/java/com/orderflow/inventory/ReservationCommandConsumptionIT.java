@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -281,5 +282,64 @@ class ReservationCommandConsumptionIT extends AbstractIntegrationTest {
         assertThat(stockReservationCount(orderId.toString())).isEqualTo(2);
         assertThat(reservationQuantity(orderId.toString(), productId1)).isEqualTo(2);
         assertThat(reservationQuantity(orderId.toString(), productId2)).isEqualTo(4);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Correlation-ID (D-94, T-07-15): o atributo do comando volta no resultado e no log.
+    // -----------------------------------------------------------------------------------------
+
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
+    @Test
+    void reserveStockWithCorrelationIdReturnsTheSameAttributeAndLogsTheReceivedLine(CapturedOutput output)
+            throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        setStock(productId, 10);
+
+        sagaQueues().sendCommand(
+                reserveStockCommand(orderId, "[" + itemJson(productId, 1) + "]"), "it-inv-cid-1");
+
+        assertThat(sagaQueues().awaitResultCorrelationId(orderId)).isEqualTo("it-inv-cid-1");
+        assertThat(lineHas(output.getOut() + output.getErr(), "Mensagem recebida", "it-inv-cid-1")).isTrue();
+    }
+
+    @Test
+    void reserveStockWithoutCorrelationAttributeIsProcessedAndTheResultCarriesAUuid() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        setStock(productId, 10);
+
+        sagaQueues().sendCommand(reserveStockCommand(orderId, "[" + itemJson(productId, 1) + "]"));
+
+        String attribute = sagaQueues().awaitResultCorrelationId(orderId);
+        assertThat(attribute).matches(UUID_PATTERN);
+    }
+
+    @Test
+    void reserveStockWithInvalidCorrelationIdIsProcessedWithAUuidAndDoesNotLogTheRawValue(CapturedOutput output)
+            throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        setStock(productId, 10);
+
+        sagaQueues().sendCommand(
+                reserveStockCommand(orderId, "[" + itemJson(productId, 1) + "]"), "bad value!");
+
+        String attribute = sagaQueues().awaitResultCorrelationId(orderId);
+        assertThat(attribute).matches(UUID_PATTERN);
+        assertThat(attribute).isNotEqualTo("bad value!");
+        assertThat(output.getOut() + output.getErr()).doesNotContain("bad value!");
+    }
+
+    private static boolean lineHas(String logs, String message, String correlationId) {
+        String marker = "[" + correlationId + "]";
+        for (String line : logs.split("\\R")) {
+            if (line.contains(message) && line.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

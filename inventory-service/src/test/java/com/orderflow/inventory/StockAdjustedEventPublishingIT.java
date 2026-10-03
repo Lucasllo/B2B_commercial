@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -116,6 +117,23 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
         assertThat(secondEventId).isNotEqualTo(firstEventId);
         assertThat(outboxRowCount(productId, "STOCK_ADJUSTED")).isEqualTo(2);
         assertThat(outboxRowPublished(secondEventId)).isTrue();
+    }
+
+    @Test
+    void putWithCorrelationIdPublishesStockAdjustedCarryingThatAttribute() throws Exception {
+        String token = TestJwt.sellerAdminToken();
+        UUID productId = UUID.randomUUID();
+
+        mockMvc.perform(put("/inventory/" + productId)
+                        .header("Authorization", "Bearer " + token)
+                        .header("X-Correlation-Id", "it-inv-cid-2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(setStockPayload(4)))
+                .andExpect(status().isOk());
+
+        List<ReceivedMessage> messages = awaitMessagesForProduct(productId, 1);
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).correlationId()).isEqualTo("it-inv-cid-2");
     }
 
     // -----------------------------------------------------------------------------------------
@@ -245,11 +263,13 @@ class StockAdjustedEventPublishingIT extends AbstractIntegrationTest {
                 continue;
             }
             if (body.has("productId") && productId.toString().equals(body.get("productId").asText())) {
-                matches.add(new ReceivedMessage(body, message.messageAttributes().keySet()));
+                MessageAttributeValue attribute = message.messageAttributes().get("correlationId");
+                String correlationId = attribute == null ? null : attribute.stringValue();
+                matches.add(new ReceivedMessage(body, message.messageAttributes().keySet(), correlationId));
             }
         }
     }
 
-    private record ReceivedMessage(JsonNode body, Set<String> attributeKeys) {
+    private record ReceivedMessage(JsonNode body, Set<String> attributeKeys, String correlationId) {
     }
 }
