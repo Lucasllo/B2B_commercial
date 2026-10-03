@@ -1,5 +1,9 @@
 # Spring Boot e Spring Cloud
 
+> Termos como **BOM**, **bleeding-edge**, **trem de releases**, **churn** e **service
+> discovery** estão explicados para iniciantes em
+> [36-bom-trem-de-releases-e-outros-termos.md](36-bom-trem-de-releases-e-outros-termos.md).
+
 ## Spring Boot
 
 **Versão: 3.5.16**, fixada em `pom.xml` via BOM (`spring-boot-dependencies`) importado
@@ -35,9 +39,10 @@ hoje só o módulo `gateway` consome algo, via
 programação (reativo) só para rotear requisições, sem ganho de demonstração para a
 vaga-alvo — que valoriza domínio de Spring MVC/JPA tradicional, não reactive streams.
 
-**Cuidado com o nome parecido: Spring Cloud AWS.** O `inventory-service`
-(`spring-cloud-aws-starter-sqs`) e o `notification-service` (starters de SQS e de
-DynamoDB) usam o **Spring Cloud AWS** (`io.awspring.cloud`). Apesar do nome, ele é um
+**Cuidado com o nome parecido: Spring Cloud AWS.** O `inventory-service` e o
+`order-service` (`spring-cloud-aws-starter-sqs`, para a saga e o outbox) e o
+`notification-service` (starters de SQS e de DynamoDB) usam o **Spring Cloud AWS**
+(`io.awspring.cloud`). Apesar do nome, ele é um
 projeto separado, que **não faz parte** do trem 2025.0.3 — tem versão própria
 (**3.4.2**), gerenciada pelo seu próprio BOM (`spring-cloud-aws-dependencies`), também
 importado no `dependencyManagement` do `pom.xml` raiz. A linha 3.4.x foi escolhida

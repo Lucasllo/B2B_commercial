@@ -53,7 +53,9 @@ orderflow:
 A sintaxe `${ORDERFLOW_CATALOG_SERVICE_BASE_URL:http://localhost:8082}` significa: "use
 a variável de ambiente `ORDERFLOW_CATALOG_SERVICE_BASE_URL` se ela existir; se não
 existir, use `http://localhost:8082`". Assim o `docker-compose` pode trocar o endereço
-sem mexer em nenhum arquivo.
+sem mexer em nenhum arquivo. A explicação passo a passo, incluindo por que `localhost` não
+funciona dentro de um container, está em
+[35-variaveis-de-ambiente-e-valor-padrao.md](35-variaveis-de-ambiente-e-valor-padrao.md).
 
 O `ClientProperties` é a **ponte** entre esse arquivo de texto e o código Java.
 

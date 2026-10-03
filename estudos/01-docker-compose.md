@@ -78,7 +78,8 @@ projeto inteiro. Ele define 8 serviços (`postgres`, `localstack`, `auth-service
 - Conecta no Postgres usando `currentSchema=inventory`
 - Exposto em `127.0.0.1:8083`, com healthcheck no Actuator
 - É o serviço que implementa a reserva de estoque protegida contra concorrência
-  (lock otimista + reexecução automática) — ver `StockReservationConcurrencyIT`
+  (lock otimista + reexecução automática) — ver `StockReservationConcurrencyIT` e a
+  explicação para iniciantes em [34-lock-otimista-e-relay.md](34-lock-otimista-e-relay.md)
 
 ## 6. `notification-service` — histórico de notificações
 
@@ -129,7 +130,8 @@ padrão do `application.yml` de cada serviço (`orderflow-auth-service`).
   do gateway — o projeto foi crescendo "fase a fase" até aqui.
 - `auth-service`, `inventory-service`, `notification-service` e `order-service` esperam o
   `localstack` ficar saudável antes de subir. Existem três fluxos assíncronos:
-  - o `inventory-service` grava `STOCK_ADJUSTED` no outbox, o relay manda para a
+  - o `inventory-service` grava `STOCK_ADJUSTED` no outbox, o relay (o "carteiro" do
+    outbox, ver [34-lock-otimista-e-relay.md](34-lock-otimista-e-relay.md)) manda para a
     `notification-events-queue` e o `notification-service` grava no DynamoDB;
   - a **saga** (Fases 5 e 6): o `order-service` manda `ReserveStock`, `ReleaseStock` e
     `ShipStock` pela `inventory-commands-queue` e recebe a resposta da reserva pela

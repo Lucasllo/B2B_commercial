@@ -113,7 +113,9 @@ a chave em memória. Isso já aconteceu: os 4 resource servers — `catalog-serv
 `inventory-service` (Fase 2), `notification-service` (Fase 3) e `order-service`
 (Fase 4) — configuram exatamente esse `jwk-set-uri` no seu `application.yml`, e no
 docker-compose ele aponta para `http://auth-service:8081/.well-known/jwks.json` (via a
-variável de ambiente `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI`). O Spring
+variável de ambiente `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI` — o porquê
+dessa variável e do valor padrão `localhost` está em
+[35-variaveis-de-ambiente-e-valor-padrao.md](35-variaveis-de-ambiente-e-valor-padrao.md)). O Spring
 Security baixa a chave pública de lá automaticamente para conferir a assinatura dos
 tokens recebidos — sem nunca precisar perguntar ativamente "esse token é válido?" ao
 `auth-service` a cada requisição.

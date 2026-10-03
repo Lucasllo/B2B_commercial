@@ -142,3 +142,17 @@ pasta é para consulta própria durante o aprendizado.
     o que significa `LACUNA`, como o `check-coverage-matrix.sh` confere a matriz (modo
     estrito e `--report`) e roda no CI, e quais lacunas foram fechadas com testes unitários
     novos
+34. [Lock otimista, reexecução automática e relay](34-lock-otimista-e-relay.md) — explicação
+    para iniciantes, com analogias (a planilha disputada por dois vendedores, a caixa de
+    saída e o carteiro), de como o campo `@Version` impede que uma gravação apague a outra,
+    como o `@Retryable` relê e tenta de novo, e como o relay leva os avisos do outbox até a
+    fila SQS sem perder nenhum
+35. [Variáveis de ambiente e valor padrão](35-variaveis-de-ambiente-e-valor-padrao.md) — o
+    que significa `${NOME:valor}` no `application.yml`, usando o `jwk-set-uri` como exemplo:
+    por que o endereço vem de uma variável de ambiente com `localhost` como plano B, por que
+    `localhost` aponta para o próprio container no Docker Compose, e como o *relaxed binding*
+    transforma `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI` na propriedade do Spring
+36. [BOM, trem de releases e outros termos de versão](36-bom-trem-de-releases-e-outros-termos.md)
+    — explicação para iniciantes, com analogias, de BOM (o kit de peças testadas juntas),
+    bleeding-edge, trem de releases do Spring Cloud ("Northfields"), churn de versão e service
+    discovery (a recepção do hotel), e por que o projeto dispensa Eureka/Consul
