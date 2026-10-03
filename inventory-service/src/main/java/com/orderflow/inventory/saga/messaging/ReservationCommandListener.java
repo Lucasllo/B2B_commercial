@@ -22,7 +22,10 @@ import org.springframework.stereotype.Component;
  * resultado da compensação nem da baixa física).
  *
  * <p>Diverge de {@code NotificationEventListener} num ponto central (D-67): mensagem malformada
- * (falha de {@link SagaCommandParser}) é descartada com log WARN, mas uma falha de <b>negócio</b>
+ * (falha de {@link SagaCommandParser}) é descartada com log WARN — exceto {@code ShipStock} inválido
+ * ({@link InvalidShipStockException}, D-107/WR-01), que é anomalia técnica: loga ERROR e relança para
+ * o SQS reentregar até a DLQ, porque descartá-lo perderia a baixa física de um pedido já SHIPPED.
+ * Uma falha de <b>negócio</b>
  * (estoque insuficiente, produto sem linha) NÃO é lançada como exceção aqui — {@code
  * InventoryService#reserveAll} já grava o evento de falha no outbox e devolve normalmente; a
  * mensagem é consumida com sucesso (retornar normalmente confirma e apaga a mensagem). Só uma
@@ -62,6 +65,13 @@ public class ReservationCommandListener {
             Object command;
             try {
                 command = sagaCommandParser.parse(payload);
+            } catch (InvalidShipStockException e) {
+                // D-107/WR-01: ShipStock so existe para pedido ja SHIPPED — descartar perderia a baixa
+                // fisica em silencio. Anomalia tecnica: ERROR + relanca (reentrega -> DLQ). So orderId
+                // sanitizado e a mensagem de validacao vao ao log, nunca o payload (T-05-03).
+                log.error("ShipStock invalido enviado para reentrega/DLQ orderId={} fila='{}': {}",
+                        e.getOrderIdForLog(), queueName, e.getMessage());
+                throw e;
             } catch (InvalidSagaMessageException e) {
                 log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
                 return;

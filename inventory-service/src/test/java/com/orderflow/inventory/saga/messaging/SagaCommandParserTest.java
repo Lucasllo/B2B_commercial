@@ -531,4 +531,93 @@ class SagaCommandParserTest {
                 .isInstanceOf(InvalidSagaMessageException.class)
                 .hasMessageContaining("occurredAt");
     }
+
+    // -----------------------------------------------------------------------------------------
+    // 07-09 Task 1 (D-107, WR-01): ShipStock invalido e anomalia tecnica -> InvalidShipStockException.
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    void shipStockWithQuantityAboveMaxThrowsInvalidShipStockExceptionWithSameMessage() {
+        UUID orderId = UUID.randomUUID();
+        String body = validShip(orderId, UUID.randomUUID(), 1_000_001);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidShipStockException.class)
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .hasMessageContaining("quantity fora da faixa permitida")
+                .satisfies(e -> assertThat(((InvalidShipStockException) e).getOrderIdForLog())
+                        .isEqualTo(orderId.toString()));
+    }
+
+    @Test
+    void shipStockWithEmptyItemsThrowsInvalidShipStockException() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                q("reservationId", orderId), "\"items\":[]");
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidShipStockException.class)
+                .hasMessageContaining("items nao pode ser vazio");
+    }
+
+    @Test
+    void shipStockWithoutReservationIdThrowsInvalidShipStockException() {
+        UUID orderId = UUID.randomUUID();
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, q("orderId", orderId),
+                null, itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidShipStockException.class)
+                .hasMessageContaining("reservationId");
+    }
+
+    @Test
+    void shipStockWithoutOrderIdThrowsInvalidShipStockExceptionWithPlaceholderOrderId() {
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT, null,
+                q("reservationId", "qualquer"), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidShipStockException.class)
+                .satisfies(e -> assertThat(((InvalidShipStockException) e).getOrderIdForLog()).isEqualTo("?"));
+    }
+
+    @Test
+    void shipStockOrderIdForLogIsSanitized() {
+        String body = shipCommand(q("eventId", UUID.randomUUID()), OCCURRED_AT,
+                "\"orderId\":\"x\\u0007\\nforjado" + "Z".repeat(100) + "\"",
+                q("reservationId", "qualquer"), itemsOf(UUID.randomUUID(), 1));
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidShipStockException.class)
+                .satisfies(e -> {
+                    String forLog = ((InvalidShipStockException) e).getOrderIdForLog();
+                    assertThat(forLog).doesNotContainPattern("\\p{Cntrl}");
+                    assertThat(forLog.length()).isLessThanOrEqualTo(64);
+                });
+    }
+
+    @Test
+    void invalidReserveStockIsNotAnInvalidShipStockException() {
+        String body = validCommand(UUID.randomUUID(), UUID.randomUUID(), "outro-id", UUID.randomUUID(), 3);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .isNotInstanceOf(InvalidShipStockException.class);
+    }
+
+    @Test
+    void invalidReleaseStockIsNotAnInvalidShipStockException() {
+        UUID orderId = UUID.randomUUID();
+        String body = """
+                {"eventId":"%s","eventType":"ReleaseStock","occurredAt":"2026-09-26T12:00:00Z",\
+                "orderId":"%s","reservationId":"%s","reason":"RESERVATION_TIMEOUT","items":[]}
+                """.formatted(UUID.randomUUID(), orderId, orderId);
+        assertThatThrownBy(() -> parser.parse(body))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .isNotInstanceOf(InvalidShipStockException.class);
+    }
+
+    @Test
+    void invalidJsonAndUnknownEventTypeAreGenericInvalidSagaMessage() {
+        assertThatThrownBy(() -> parser.parse("{nao e json"))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .isNotInstanceOf(InvalidShipStockException.class);
+        assertThatThrownBy(() -> parser.parse("{\"eventType\":\"Desconhecido\"}"))
+                .isInstanceOf(InvalidSagaMessageException.class)
+                .isNotInstanceOf(InvalidShipStockException.class);
+    }
 }

@@ -12,10 +12,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
+import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -343,5 +347,66 @@ class ShipStockConsumptionIT extends AbstractIntegrationTest {
 
         assertStock(productId, 7, 0);
         assertThat(reservationShipped(orderId, productId)).isTrue();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // 07-09 Task 1 (D-107, WR-01): ShipStock invalido nao some em silencio — vai para a DLQ.
+    // -----------------------------------------------------------------------------------------
+
+    private static final String INVENTORY_COMMANDS_DLQ = "inventory-commands-dlq";
+
+    private void setCommandsQueueVisibilityTimeout(String queueUrl, int seconds) {
+        sqsAsyncClient.setQueueAttributes(r -> r.queueUrl(queueUrl)
+                .attributes(Map.of(QueueAttributeName.VISIBILITY_TIMEOUT, String.valueOf(seconds)))).join();
+    }
+
+    @Test
+    void invalidShipStockForAShippedOrderEndsUpInTheDlqAndDoesNotChangeStock() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        setStock(productId, 10);
+        reserve(orderId, "[" + itemJson(productId, 3) + "]");
+        assertStock(productId, 10, 3);
+
+        String commandsQueueUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(inventoryCommandsQueue)).join().queueUrl();
+        String dlqUrl = sqsAsyncClient.getQueueUrl(r -> r.queueName(INVENTORY_COMMANDS_DLQ)).join().queueUrl();
+        // Quantidade acima do teto (1.000.000) -> o parser rejeita como InvalidShipStockException.
+        String invalidShipStock = shipStockCommand(UUID.randomUUID(), orderId, "[" + itemJson(productId, 1_000_001) + "]");
+
+        // Visibilidade de 1 s so durante o caso (3 recebimentos em ~segundos, nao 3 x 30 s); restaura no finally.
+        setCommandsQueueVisibilityTimeout(commandsQueueUrl, 1);
+        try {
+            sagaQueues().sendCommand(invalidShipStock);
+
+            List<JsonNode> inDlq = new ArrayList<>();
+            await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(500)).untilAsserted(() -> {
+                var response = sqsAsyncClient.receiveMessage(r -> r.queueUrl(dlqUrl)
+                        .maxNumberOfMessages(10).waitTimeSeconds(1)).join();
+                for (Message message : response.messages()) {
+                    JsonNode body = null;
+                    try {
+                        body = objectMapper.readTree(message.body());
+                    } catch (Exception ignored) {
+                        // mensagem de outro teste nao e JSON — ignora
+                    }
+                    if (body != null && body.has("orderId") && orderId.toString().equals(body.get("orderId").asText())) {
+                        sqsAsyncClient.deleteMessage(r -> r.queueUrl(dlqUrl).receiptHandle(message.receiptHandle())).join();
+                        inDlq.add(body);
+                    }
+                }
+                assertThat(inDlq).isNotEmpty();
+            });
+
+            JsonNode dead = inDlq.get(0);
+            assertThat(dead.get("eventType").asText()).isEqualTo("ShipStock");
+            assertThat(dead).isEqualTo(objectMapper.readTree(invalidShipStock));
+        } finally {
+            setCommandsQueueVisibilityTimeout(commandsQueueUrl, 30);
+        }
+
+        // Nada foi baixado: estoque e livro intactos.
+        assertStock(productId, 10, 3);
+        assertThat(reservationShipped(orderId, productId)).isFalse();
+        assertThat(reservationReleased(orderId, productId)).isFalse();
     }
 }

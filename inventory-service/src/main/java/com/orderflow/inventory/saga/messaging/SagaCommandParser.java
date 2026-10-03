@@ -80,7 +80,15 @@ public class SagaCommandParser {
             return parseReleaseStock(tree, eventType);
         }
         if (ShipStockCommand.EVENT_TYPE.equals(eventType)) {
-            return parseShipStock(tree, eventType);
+            try {
+                return parseShipStock(tree, eventType);
+            } catch (InvalidSagaMessageException e) {
+                // D-107/WR-01: ShipStock so existe para pedido ja SHIPPED — invalido e anomalia
+                // tecnica (DLQ), nao descarte. orderId lido de forma tolerante e sanitizado.
+                String orderIdForLog = optionalText(tree, "orderId");
+                throw new InvalidShipStockException(e.getMessage(),
+                        orderIdForLog == null ? "?" : sanitizeForLog(orderIdForLog));
+            }
         }
         throw new InvalidSagaMessageException("Tipo de evento nao suportado: " + sanitizeForLog(eventType));
     }
