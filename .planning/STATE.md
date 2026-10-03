@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 07
 current_phase_name: Endurecimento, Observabilidade e Entrega
-status: executing
-stopped_at: Completed 07-10-PLAN.md
-last_updated: "2026-10-03T16:35:22.876Z"
+status: verifying
+stopped_at: Completed 07-11-PLAN.md
+last_updated: "2026-10-03T17:05:19.924Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 07 execution started
-state_head: e7098071ecaa75552d1188ecf66194c7defb83a3
+state_head: 7e0c812ff5703be774e089bc85c448a9da95bc9d
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 86
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-01)
 
 Phase: 07 (Endurecimento, Observabilidade e Entrega) — EXECUTING
 Plan: 11 of 11
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-03 — Phase 07 execution started
 
 Progress: [█████████░] 86%
@@ -94,6 +94,7 @@ Progress: [█████████░] 86%
 | Phase 07 P08 | 70min | 3 tasks | 20 files |
 | Phase 07 P09 | 30min | 2 tasks | 7 files |
 | Phase 07 P10 | 90min | 2 tasks | 13 files |
+| Phase 07 P11 | 95min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -170,6 +171,7 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-08: OrderStatus no spec via @Schema(implementation = OrderStatus.class), travado por OpenApiDocsIT contra OrderStatus.values(); ErrorResponse documental com productIds (order) e available/requested (inventory)
 - [Phase 07]: 07-09: ShipStock invalido -> InvalidShipStockException (ERROR + relanca -> DLQ); recover por nome em shipAll/releaseAll; IT baixa visibility para 1s so no caso da DLQ
 - [Phase 07]: 07-10: matriz regra->teste (72 regras, 7 modulos) verificada por scripts/check-coverage-matrix.sh; sem LACUNA; E2eContextsSmokeIT atualizado para V4/V5
+- [Phase 07]: 07-11: CI em ubuntu-24.04 com LocalStack em sequencia (max-parallel 1) e falha ::error:: sem o secret LOCALSTACK_AUTH_TOKEN; testcontainers.version removido do pom (1.21.4 vem do BOM do Spring Boot)
 
 ### Pending Todos
 
@@ -207,6 +209,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T16:35:22.572Z
-Stopped at: Completed 07-10-PLAN.md
+Last session: 2026-10-03T17:05:19.482Z
+Stopped at: Completed 07-11-PLAN.md
 Resume file: None
