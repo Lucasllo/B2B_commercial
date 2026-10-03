@@ -82,4 +82,4 @@ Fase de origem: Fase 1 (esqueleto vertical e infraestrutura).
   [CLAUDE.md](../../.claude/CLAUDE.md).
 - Código e configuração: [application.yml do Gateway](../../gateway/src/main/resources/application.yml)
   e [docker-compose.yml](../../docker-compose.yml).
-- Relacionado: ADR 0009 (a ser escrito na Task 3).
+- Relacionado: [ADR 0009](0009-gateway-server-webmvc-em-vez-do-reativo.md).

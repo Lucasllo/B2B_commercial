@@ -40,3 +40,6 @@ alternativa rejeitada, a fase de origem, os links, as decisões citadas e este �
 | [0006](0006-dynamodb-para-o-historico-de-notificacoes.md) | DynamoDB para o histórico de notificações | Aceito | Fase 3 e Fase 6 |
 | [0007](0007-credito-serializado-por-empresa.md) | Decisão de crédito serializada por empresa (`company_credit_lock`) | Aceito | Fase 4 |
 | [0008](0008-correlation-id-proprio-em-vez-de-tracing-distribuido.md) | Correlation-ID próprio em vez de tracing distribuído | Aceito | Fase 7 |
+| [0009](0009-gateway-server-webmvc-em-vez-do-reativo.md) | Spring Cloud Gateway Server WebMVC em vez do gateway reativo | Aceito | Fase 1 |
+| [0010](0010-falha-fechada-sem-resilience4j.md) | Falha fechada (503) nas chamadas síncronas, sem Resilience4j | Aceito | Fase 4 |
+| [0011](0011-codigo-duplicado-por-servico-em-vez-de-modulo-comum.md) | Código duplicado por serviço em vez de módulo comum | Aceito | Fase 5 e Fase 7 |

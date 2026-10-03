@@ -100,5 +100,5 @@ Fase de origem: Fase 4 (criação do pedido e aprovação por limite de crédito
 - Código:
   [CompanyCreditLocker.java](../../order-service/src/main/java/com/orderflow/order/credit/CompanyCreditLocker.java)
   e [CreditPolicy.java](../../order-service/src/main/java/com/orderflow/order/credit/CreditPolicy.java).
-- Relacionado: ADR 0010 (a ser escrito na Task 3), sobre as chamadas feitas antes da
+- Relacionado: [ADR 0010](0010-falha-fechada-sem-resilience4j.md), sobre as chamadas feitas antes da
   trava.

@@ -101,4 +101,4 @@ Fase de origem: Fase 3 (dual-write declarado) e Fase 5 (outbox implementado).
   [OutboxWriter.java](../../inventory-service/src/main/java/com/orderflow/inventory/saga/outbox/OutboxWriter.java)
   e [OutboxRelay.java](../../inventory-service/src/main/java/com/orderflow/inventory/saga/outbox/OutboxRelay.java).
 - Relacionado: [ADR 0001](0001-saga-por-orquestracao-no-order-service.md) e
-  ADR 0011 (a ser escrito na Task 3).
+  [ADR 0011](0011-codigo-duplicado-por-servico-em-vez-de-modulo-comum.md).

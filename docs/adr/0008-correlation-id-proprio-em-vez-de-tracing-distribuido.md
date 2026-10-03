@@ -106,4 +106,4 @@ Fase de origem: Fase 7 (endurecimento, observabilidade e entrega).
   [CorrelationContext.java do order-service](../../order-service/src/main/java/com/orderflow/order/observability/CorrelationContext.java)
   e [OutboxRelay.java do order-service](../../order-service/src/main/java/com/orderflow/order/saga/outbox/OutboxRelay.java).
 - Relacionado: [ADR 0002](0002-transactional-outbox-em-vez-de-publicacao-direta.md), que explica o
-  relay, e ADR 0011 (a ser escrito na Task 3), sobre o código duplicado.
+  relay, e [ADR 0011](0011-codigo-duplicado-por-servico-em-vez-de-modulo-comum.md), sobre o código duplicado.
