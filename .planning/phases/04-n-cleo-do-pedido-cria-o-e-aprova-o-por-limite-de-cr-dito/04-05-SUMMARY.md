@@ -27,7 +27,7 @@ actuals:
   tokens: 13538
   tasks: 2
   commits: 2
-plan_head_before: e237d4cee65dfe081fde587448ba9466bae543ff
+plan_head_before: 9ae57866f9690dcb6d4a8f34f46bdccce4079a97
 
 # Tech tracking
 tech-stack:
@@ -186,8 +186,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — pelo Gateway, na stack real, um comprador cria pedidos decididos pelo crédito e o vendedor decide o pendente** - `0603cd4` (feat)
-2. **Task 2: Swagger do order-service e documentação da fase para quem avalia o projeto** - `90647be` (feat)
+1. **Task 1: Tracer — pelo Gateway, na stack real, um comprador cria pedidos decididos pelo crédito e o vendedor decide o pendente** - `4a2c73f` (feat)
+2. **Task 2: Swagger do order-service e documentação da fase para quem avalia o projeto** - `e8075c3` (feat)
 
 **Plan metadata:** commit de documentação a ser criado logo após este SUMMARY.
 
@@ -231,4 +231,4 @@ None - nenhuma configuração de serviço externo nova é necessária (o `.env` 
 
 ## Self-Check: PASSED
 
-All key files verified present on disk (`docker-compose.yml` order-service block, `gateway/src/main/resources/application.yml` order-service-route, `scripts/smoke-order-flow.sh` at mode 100755, `order-service/src/main/java/com/orderflow/order/config/OpenApiConfig.java`, `order-service/src/test/java/com/orderflow/order/OpenApiDocsIT.java`, `README.md`/`docs/API.md`/`docs/VISAO-GERAL.md` with the new sections). Both task commits (`0603cd4`, `90647be`) verified present in `git log --oneline --all`. Full stack re-verified healthy end-to-end: `docker compose up -d --build --wait` brought all eight services to `Healthy`, `scripts/smoke-order-flow.sh` produced `SMOKE OK` on two consecutive runs against the same base (proving no manual reset is required), a token-leak grep over the smoke output found no match, `git ls-files -s scripts/smoke-order-flow.sh` confirmed mode `100755`, `docker compose down` exited 0, and `./mvnw -B -pl order-service verify` passed 48/48 tests (`BUILD SUCCESS`, including the 4 new `OpenApiDocsIT` tests). Both plan-level `<verification>` grep commands re-run and passing (`/api/orders/{orderId}/approve` in docs/API.md, `Limitações conhecidas (Fase 4)` in README.md).
+All key files verified present on disk (`docker-compose.yml` order-service block, `gateway/src/main/resources/application.yml` order-service-route, `scripts/smoke-order-flow.sh` at mode 100755, `order-service/src/main/java/com/orderflow/order/config/OpenApiConfig.java`, `order-service/src/test/java/com/orderflow/order/OpenApiDocsIT.java`, `README.md`/`docs/API.md`/`docs/VISAO-GERAL.md` with the new sections). Both task commits (`4a2c73f`, `e8075c3`) verified present in `git log --oneline --all`. Full stack re-verified healthy end-to-end: `docker compose up -d --build --wait` brought all eight services to `Healthy`, `scripts/smoke-order-flow.sh` produced `SMOKE OK` on two consecutive runs against the same base (proving no manual reset is required), a token-leak grep over the smoke output found no match, `git ls-files -s scripts/smoke-order-flow.sh` confirmed mode `100755`, `docker compose down` exited 0, and `./mvnw -B -pl order-service verify` passed 48/48 tests (`BUILD SUCCESS`, including the 4 new `OpenApiDocsIT` tests). Both plan-level `<verification>` grep commands re-run and passing (`/api/orders/{orderId}/approve` in docs/API.md, `Limitações conhecidas (Fase 4)` in README.md).

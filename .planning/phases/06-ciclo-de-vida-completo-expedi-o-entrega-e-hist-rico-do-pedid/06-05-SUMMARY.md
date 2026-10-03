@@ -22,7 +22,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 4d47cda9101e72a481d75914a783f3be099ab9b1
+plan_head_before: 2e1b51e05009654c8b22765362a2f5fe7eedf795
 
 tech-stack:
   added: []
@@ -137,8 +137,8 @@ Lista final de pontos de emissao: criacao (`ORDER_CREATED` + `ORDER_APPROVED` | 
 
 ## Task Commits
 
-1. **Task 1 (tracer): criacao grava ORDER_CREATED e a decisao no outbox; relay entrega na notification-events-queue** - `f9561c2` (feat)
-2. **Task 2: aprovacao manual, rejeicao, confirmacao, cancelamento, envio e entrega viram eventos** - `63526c9` (feat)
+1. **Task 1 (tracer): criacao grava ORDER_CREATED e a decisao no outbox; relay entrega na notification-events-queue** - `0138458` (feat)
+2. **Task 2: aprovacao manual, rejeicao, confirmacao, cancelamento, envio e entrega viram eventos** - `7b36525` (feat)
 
 ## Deviations from Plan
 
@@ -149,7 +149,7 @@ Lista final de pontos de emissao: criacao (`ORDER_CREATED` + `ORDER_APPROVED` | 
 - **Issue:** `deliverMovesAShippedOrder...` afirma que `/deliver` nao grava nada no outbox comparando a contagem total apos `/ship` e apos `/deliver`; com `ORDER_DELIVERED` a contagem muda por desenho (D-78). A mesma classe de falha do Pitfall 2, em um IT que o plano nao listou.
 - **Fix:** o helper `outboxRowCount(orderId)` passou a contar so `ReserveStock`/`ReleaseStock`/`ShipStock` (o teste continua provando "nenhum comando de estoque novo no deliver").
 - **Files modified:** `order-service/src/test/java/com/orderflow/order/OrderShipmentIT.java`
-- **Commit:** `f9561c2`
+- **Commit:** `0138458`
 
 **Total deviations:** 1 auto-fixed (1 ajuste de teste). **Impact:** nenhum no escopo de producao.
 
@@ -183,4 +183,4 @@ Pronto para 06-06: o order-service publica a jornada completa e o notification-s
 ## Self-Check: PASSED
 
 - Arquivos criados presentes: OrderLifecycleEvent.java, OrderTimelineEvents.java, NotificationEventsQueue.java, OrderTimelinePublishingIT.java.
-- Commits `f9561c2` e `63526c9` existem em `git log`; `git rev-list --count 4d47cda..HEAD` = 2 no momento da escrita.
+- Commits `0138458` e `7b36525` existem em `git log`; `git rev-list --count 2e1b51e..HEAD` = 2 no momento da escrita.

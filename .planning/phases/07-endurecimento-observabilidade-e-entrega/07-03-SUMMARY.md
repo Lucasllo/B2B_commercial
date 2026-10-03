@@ -71,8 +71,8 @@ coverage:
 duration: manual close-out
 completed: 2026-10-03
 status: complete
-plan_head_before: 6713b4da4b8886d343f62a6553830098f1dfc79f
-plan_head_after: b1134b71703665ee0ad6ccb498a277050a8d7b37
+plan_head_before: de924daa54038e2352d9a31c98bd52a7cbfb528d
+plan_head_after: 344694ba54b089617d269a62a631be2134338160
 ---
 
 # Phase 07 Plan 03: OpenAPI de catalog e auth Summary
@@ -95,10 +95,10 @@ plan_head_after: b1134b71703665ee0ad6ccb498a277050a8d7b37
 
 ## Task Commits
 
-1. **Task 1 RED: contrato OpenAPI do catalog** - `27eda70` (test)
-2. **Task 1 GREEN: ErrorResponse, server /api e anotações de produto** - `27c7266` (feat)
-3. **Task 2 RED: contrato OpenAPI do auth** - `8ebaa3c` (test)
-4. **Task 2 GREEN: ErrorResponse, login público e JWKS oculto** - `b1134b7` (feat)
+1. **Task 1 RED: contrato OpenAPI do catalog** - `75cee23` (test)
+2. **Task 1 GREEN: ErrorResponse, server /api e anotações de produto** - `0b71794` (feat)
+3. **Task 2 RED: contrato OpenAPI do auth** - `397e6a5` (test)
+4. **Task 2 GREEN: ErrorResponse, login público e JWKS oculto** - `344694b` (feat)
 
 ## Decisions Made
 
@@ -111,8 +111,8 @@ plan_head_after: b1134b71703665ee0ad6ccb498a277050a8d7b37
 
 | Task | RED | GREEN | REFACTOR |
 | ---- | --- | ----- | -------- |
-| 1    | 27eda70 | 27c7266 | — |
-| 2    | 8ebaa3c | b1134b7 | — |
+| 1    | 75cee23 | 0b71794 | — |
+| 2    | 397e6a5 | 344694b | — |
 
 O GREEN da Task 2 já estava no working tree e foi commitado neste fechamento manual. Não houve commit de refactor.
 
@@ -130,10 +130,10 @@ O GREEN da Task 2 já estava no working tree e foi commitado neste fechamento ma
 
 **1. [Close-out] GREEN da Task 2 estava sem commit**
 - **Found during:** fechamento manual depois do gate de retomada
-- **Issue:** `8ebaa3c` já tinha os testes do auth, e a implementação estava só no working tree, sem `07-03-SUMMARY.md`
-- **Fix:** commit `b1134b7` com a implementação já escrita, depois este summary
+- **Issue:** `397e6a5` já tinha os testes do auth, e a implementação estava só no working tree, sem `07-03-SUMMARY.md`
+- **Fix:** commit `344694b` com a implementação já escrita, depois este summary
 - **Files modified:** controllers, DTOs, `OpenApiConfig`, `JwksController` e `ErrorResponse` do auth-service
-- **Commit:** `b1134b7`
+- **Commit:** `344694b`
 
 ## Verification
 
@@ -150,7 +150,7 @@ None.
 - FOUND: auth-service/src/main/java/com/orderflow/auth/config/ErrorResponse.java
 - FOUND: catalog-service/src/test/java/com/orderflow/catalog/OpenApiDocsIT.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/OpenApiDocsIT.java
-- FOUND: 27eda70
-- FOUND: 27c7266
-- FOUND: 8ebaa3c
-- FOUND: b1134b7
+- FOUND: 75cee23
+- FOUND: 0b71794
+- FOUND: 397e6a5
+- FOUND: 344694b

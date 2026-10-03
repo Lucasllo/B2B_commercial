@@ -23,7 +23,7 @@ actuals:
   tokens: 6021
   tasks: 2
   commits: 2
-plan_head_before: 01ebcfe50c41af992161e9c12a61ba19663893e8
+plan_head_before: 78c6bd2b309df4102705e262312544d31b0def9f
 
 # Tech tracking
 tech-stack:
@@ -134,8 +134,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — comprador lista só os pedidos da própria empresa e vendedor lista todos, do mais recente ao mais antigo** - `d0c6e26` (feat)
-2. **Task 2: Filtro por status como fila de aprovação, ordenação imposta pelo servidor e limites de paginação** - `e3e1f1d` (feat) — nenhuma mudança de produção necessária, o comportamento já estava correto desde a Task 1
+1. **Task 1: Tracer — comprador lista só os pedidos da própria empresa e vendedor lista todos, do mais recente ao mais antigo** - `dccba8b` (feat)
+2. **Task 2: Filtro por status como fila de aprovação, ordenação imposta pelo servidor e limites de paginação** - `1632a27` (feat) — nenhuma mudança de produção necessária, o comportamento já estava correto desde a Task 1
 
 **Plan metadata:** commit de documentação a ser criado logo após este SUMMARY.
 
@@ -176,4 +176,4 @@ None - nenhuma configuração de serviço externo é necessária.
 
 ## Self-Check: PASSED
 
-All key files verified present on disk (`OrderSummaryResponse.java`, `OrderListIT.java`, `OrderController.java`, `OrderService.java`, `OrderRepository.java`). Both task commits (`d0c6e26`, `e3e1f1d`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across all 8 test classes including `OrderListIT` 2/2). All plan-level `<verification>` commands re-run and passing; `GlobalExceptionHandler.java` confirmed untouched by this plan (`git status --short` on the file shows no change).
+All key files verified present on disk (`OrderSummaryResponse.java`, `OrderListIT.java`, `OrderController.java`, `OrderService.java`, `OrderRepository.java`). Both task commits (`dccba8b`, `1632a27`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across all 8 test classes including `OrderListIT` 2/2). All plan-level `<verification>` commands re-run and passing; `GlobalExceptionHandler.java` confirmed untouched by this plan (`git status --short` on the file shows no change).

@@ -20,7 +20,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 26b150e880db27e6d8740a6eb1e51d2ad148741f
+plan_head_before: 45c18033c8e16e2c5af811a1e0dbdeae4e46b6b2
 
 # Tech tracking
 tech-stack:
@@ -140,8 +140,8 @@ Bate campo a campo com `NOTIFICATION_EVENT_CONTRACT=eventId:UUID,eventType:Strin
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — o vendedor ajusta o estoque e o evento de contrato cai na fila real, depois do commit** — `996c1d5` (feat) — RED (compilação falha sem `StockEventPublisher`/`StockAdjustedEvent`/config novos) → GREEN (1/1 teste novo, depois `./mvnw -pl inventory-service verify` 32/32 completo)
-2. **Task 2: O que não pode virar evento, e o que acontece quando o evento se perde** — `ad4cd9e` (feat) — RED (`StockEventPublishFailureIT` falhava com 500 antes do try/catch — `MessagingOperationFailedException` não capturada) → GREEN (5/5 novos, 36/36 no total do módulo)
+1. **Task 1: Tracer — o vendedor ajusta o estoque e o evento de contrato cai na fila real, depois do commit** — `7b7f28c` (feat) — RED (compilação falha sem `StockEventPublisher`/`StockAdjustedEvent`/config novos) → GREEN (1/1 teste novo, depois `./mvnw -pl inventory-service verify` 32/32 completo)
+2. **Task 2: O que não pode virar evento, e o que acontece quando o evento se perde** — `422b988` (feat) — RED (`StockEventPublishFailureIT` falhava com 500 antes do try/catch — `MessagingOperationFailedException` não capturada) → GREEN (5/5 novos, 36/36 no total do módulo)
 
 **Plan metadata:** commit de documentação final a ser criado logo após este SUMMARY.
 
@@ -208,5 +208,5 @@ All key files and commit hashes verified present:
   `StockAdjustmentResult.java`, `StockAdjustedEvent.java`, `StockEventPublisher.java`,
   `LocalStackTestSupport.java`, `LocalStackProvisioningWaiter.java`,
   `StockAdjustedEventPublishingIT.java`, `StockEventPublishFailureIT.java` — all found.
-- Commits `996c1d5`, `ad4cd9e` — all found in `git log --oneline --all`.
+- Commits `7b7f28c`, `422b988` — all found in `git log --oneline --all`.
 - `./mvnw -B -pl inventory-service verify` — BUILD SUCCESS, 36/36 tests.

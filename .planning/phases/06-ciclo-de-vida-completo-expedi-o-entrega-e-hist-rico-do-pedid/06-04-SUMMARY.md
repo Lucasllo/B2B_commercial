@@ -24,7 +24,7 @@ actuals:
   tasks: 3
   commits: 3
 
-plan_head_before: 244c454e71d656b9b5aa6ecb449a72a6daf242a1
+plan_head_before: 1516a90b3d304a4573d95c22a9f922c44abb3136
 
 tech-stack:
   added: []
@@ -177,9 +177,9 @@ TIMELINE_READ_RULE=SELLER_ADMIN lista (vazia sem eventos); BUYER 404 se vazia ou
 
 ## Task Commits
 
-1. **Task 1 (tracer): ORDER_CREATED na linha do tempo sobre particao generica entityId** - `3c3d42b` (feat)
-2. **Task 2: oito tipos ORDER_* validados por tipo, mensagens e desempate por ciclo de vida** - `66580da` (feat)
-3. **Task 3: leitura SELLER/BUYER com 404 identico, hook recria tabela antiga, healthcheck entityId** - `9ac6006` (feat)
+1. **Task 1 (tracer): ORDER_CREATED na linha do tempo sobre particao generica entityId** - `ec61534` (feat)
+2. **Task 2: oito tipos ORDER_* validados por tipo, mensagens e desempate por ciclo de vida** - `f26ee81` (feat)
+3. **Task 3: leitura SELLER/BUYER com 404 identico, hook recria tabela antiga, healthcheck entityId** - `da4214f` (feat)
 
 ## Deviations from Plan
 
@@ -190,7 +190,7 @@ TIMELINE_READ_RULE=SELLER_ADMIN lista (vazia sem eventos); BUYER 404 se vazia ou
 - **Issue:** `40.00` lido para a arvore `JsonNode` virava `double`, e a mensagem saia `Pedido criado — total 40.0`, divergindo do texto exigido (`total 40.00`).
 - **Fix:** o leitor estrito passou a usar `USE_BIG_DECIMAL_FOR_FLOATS` e a mensagem formata `total` com `setScale(2, RoundingMode.HALF_UP).toPlainString()` (valor monetario, independente da escala do produtor). O `rawPayload` preserva o valor original.
 - **Files modified:** `NotificationService.java`
-- **Commit:** `3c3d42b`
+- **Commit:** `ec61534`
 
 **Total deviations:** 1 auto-fixed (1 bug). **Impact:** nenhum no escopo; o plano dizia "total em texto simples" e o exemplo ja era `40.00`.
 
@@ -223,4 +223,4 @@ Pronto para 06-05: o consumidor aceita os oito tipos no formato do NOTIFICATION_
 ## Self-Check: PASSED
 
 - Arquivos criados presentes: OrderLifecycleEvent.java, NotificationNotFoundException.java, OrderTimelineIT.java, OrderTimelineControllerIT.java.
-- Commits `3c3d42b`, `66580da` e `9ac6006` existem em `git log`; `git rev-list --count 244c454..HEAD` = 3 no momento da escrita.
+- Commits `ec61534`, `f26ee81` e `da4214f` existem em `git log`; `git rev-list --count 1516a90..HEAD` = 3 no momento da escrita.

@@ -27,7 +27,7 @@ actuals:
   tokens: 17176
   tasks: 2
   commits: 2
-  plan_head_before: a1719b6d1e103d0585329cf31736f8c38d391117
+  plan_head_before: 81db7d135ea265756f90a6dcea222bb43b53dfff
 
 tech-stack:
   added: []
@@ -94,7 +94,7 @@ status: complete
 ## Performance
 
 - **Duration:** ~30 min
-- **Started:** 2026-09-30T01:20:29Z (aprox., commit anterior a1719b6)
+- **Started:** 2026-09-30T01:20:29Z (aprox., commit anterior 81db7d1)
 - **Completed:** 2026-09-30T01:46:46Z
 - **Tasks:** 2
 - **Files modified:** 5 (1 criado, 4 modificados)
@@ -142,8 +142,8 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Tracer — pelo Gateway, na stack real, um pedido chega a CONFIRMED com o estoque reservado e outro termina CANCELLED com motivo** — `fa1293f` (feat): `scripts/smoke-order-saga.sh` novo + `scripts/smoke-order-flow.sh` ajustado; suíte de três smokes executada contra a stack real (`docker compose up -d --build --wait` → três smokes → `docker compose down`), todos `SMOKE OK`.
-2. **Task 2: README e docs explicam a saga, os estados novos e as limitações da fase a quem avalia o projeto** — `0b41ca4` (docs): `README.md`, `docs/API.md`, `docs/VISAO-GERAL.md` atualizados; os cinco greps automatizados do plano confirmados.
+1. **Task 1: Tracer — pelo Gateway, na stack real, um pedido chega a CONFIRMED com o estoque reservado e outro termina CANCELLED com motivo** — `916ebbc` (feat): `scripts/smoke-order-saga.sh` novo + `scripts/smoke-order-flow.sh` ajustado; suíte de três smokes executada contra a stack real (`docker compose up -d --build --wait` → três smokes → `docker compose down`), todos `SMOKE OK`.
+2. **Task 2: README e docs explicam a saga, os estados novos e as limitações da fase a quem avalia o projeto** — `9957ed3` (docs): `README.md`, `docs/API.md`, `docs/VISAO-GERAL.md` atualizados; os cinco greps automatizados do plano confirmados.
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -175,7 +175,7 @@ None - plan executado exatamente como escrito.
 
 ## Issues Encountered
 
-- Nota administrativa (sem impacto no plano): o sentinela do protocolo de commit (`gsd-plan-head-before-05-06`) não foi criado antes do primeiro commit da Task 1. Reconstruído após o fato a partir do `git status`/log da conversa (HEAD real antes da Task 1 era `a1719b6`, o mesmo commit relatado no início da sessão) — `actuals.commits`/`plan_head_before` no frontmatter refletem essa base correta, confirmada por `git rev-list --count a1719b6..HEAD` = 2 no momento da escrita deste SUMMARY.
+- Nota administrativa (sem impacto no plano): o sentinela do protocolo de commit (`gsd-plan-head-before-05-06`) não foi criado antes do primeiro commit da Task 1. Reconstruído após o fato a partir do `git status`/log da conversa (HEAD real antes da Task 1 era `81db7d1`, o mesmo commit relatado no início da sessão) — `actuals.commits`/`plan_head_before` no frontmatter refletem essa base correta, confirmada por `git rev-list --count 81db7d1..HEAD` = 2 no momento da escrita deste SUMMARY.
 
 ## User Setup Required
 
@@ -203,7 +203,7 @@ exigidos desde a Fase 1).
 
 - `scripts/smoke-order-saga.sh` confirmado em disco (`[ -f ]`) e no índice com modo `100755`
   (`git ls-files -s`).
-- Os 2 commits do plano confirmados em `git log --oneline --all`: `fa1293f`, `0b41ca4`.
+- Os 2 commits do plano confirmados em `git log --oneline --all`: `916ebbc`, `9957ed3`.
 - `bash scripts/smoke-order-saga.sh`, `bash scripts/smoke-order-flow.sh` e
   `bash scripts/smoke-notification-flow.sh` reexecutados contra `docker compose up -d --build
   --wait` real, todos terminando em `SMOKE OK`; `docker compose down` confirmado com exit 0 ao

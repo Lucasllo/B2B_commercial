@@ -21,7 +21,7 @@ actuals:
   tasks: 3
   commits: 2
 
-plan_head_before: a238329
+plan_head_before: 9272ca5
 
 # Tech tracking
 tech-stack:
@@ -158,8 +158,8 @@ status: complete
 Each task was committed atomically:
 
 1. **Task 1: Congelar o contrato de idempotencia da reserva de estoque** - checkpoint de decisao `blocking-human`, sem codigo produzido; decisao registrada acima em RESERVATION_ID_SCOPE e em Decisions Made
-2. **Task 2: Tracer — inventory-service no reactor, upsert de estoque e disponibilidade exata** - `605fa55` (feat) — RED (12 testes escritos antes do codigo de producao) → GREEN (12/12)
-3. **Task 3: Reserva e liberacao de estoque atomicas/idempotentes** - `8a2dcb0` (feat) — RED (1 falha genuina de asserção — contagem global do livro de reservas contaminada por testes anteriores na mesma suite; corrigida escopando a contagem por produto, nao um bug de producao) → GREEN (21/21 no total)
+2. **Task 2: Tracer — inventory-service no reactor, upsert de estoque e disponibilidade exata** - `6f44b43` (feat) — RED (12 testes escritos antes do codigo de producao) → GREEN (12/12)
+3. **Task 3: Reserva e liberacao de estoque atomicas/idempotentes** - `3128b47` (feat) — RED (1 falha genuina de asserção — contagem global do livro de reservas contaminada por testes anteriores na mesma suite; corrigida escopando a contagem por produto, nao um bug de producao) → GREEN (21/21 no total)
 
 **Plan metadata:** commit de documentacao final a ser criado logo apos este SUMMARY.
 
@@ -201,7 +201,7 @@ Each task was committed atomically:
 - **Fix:** Criado um `GlobalExceptionHandler` minimo na Task 2 (validacao, corpo malformado, `InventoryNotFoundException`→404, acesso negado, autenticacao) — subconjunto suficiente para o contrato da Task 2. A Task 3 estendeu o mesmo arquivo com `InsufficientStockException`→409, `StockBelowReservedException`→409, `ReservationConflictException`→503 e a rede de seguranca para `DataIntegrityViolationException`.
 - **Files modified:** `inventory-service/src/main/java/com/orderflow/inventory/config/GlobalExceptionHandler.java`
 - **Verification:** Testes de 404/400 da Task 2 (`getStockForUnknownProductIdReturns404WithErrorAndMessageKeys`, `setStockWithNegativeQuantityReturns400AndEmptyBodyReturns400AndZeroReturns200`) passam contra PostgreSQL real.
-- **Commit:** `605fa55` (criacao minima, Task 2); estendido em `8a2dcb0` (Task 3)
+- **Commit:** `6f44b43` (criacao minima, Task 2); estendido em `3128b47` (Task 3)
 
 **2. [Rule 1 - Bug] Asserção de contagem de reservas escopada incorretamente no teste, corrigida antes do commit**
 - **Found during:** Task 3, primeira execução do RED/GREEN da suíte completa
@@ -209,7 +209,7 @@ Each task was committed atomically:
 - **Fix:** Trocada `stockReservationRepository.count()` por uma contagem filtrada pelo `productId` do próprio teste (`findAll().stream().filter(...).count()`).
 - **Files modified:** `inventory-service/src/test/java/com/orderflow/inventory/InventoryControllerIT.java`
 - **Verification:** Suíte completa GREEN (21/21) após a correção; nenhuma mudança em código de produção foi necessária.
-- **Commit:** `8a2dcb0` (parte do commit único da Task 3 — a correção aconteceu durante o próprio ciclo RED→GREEN antes do commit, não como um commit separado)
+- **Commit:** `3128b47` (parte do commit único da Task 3 — a correção aconteceu durante o próprio ciclo RED→GREEN antes do commit, não como um commit separado)
 
 ---
 

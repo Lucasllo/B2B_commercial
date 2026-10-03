@@ -19,7 +19,7 @@ actuals:
   tokens: 6122
   tasks: 3
   commits: 3
-plan_head_before: 8fef964f516a9b1e6560ec3b513a30045d4b3942
+plan_head_before: 48da6381abe8a1882a5af108350a1dd8d001b43f
 
 # Tech tracking
 tech-stack:
@@ -160,9 +160,9 @@ GREEN (`./mvnw -B -pl inventory-service verify`): `Tests run: 37, Failures: 0, E
 
 ## Conferência de escopo
 
-`START_SHA` (capturado antes de qualquer edição): `8fef964f516a9b1e6560ec3b513a30045d4b3942`
+`START_SHA` (capturado antes de qualquer edição): `48da6381abe8a1882a5af108350a1dd8d001b43f`
 
-`git diff --name-only 8fef964f516a9b1e6560ec3b513a30045d4b3942..HEAD` listou exatamente os 9 arquivos de `files_modified` do plano:
+`git diff --name-only 48da6381abe8a1882a5af108350a1dd8d001b43f..HEAD` listou exatamente os 9 arquivos de `files_modified` do plano:
 ```
 catalog-service/src/main/resources/application.yml
 catalog-service/src/test/java/com/orderflow/catalog/ProductControllerIT.java
@@ -180,9 +180,9 @@ Nenhum `docker-compose.yml`, `SecurityConfig.java`, arquivo de `auth-service/`, 
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1 (tracer): notification-service** - `bfda7ec` (fix)
-2. **Task 2: catalog-service** - `d128b28` (fix)
-3. **Task 3: inventory-service** - `805d5c2` (fix)
+1. **Task 1 (tracer): notification-service** - `d442929` (fix)
+2. **Task 2: catalog-service** - `711061f` (fix)
+3. **Task 3: inventory-service** - `619e239` (fix)
 
 _Nota: commit de metadados (SUMMARY/STATE) fica a cargo do orquestrador, conforme constraint da execução._
 
@@ -231,13 +231,13 @@ Nenhum além da deviation de ambiente acima documentada. Todos os RED/GREEN saí
 None - nenhuma configuração de serviço externo necessária. Nenhuma variável de ambiente nova (o `issuer-uri` tem default idêntico ao emitido pelo auth-service; `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` é opcional, para sobrescrever se necessário).
 
 ## Next Phase Readiness
-- T-03-02 e WR-07 (03-REVIEW.md) podem ser marcados como fechados, citando os commits `bfda7ec`, `d128b28`, `805d5c2`
+- T-03-02 e WR-07 (03-REVIEW.md) podem ser marcados como fechados, citando os commits `d442929`, `711061f`, `619e239`
 - O padrão (`issuer-uri` + `JwkSetUriJwtDecoderBuilderCustomizer` nos testes) fica pronto para ser herdado pelo resource server do order-service na Fase 4
 - Nenhum blocker identificado para a Fase 4
 
 ## Self-Check: PASSED
 
-Todos os 3 commits (`bfda7ec`, `d128b28`, `805d5c2`) e os 9 arquivos de `files_modified` (mais este próprio SUMMARY.md) foram confirmados presentes no repositório via `git log --oneline --all` e checagem de existência de arquivo.
+Todos os 3 commits (`d442929`, `711061f`, `619e239`) e os 9 arquivos de `files_modified` (mais este próprio SUMMARY.md) foram confirmados presentes no repositório via `git log --oneline --all` e checagem de existência de arquivo.
 
 ---
 *Phase: quick-260923-tj9*

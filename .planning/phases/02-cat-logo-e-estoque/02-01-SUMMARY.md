@@ -132,8 +132,8 @@ status: complete
 Each task was committed atomically:
 
 1. **Task 1: Congelar o contrato de status e retirada de produto do catálogo** - checkpoint de decisão, sem código produzido; decisão registrada abaixo em Decisions Made
-2. **Task 2: Tracer — criação e leitura de produto real** - `0e76ca4` (feat) — RED (compilação falhou por classes de produção inexistentes) → GREEN (12/12 testes)
-3. **Task 3: Catálogo completo — atualização, retirada por status e listagem** - `fd5083f` (feat) — RED (12 falhas de asserção + 2 erros de constraint) → GREEN (27/27 testes)
+2. **Task 2: Tracer — criação e leitura de produto real** - `57fb628` (feat) — RED (compilação falhou por classes de produção inexistentes) → GREEN (12/12 testes)
+3. **Task 3: Catálogo completo — atualização, retirada por status e listagem** - `1ec21ed` (feat) — RED (12 falhas de asserção + 2 erros de constraint) → GREEN (27/27 testes)
 
 **Plan metadata:** commit de documentação final a ser criado logo após este SUMMARY.
 
@@ -178,7 +178,7 @@ Nenhum desvio de código nas Rules 1-4 foi necessário — o plano foi executado
 
 **2. [Ambiente/Git] Commits feitos diretamente em `master`**
 - **Contexto:** O dispatch deste executor instruiu modo sequencial "na main working tree" porque a criação de worktree foi degradada (origin/HEAD não resolvível — o repositório não tem remote configurado). `.planning/config.json` declara `git.branching_strategy: "none"`, e todo o histórico anterior do projeto (incluindo os commits de planejamento da Fase 2) já vive diretamente em `master`, o único branch existente.
-- **Ação:** Os dois commits de tarefa deste plano (`0e76ca4`, `fd5083f`) foram feitos em `master`, seguindo a instrução explícita do orquestrador e a convenção já estabelecida no repositório, apesar de a heurística genérica de nome de branch protegido (`main|master|develop|trunk|release/*`) sinalizar `master` como protegido.
+- **Ação:** Os dois commits de tarefa deste plano (`57fb628`, `1ec21ed`) foram feitos em `master`, seguindo a instrução explícita do orquestrador e a convenção já estabelecida no repositório, apesar de a heurística genérica de nome de branch protegido (`main|master|develop|trunk|release/*`) sinalizar `master` como protegido.
 - **Impacto:** Nenhum — não há remote, não há PR/CI gate sendo contornado, e nenhum outro agente/branch concorrente existe neste repositório local.
 
 ---
@@ -217,4 +217,4 @@ None - nenhuma configuração de serviço externo necessária.
 
 ## Self-Check: PASSED
 
-All 14 created files verified present on disk (catalog-service module + SUMMARY.md itself); both task commits (`0e76ca4`, `fd5083f`) verified present in `git log --oneline --all`. No missing items.
+All 14 created files verified present on disk (catalog-service module + SUMMARY.md itself); both task commits (`57fb628`, `1ec21ed`) verified present in `git log --oneline --all`. No missing items.

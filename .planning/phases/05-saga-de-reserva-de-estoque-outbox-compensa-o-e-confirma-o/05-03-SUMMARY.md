@@ -23,7 +23,7 @@ actuals:
   tokens: 23489
   tasks: 2
   commits: 4
-  plan_head_before: 8af3e9b0d1b16562e29a9e91fc68d1fda46c83ea
+  plan_head_before: 47b8c3994ccb7fbf25690e740755f0abd5e61a11
 
 tech-stack:
   added: []
@@ -167,7 +167,7 @@ status: complete
 ## Performance
 
 - **Duration:** ~34 min (commits) — sessão real mais longa por causa da leitura extensa de contexto (05-01/05-02, código existente do inventory-service para espelhar o parser/listener)
-- **Started:** 2026-09-26T12:24:40-03:00 (aprox., commit anterior 8af3e9b)
+- **Started:** 2026-09-26T12:24:40-03:00 (aprox., commit anterior 47b8c39)
 - **Completed:** 2026-09-26T12:58:07-03:00
 - **Tasks:** 2
 - **Files modified:** 21 (14 criados, 7 modificados)
@@ -185,10 +185,10 @@ status: complete
 
 Cada task seguiu o ciclo RED → GREEN (TDD):
 
-1. **Task 1 RED** — `1c3b499` (test): 6 casos de falha em `ReservationResultListenerIT` (INSUFFICIENT_STOCK, PRODUCT_NOT_STOCKED, RESERVATION_CANCELLED, crédito liberado, duplicata no-op, pedido inexistente/mensagem malformada) + `SagaEventParserTest`/`CancellationReasonsTest` (já verdes) + scaffolding de produção com o wiring do listener comentado de propósito.
-2. **Task 1 GREEN** — `8f2cbb4` (feat): wiring restaurado (`ReservationResultListener` chama `OrderSagaService.applyReservationFailed`) — 6/6 `ReservationResultListenerIT` + suíte inteira do módulo verde (60 testes). Inclui a correção de `poll-timeout`/timeouts do `SqsAsyncClient` (deviation abaixo).
-3. **Task 2 RED** — `a061eee` (test): 5 casos do caminho feliz (`StockReserved` confirma e consome crédito, duplicata, sucesso tardio para pedido cancelado grava `ReleaseStock`, falha tardia após `CONFIRMED`, itens divergentes descartados) + `SagaEventParserTest`/`OrderDomainTest` novos (já verdes) + scaffolding com o despacho de `StockReservedEvent` comentado de propósito.
-4. **Task 2 GREEN** — `506811b` (feat): despacho restaurado (`ReservationResultListener` chama `OrderSagaService.applyStockReserved`) — 11/11 `ReservationResultListenerIT` + suíte inteira do módulo verde (65 testes).
+1. **Task 1 RED** — `a788814` (test): 6 casos de falha em `ReservationResultListenerIT` (INSUFFICIENT_STOCK, PRODUCT_NOT_STOCKED, RESERVATION_CANCELLED, crédito liberado, duplicata no-op, pedido inexistente/mensagem malformada) + `SagaEventParserTest`/`CancellationReasonsTest` (já verdes) + scaffolding de produção com o wiring do listener comentado de propósito.
+2. **Task 1 GREEN** — `79546e9` (feat): wiring restaurado (`ReservationResultListener` chama `OrderSagaService.applyReservationFailed`) — 6/6 `ReservationResultListenerIT` + suíte inteira do módulo verde (60 testes). Inclui a correção de `poll-timeout`/timeouts do `SqsAsyncClient` (deviation abaixo).
+3. **Task 2 RED** — `69a510b` (test): 5 casos do caminho feliz (`StockReserved` confirma e consome crédito, duplicata, sucesso tardio para pedido cancelado grava `ReleaseStock`, falha tardia após `CONFIRMED`, itens divergentes descartados) + `SagaEventParserTest`/`OrderDomainTest` novos (já verdes) + scaffolding com o despacho de `StockReservedEvent` comentado de propósito.
+4. **Task 2 GREEN** — `f36ff2f` (feat): despacho restaurado (`ReservationResultListener` chama `OrderSagaService.applyStockReserved`) — 11/11 `ReservationResultListenerIT` + suíte inteira do módulo verde (65 testes).
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -215,7 +215,7 @@ Ver `key-decisions` do frontmatter — `ORDER_RESPONSE_CONTRACT`, `SAGA_RESULT_L
 - **Fix:** `spring.cloud.aws.sqs.listener.poll-timeout: 0s` (application.yml) desliga o long polling; `apiCallTimeout`/`apiCallAttemptTimeout` de 3s/1s para 5s/2s (`SqsMessagingConfig`).
 - **Files modified:** `order-service/src/main/resources/application.yml`, `order-service/src/main/java/com/orderflow/order/config/SqsMessagingConfig.java`
 - **Verification:** `ReservationResultListenerIT` 6/6 (depois 11/11) verde, `./mvnw -B -pl order-service verify` inteiro verde (60, depois 65 testes).
-- **Committed in:** `8f2cbb4` (Task 1 GREEN)
+- **Committed in:** `79546e9` (Task 1 GREEN)
 
 ---
 
@@ -244,6 +244,6 @@ None - nenhuma configuração de serviço externo nova (o `LOCALSTACK_AUTH_TOKEN
 ## Self-Check: PASSED
 
 - Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): `CancellationCode`, `CancellationReasons`, `OrderSagaService`, `SagaEventParser`, `ReservationResultListener`, `ReleaseStockCommand`, `StockReservedEvent`, `ReservationResultListenerIT`, `CancellationReasonsTest`, `SagaEventParserTest`, `OrderSagaQueues`, este SUMMARY.
-- Todos os 4 commits do plano confirmados em `git log --oneline --all`: `1c3b499`, `8f2cbb4`, `a061eee`, `506811b`.
+- Todos os 4 commits do plano confirmados em `git log --oneline --all`: `a788814`, `79546e9`, `69a510b`, `f36ff2f`.
 - Todos os casos de `<acceptance_criteria>` das duas tasks reverificados: campos de `OrderResponse` na ordem exigida; `OrderSagaService.applyReservationFailed`/`applyStockReserved` `@Transactional` usando `findByIdForUpdate` (`@Lock(PESSIMISTIC_WRITE)`); `ReservationResultListener` captura só `InvalidSagaMessageException`; primeiro commit de `ReservationResultListenerIT.java` sem `"CONFIRMED"` (`grep -c` = 0); métodos de falha acima dos de `CONFIRMED` no arquivo.
 - `./mvnw -B -pl order-service clean verify` re-executado após o commit final: 65 testes (19 unitários relevantes + suíte completa de integração contra Postgres/LocalStack reais), todos verdes.

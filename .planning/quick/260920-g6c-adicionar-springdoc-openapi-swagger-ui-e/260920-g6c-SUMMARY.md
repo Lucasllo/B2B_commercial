@@ -118,9 +118,9 @@ status: complete
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1: Swagger UI ponta a ponta no catalog-service** — `6803167` (feat) — fatia vertical completa num unico servico antes de replicar.
-2. **Task 2: Replicar para auth-service e inventory-service** — `5e4ee09` (feat) — mesmo molde, com as diferencas reais registradas no plano (auth-service aninha `openapi` dentro da chave `orderflow` ja existente; inventory-service cria a chave `orderflow` pela primeira vez).
-3. **Task 3: README + confirmacao de que o gateway nao mudou** — `588785f` (docs).
+1. **Task 1: Swagger UI ponta a ponta no catalog-service** — `b865c69` (feat) — fatia vertical completa num unico servico antes de replicar.
+2. **Task 2: Replicar para auth-service e inventory-service** — `7ccf6bb` (feat) — mesmo molde, com as diferencas reais registradas no plano (auth-service aninha `openapi` dentro da chave `orderflow` ja existente; inventory-service cria a chave `orderflow` pela primeira vez).
+3. **Task 3: README + confirmacao de que o gateway nao mudou** — `8d3018b` (docs).
 
 ## Deviations
 

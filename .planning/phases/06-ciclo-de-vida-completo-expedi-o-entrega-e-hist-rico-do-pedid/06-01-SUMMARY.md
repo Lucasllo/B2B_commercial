@@ -19,7 +19,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 552d0b1c76f724e6f62dfd06435d183535b488f6
+plan_head_before: d42c782f014170547784f07f6b584ce546b665d2
 
 tech-stack:
   added: []
@@ -145,8 +145,8 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1 (tracer): transportadora e rastreio S10 no CONFIRMED** - `66af366` (feat)
-2. **Task 2: tabela unica de transicoes e V3 provada sobre base legada** - `5066b6b` (feat)
+1. **Task 1 (tracer): transportadora e rastreio S10 no CONFIRMED** - `2290e62` (feat)
+2. **Task 2: tabela unica de transicoes e V3 provada sobre base legada** - `d8bd924` (feat)
 
 ## Verification
 
@@ -166,7 +166,7 @@ status: complete
 - **Fix:** O helper passou a gravar `carrier` e `tracking_code` validos em toda linha. O arquivo nao estava na lista `files_modified` do plano, mas a quebra e consequencia direta da CHECK introduzida aqui.
 - **Files modified:** `order-service/src/test/java/com/orderflow/order/CreditLockAndExposureIT.java`
 - **Verification:** `CreditLockAndExposureIT` 5/5 e suite completa verde.
-- **Commit:** `5066b6b`
+- **Commit:** `d8bd924`
 
 **2. [Process] Ciclo RED/GREEN sem commit separado de RED**
 - Os testes foram escritos antes da implementacao, mas cada tarefa produziu um unico commit `feat` (conforme "commit each task"). Um commit de RED isolado deixaria `master` sem compilar (classes inexistentes), e o `<verify>` do plano trata a tarefa como unidade. Nao houve registro formal de evidencia RED via `check tdd-red-evidence`.
@@ -192,4 +192,4 @@ Pronto para 06-02: `Order.moveTo` (privado) e `OrderStatus.canTransitionTo` esta
 ## Self-Check: PASSED
 
 - Arquivos criados verificados em disco (V3, quatro classes de `shipping`, tres testes novos).
-- Commits `66af366` e `5066b6b` presentes em `git log`.
+- Commits `2290e62` e `d8bd924` presentes em `git log`.

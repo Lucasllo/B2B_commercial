@@ -24,7 +24,7 @@ actuals:
   tokens: 31537
   tasks: 2
   commits: 2
-plan_head_before: 89229372a6d3bfb043dc51b37c61e8e62e6da18c
+plan_head_before: 80a73105b9ba4e13b33305d10b3cc6808dac9428
 
 # Tech tracking
 tech-stack:
@@ -191,8 +191,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — pedido criado a partir do catálogo e decidido pelo limite de crédito** - `0efc79b` (feat) — RED (compilação falhou, classes de produção inexistentes) → GREEN (3/3 testes)
-2. **Task 2: A trava aguenta concorrência real** - `76e3fb4` (feat) — RED (compilação falhou, `ConcurrentRequests`/classes de teste inexistentes) → GREEN (8/8 testes novos; 11/11 no módulo inteiro)
+1. **Task 1: Tracer — pedido criado a partir do catálogo e decidido pelo limite de crédito** - `40ad910` (feat) — RED (compilação falhou, classes de produção inexistentes) → GREEN (3/3 testes)
+2. **Task 2: A trava aguenta concorrência real** - `ff29e37` (feat) — RED (compilação falhou, `ConcurrentRequests`/classes de teste inexistentes) → GREEN (8/8 testes novos; 11/11 no módulo inteiro)
 
 **Plan metadata:** commit de documentação a ser criado logo após este SUMMARY.
 
@@ -251,4 +251,4 @@ None - nenhuma configuração de serviço externo é necessária. `order-service
 
 ## Self-Check: PASSED
 
-All key files verified present on disk (`order-service/pom.xml`, `Dockerfile`, `application.yml`, `V1__init_order_schema.sql`, `OrderServiceApplication.java`, `OrderController.java`, `OrderService.java`, `OrderCreationService.java`, `CompanyCreditLocker.java`, `OrderControllerIT.java`, `CreditLimitBoundaryConcurrencyIT.java`, `CreditLockAndExposureIT.java`, `ConcurrentRequests.java`). Both task commits (`0efc79b`, `76e3fb4`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — 11/11 tests, `BUILD SUCCESS`) and all plan-level `<verification>` commands (reactor package, two Docker builds, four source-gate greps) re-run and passing.
+All key files verified present on disk (`order-service/pom.xml`, `Dockerfile`, `application.yml`, `V1__init_order_schema.sql`, `OrderServiceApplication.java`, `OrderController.java`, `OrderService.java`, `OrderCreationService.java`, `CompanyCreditLocker.java`, `OrderControllerIT.java`, `CreditLimitBoundaryConcurrencyIT.java`, `CreditLockAndExposureIT.java`, `ConcurrentRequests.java`). Both task commits (`40ad910`, `ff29e37`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — 11/11 tests, `BUILD SUCCESS`) and all plan-level `<verification>` commands (reactor package, two Docker builds, four source-gate greps) re-run and passing.

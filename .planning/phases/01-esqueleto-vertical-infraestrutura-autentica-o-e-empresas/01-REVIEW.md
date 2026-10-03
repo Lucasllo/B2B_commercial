@@ -8,7 +8,7 @@ findings:
   warning: 0
   info: 4
   total: 4
-resolution: "WR-1 and WR-2 fixed in commit c2db361 (see Resolution section below); 46/46 tests still green after fix."
+resolution: "WR-1 and WR-2 fixed in commit 671fbf9 (see Resolution section below); 46/46 tests still green after fix."
 ---
 
 # Code Review: Phase 1
@@ -70,7 +70,7 @@ the database.
 
 ## Resolution
 
-Both warnings were fixed immediately after this review, in commit `c2db361`:
+Both warnings were fixed immediately after this review, in commit `671fbf9`:
 
 - **WR-1**: Removed `AuthController`'s local `@ExceptionHandler(AuthenticationException.class)`.
   Login failures now fall through to `GlobalExceptionHandler.handleAuthentication`, which returns

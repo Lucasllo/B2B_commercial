@@ -22,7 +22,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 2ba00f367262cde44d41e37b19bf21ae58e179c5
+plan_head_before: 2a0e5f449960b07cf529141d112cbe4a23ba525b
 
 tech-stack:
   added: []
@@ -145,8 +145,8 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1 (tracer): POST /orders/{id}/ship com ShipStock no outbox** - `9a84b81` (feat)
-2. **Task 2: POST /orders/{id}/deliver e matriz status x acao** - `8c98787` (feat)
+1. **Task 1 (tracer): POST /orders/{id}/ship com ShipStock no outbox** - `f088966` (feat)
+2. **Task 2: POST /orders/{id}/deliver e matriz status x acao** - `8883140` (feat)
 
 ## Verification
 
@@ -187,4 +187,4 @@ None.
 ## Self-Check: PASSED
 
 - Arquivos criados verificados em disco (controller, service, excecao, DTO, dois ITs).
-- Commits `9a84b81` e `8c98787` presentes em `git log`; `git rev-list --count 2ba00f3..HEAD` = 2 no momento da escrita.
+- Commits `f088966` e `8883140` presentes em `git log`; `git rev-list --count 2a0e5f4..HEAD` = 2 no momento da escrita.

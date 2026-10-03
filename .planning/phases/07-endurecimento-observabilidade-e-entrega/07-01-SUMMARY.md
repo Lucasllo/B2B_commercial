@@ -86,8 +86,8 @@ coverage:
 duration: 19min
 completed: 2026-10-01
 status: complete
-plan_head_before: 474e64f1431d6d97c87cf3f070c5c1dbe740f353
-plan_head_after: 46918df9d14a91326689e2a32e4d8a91a1914c0f
+plan_head_before: 02788cea2fb7f43c8266007001791040b3bb1a4f
+plan_head_after: 2e6c0045e8b3f0bce8917fa63b62189e720d9fec
 ---
 
 # Phase 07 Plan 01: Correlation-ID e Swagger UI única Summary
@@ -126,8 +126,8 @@ ACCESS_LOG_SKIP=/actuator
 
 Each task was committed atomically:
 
-1. **Task 1: Correlation-ID único na resposta, no destino e no log** — `15cef37` (test, RED) e `968064c` (feat, GREEN)
-2. **Task 2: Swagger UI única com dropdown dos 5 serviços** — `8bbbbc2` (test, RED) e `46918df` (feat, GREEN)
+1. **Task 1: Correlation-ID único na resposta, no destino e no log** — `20fa352` (test, RED) e `e32e78e` (feat, GREEN)
+2. **Task 2: Swagger UI única com dropdown dos 5 serviços** — `5361ed6` (test, RED) e `2e6c004` (feat, GREEN)
 
 ## Files Created/Modified
 
@@ -158,7 +158,7 @@ Each task was committed atomically:
 - **Fix:** `accessLogOmitsQueryStringAndAuthorization` manda `?token=secret` e `Authorization: Bearer super-secret` e exige a linha `GET /api/orders/abc -> 200` sem esses valores. O filtro loga `getRequestURI()`.
 - **Files modified:** `GatewayRoutingIT.java`, `CorrelationIdFilter.java`
 - **Verification:** `./mvnw -B -pl gateway verify` — 6 unitários e 10 ITs verdes
-- **Committed in:** `15cef37` (teste) e `968064c` (filtro)
+- **Committed in:** `20fa352` (teste) e `e32e78e` (filtro)
 
 **Total deviations:** 1 auto-fixed (Rule 2)
 **Impact on plan:** Trava a mitigação que o threat model já marcava como teste. Sem mudança de desenho.
@@ -167,8 +167,8 @@ Each task was committed atomically:
 
 | Task | RED | GREEN | REFACTOR |
 |------|-----|-------|----------|
-| 1 | `15cef37` — `CorrelationIdFilterTest` 5 falhas de asserção, veredito `RED_EVIDENCE_OK` | `968064c` | — |
-| 2 | `8bbbbc2` — `swaggerConfigListsExactlyTheFiveServiceSpecs` 404, veredito `RED_EVIDENCE_OK` | `46918df` | — |
+| 1 | `20fa352` — `CorrelationIdFilterTest` 5 falhas de asserção, veredito `RED_EVIDENCE_OK` | `e32e78e` | — |
+| 2 | `5361ed6` — `swaggerConfigListsExactlyTheFiveServiceSpecs` 404, veredito `RED_EVIDENCE_OK` | `2e6c004` | — |
 
 Não houve commit de refactor. O tracer da Task 1 passou em `./mvnw -B -pl gateway verify` antes da Task 2.
 
@@ -192,10 +192,10 @@ None - no external service configuration required.
 - FOUND: gateway/src/test/java/com/orderflow/gateway/GatewayRoutingIT.java
 - FOUND: estudos/27-correlation-id-e-mdc.md
 - FOUND: estudos/28-openapi-agregado-no-gateway.md
-- FOUND: 15cef37
-- FOUND: 968064c
-- FOUND: 8bbbbc2
-- FOUND: 46918df
+- FOUND: 20fa352
+- FOUND: e32e78e
+- FOUND: 5361ed6
+- FOUND: 2e6c004
 
 ---
 *Phase: 07-endurecimento-observabilidade-e-entrega*

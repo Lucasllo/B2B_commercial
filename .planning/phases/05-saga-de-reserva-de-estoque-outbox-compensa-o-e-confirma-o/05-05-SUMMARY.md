@@ -20,7 +20,7 @@ actuals:
   tokens: 16485
   tasks: 2
   commits: 2
-  plan_head_before: f9719b42a6ed93461809fa2bd9d71deba81f39a3
+  plan_head_before: c03bb7797e2db854b642d3fc7c030c0717612ade
 
 tech-stack:
   added: []
@@ -139,8 +139,8 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Tracer — os dois serviços sobem no mesmo JVM com configurações isoladas e um pedido sem estoque suficiente termina CANCELLED** — `a2ce213` (feat): módulo `e2e-tests` completo (pom, overrides, suporte, `E2eContextsSmokeIT`, os dois testes de falha de `OrderReservationSagaE2EIT`).
-2. **Task 2: O pedido com estoque percorre RESERVING até CONFIRMED, a republicação não reserva de novo e a aprovação do vendedor também chega a CONFIRMED** — `d0ab08e` (feat): os três testes de sucesso acrescentados abaixo dos de falha em `OrderReservationSagaE2EIT.java`.
+1. **Task 1: Tracer — os dois serviços sobem no mesmo JVM com configurações isoladas e um pedido sem estoque suficiente termina CANCELLED** — `014b80f` (feat): módulo `e2e-tests` completo (pom, overrides, suporte, `E2eContextsSmokeIT`, os dois testes de falha de `OrderReservationSagaE2EIT`).
+2. **Task 2: O pedido com estoque percorre RESERVING até CONFIRMED, a republicação não reserva de novo e a aprovação do vendedor também chega a CONFIRMED** — `f4530cc` (feat): os três testes de sucesso acrescentados abaixo dos de falha em `OrderReservationSagaE2EIT.java`.
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -171,7 +171,7 @@ Ver `key-decisions` do frontmatter — `E2E_CONFIG_STRATEGY`/`E2E_FLYWAY_LOCATIO
 - **Fix:** Consulta ajustada para `WHERE success AND version IS NOT NULL` nos dois testes (order e inventory).
 - **Files modified:** `e2e-tests/src/test/java/com/orderflow/e2e/E2eContextsSmokeIT.java`
 - **Verification:** `./mvnw -B -pl e2e-tests -am verify` reexecutado, `E2eContextsSmokeIT` 7/7 verde.
-- **Committed in:** `a2ce213` (Task 1 commit)
+- **Committed in:** `014b80f` (Task 1 commit)
 
 ---
 
@@ -201,7 +201,7 @@ None - nenhuma configuração de serviço externo nova (`LOCALSTACK_AUTH_TOKEN` 
 ## Self-Check: PASSED
 
 - Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): `e2e-tests/pom.xml`, os dois overrides, `E2eInfrastructure`, `LocalStackTestSupport`, `LocalStackProvisioningWaiter`, `DownstreamStubServer`, `E2eJwt`, `E2eHttp`, `E2eContextsSmokeIT`, `OrderReservationSagaE2EIT`, os seis Dockerfiles.
-- Os 2 commits do plano confirmados em `git log --oneline --all`: `a2ce213`, `d0ab08e`.
+- Os 2 commits do plano confirmados em `git log --oneline --all`: `014b80f`, `f4530cc`.
 - `./mvnw -B -pl e2e-tests -am verify` reexecutado (compose derrubado): 12 testes verdes no módulo `e2e-tests` (7 `E2eContextsSmokeIT` + 5 `OrderReservationSagaE2EIT`), mais as suítes completas de `order-service` (70 testes) e `inventory-service` (51 testes) via `-am`, todas verdes.
 - `docker build -f order-service/Dockerfile .` e `docker build -f inventory-service/Dockerfile .` reexecutados: `BUILD SUCCESS` nos dois.
 - Gate de grep reverificado: `grep -l 'COPY e2e-tests/pom.xml' auth-service/Dockerfile gateway/Dockerfile catalog-service/Dockerfile inventory-service/Dockerfile notification-service/Dockerfile order-service/Dockerfile | wc -l` devolve `6`; `grep -rqE 'org\.mockito|MockBean|MockitoBean' e2e-tests/src` devolve não-zero (nenhum dublê de teste).

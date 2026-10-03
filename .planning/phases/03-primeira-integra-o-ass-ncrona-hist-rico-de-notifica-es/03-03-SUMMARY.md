@@ -22,7 +22,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 65a79c984b6802a170e9f8be218b8e96038ba315
+plan_head_before: dbd19be266ae76ed4e63e57c30feed43cda7473d
 
 # Tech tracking
 tech-stack:
@@ -143,8 +143,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — um ajuste de estoque pelo Gateway aparece no histórico consultado pelo Gateway, com tudo subindo num comando e sem passo manual** — `cef3262` (feat) — sessão anterior; checkpoint `human-verify` (`gate="blocking-human"`) aprovado pelo usuário com evidência de DynamoDB scan e logs sem chamada HTTP de entrada.
-2. **Task 2: O avaliador reproduz a garantia de reentrega na stack real e encontra tudo documentado** — `2f2e76d` (feat) — RED (`OpenApiDocsIT` falhando no título/`bearerAuth`, springdoc default) → GREEN (4/4 testes) + extensão do smoke + documentação, nesta sessão.
+1. **Task 1: Tracer — um ajuste de estoque pelo Gateway aparece no histórico consultado pelo Gateway, com tudo subindo num comando e sem passo manual** — `6bd3c6c` (feat) — sessão anterior; checkpoint `human-verify` (`gate="blocking-human"`) aprovado pelo usuário com evidência de DynamoDB scan e logs sem chamada HTTP de entrada.
+2. **Task 2: O avaliador reproduz a garantia de reentrega na stack real e encontra tudo documentado** — `5a9a085` (feat) — RED (`OpenApiDocsIT` falhando no título/`bearerAuth`, springdoc default) → GREEN (4/4 testes) + extensão do smoke + documentação, nesta sessão.
 
 **Plan metadata:** commit de documentação final a ser criado logo após este SUMMARY.
 
@@ -210,7 +210,7 @@ Verificação dos arquivos e commits citados:
   `notification-service/src/main/java/com/orderflow/notification/config/OpenApiConfig.java`,
   `notification-service/src/test/java/com/orderflow/notification/OpenApiDocsIT.java`,
   `README.md`, `docs/API.md`, `docs/VISAO-GERAL.md` — todos encontrados.
-- Commits `cef3262`, `2f2e76d` — ambos encontrados em `git log --oneline --all`.
+- Commits `6bd3c6c`, `5a9a085` — ambos encontrados em `git log --oneline --all`.
 - `./mvnw -B -pl auth-service,catalog-service,inventory-service,notification-service verify` —
   BUILD SUCCESS (18 testes em `notification-service`, incluindo `OpenApiDocsIT` 4/4).
 - `bash scripts/smoke-notification-flow.sh` — `SMOKE OK`, 7/7 passos confirmados na última execução.
