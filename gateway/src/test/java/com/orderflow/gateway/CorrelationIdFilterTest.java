@@ -1,10 +1,14 @@
 package com.orderflow.gateway;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -115,6 +119,52 @@ class CorrelationIdFilterTest {
         });
 
         assertThat(response.getHeaders(CorrelationIdFilter.HEADER)).containsExactly("abc-123");
+    }
+
+    @Test
+    void accessLineCarriesOnlyMethodPathAndStatusNeverTheQueryStringOrAuthorization() throws Exception {
+        ListAppender<ILoggingEvent> appender = captureFilterLog();
+        try {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+            request.setQueryString("token=query-secret&x=1");
+            request.addHeader("Authorization", "Bearer header-secret");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            response.setStatus(201);
+
+            run(request, response);
+
+            assertThat(appender.list).hasSize(1);
+            String line = appender.list.get(0).getFormattedMessage();
+            assertThat(line).isEqualTo("POST /api/orders -> 201");
+            assertThat(line).doesNotContain("query-secret").doesNotContain("header-secret");
+        } finally {
+            releaseFilterLog(appender);
+        }
+    }
+
+    @Test
+    void actuatorRequestsAreNotWrittenAsAccessLines() throws Exception {
+        ListAppender<ILoggingEvent> appender = captureFilterLog();
+        try {
+            run(new MockHttpServletRequest("GET", "/actuator/health"), new MockHttpServletResponse());
+
+            assertThat(appender.list).isEmpty();
+        } finally {
+            releaseFilterLog(appender);
+        }
+    }
+
+    private static ListAppender<ILoggingEvent> captureFilterLog() {
+        Logger logger = (Logger) LoggerFactory.getLogger(CorrelationIdFilter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
+    }
+
+    private static void releaseFilterLog(ListAppender<ILoggingEvent> appender) {
+        ((Logger) LoggerFactory.getLogger(CorrelationIdFilter.class)).detachAppender(appender);
+        appender.stop();
     }
 
     private void assertReplaced(String invalid) throws Exception {
