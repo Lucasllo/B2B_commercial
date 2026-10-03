@@ -42,25 +42,25 @@ class E2eContextsSmokeIT {
     }
 
     @Test
-    void orderSchemaHasExactlyItsOwnThreeMigrationsApplied() {
+    void orderSchemaHasExactlyItsOwnFourMigrationsApplied() {
         // [Rule 1 - Bug] Flyway grava uma linha extra (type SCHEMA, version NULL) para o evento de
         // criação do schema — "version IS NOT NULL" isola só as migrações versionadas de verdade
-        // (V1, V2, V3 da Fase 6), como o <behavior> desta task pede.
+        // (V1 a V4: V4 é o correlation_id da Fase 7), como o <behavior> desta task pede.
         List<String> versions = E2eInfrastructure.jdbc().queryForList(
                 "SELECT version FROM \"order\".flyway_schema_history "
                         + "WHERE success AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3");
+        assertThat(versions).containsExactly("1", "2", "3", "4");
     }
 
     @Test
-    void inventorySchemaHasExactlyItsOwnFourMigrationsApplied() {
+    void inventorySchemaHasExactlyItsOwnFiveMigrationsApplied() {
         // [Rule 1 - Bug] mesmo motivo do teste acima — exclui a linha de criação de schema.
         List<String> versions = E2eInfrastructure.jdbc().queryForList(
                 "SELECT version FROM inventory.flyway_schema_history "
                         + "WHERE success AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
     }
 
     /**

@@ -136,7 +136,7 @@ que nenhuma linha termina como `LACUNA`.
 | 6 | Entrega não toca o estoque; expedição de pedido CANCELLED é recusada e deixa o estoque intacto | ORD-10, D-75, D-77 | `OrderShipmentE2EIT#deliveringShippedOrderDoesNotTouchStock`, `OrderShipmentE2EIT#shippingOrderCancelledForInsufficientStockIsRejectedAndLeavesStockUntouched` | coberta |
 | 7 | Pedido confirmado recebe transportadora e rastreio no formato S10 | ORD-07, D-73 | `OrderShipmentE2EIT#confirmedOrderGetsCarrierAndTrackingCodeInTheCorrespondingFormat` | coberta |
 | 8 | O mesmo Correlation-ID aparece no listener do order, no listener do inventory e na linha do outbox do StockReserved | QUAL-02, D-94, D-99 | `CorrelationIdE2EIT#postedCorrelationIdReturnsOnBothListenersAndOnTheStockReservedOutboxRow` | coberta |
-| 9 | Os dois serviços sobem no mesmo JVM de teste com contexto, schema e migrações próprios | D-68 | `E2eContextsSmokeIT#orderSchemaHasExactlyItsOwnThreeMigrationsApplied`, `E2eContextsSmokeIT#inventorySchemaHasExactlyItsOwnFourMigrationsApplied` | coberta |
+| 9 | Os dois serviços sobem no mesmo JVM de teste com contexto, schema e migrações próprios | D-68 | `E2eContextsSmokeIT#orderSchemaHasExactlyItsOwnFourMigrationsApplied`, `E2eContextsSmokeIT#inventorySchemaHasExactlyItsOwnFiveMigrationsApplied` | coberta |
 
 ## Lacunas encontradas por esta matriz e fechadas em 07-10
 
