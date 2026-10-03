@@ -102,3 +102,8 @@ pasta é para consulta própria durante o aprendizado.
     abre uma Swagger UI só, como o dropdown busca cada spec em `/docs/<svc>/v3/api-docs` na
     mesma origem, por que esse prefixo não é `/api`, e por que o "Try it out" passa pelo
     Gateway com `server` `/api`
+29. [GitHub Actions e a integração contínua](29-github-actions-ci.md) — o que é CI e como um
+    workflow se organiza (gatilhos, jobs, matriz, `needs`, secrets), por que os módulos com
+    LocalStack rodam um de cada vez (sessão única do token Hobby), por que o CI falha de
+    forma visível sem o token em vez de pular testes, por que PR de fork não recebe secret e
+    onde ver os relatórios de teste (artifact e resumo do run)

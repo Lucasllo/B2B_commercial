@@ -1,0 +1,155 @@
+# Pipeline de CI do OrderFlow (INFRA-02, Fase 7, D-100 a D-104). Explicacao didatica em
+# estudos/29-github-actions-ci.md.
+#
+# D-100: a cada push (qualquer branch) e a cada pull request, builda e testa cada servico —
+#        testes unitarios (Surefire) e de integracao (Failsafe, Testcontainers) via `./mvnw verify`.
+# D-101: servicos que sobem LocalStack rodam em SEQUENCIA (`max-parallel: 1`): a exclusividade de
+#        sessao do token Hobby no CI nao foi confirmada (A2), entao nao se arrisca duas sessoes.
+# D-102: runner fixo `ubuntu-24.04` (o `ubuntu-latest` comeca a migrar para 26.04 em 2026-10-19 —
+#        Pitfall 7), Temurin 21 e cache Maven.
+# D-103: sem o secret LOCALSTACK_AUTH_TOKEN os jobs com LocalStack FALHAM no primeiro passo com uma
+#        anotacao `::error::`; nenhum teste e pulado em silencio e nada usa `continue-on-error`.
+# D-104: cada job publica os relatorios Surefire/Failsafe como artifact e um resumo por modulo no job
+#        summary, mesmo quando o build falha (`if: always()`).
+#
+# Seguranca (T-07-36 a T-07-38): so os gatilhos `push` e `pull_request` — NUNCA `pull_request_target`
+# (ele daria o secret a codigo de fork); o secret entra apenas por `env:` dos jobs com LocalStack e
+# nunca e impresso; so acoes da organizacao `actions/`; token do workflow somente-leitura.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Um push novo na mesma ref cancela o run anterior em vez de empilhar (evita runs simultaneos
+# disputando a sessao do token do LocalStack).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MAVEN_ARGS: -B -ntp
+
+jobs:
+  # Guardas baratas (sem Docker): falham o run cedo e de forma legivel.
+  guardas:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      # Nenhum @Disabled/@EnabledIf/Assumptions em src/test (D-103, T-07-39).
+      - run: bash scripts/check-no-skipped-tests.sh
+      # ADRs completos e consistentes com os CONTEXT.md (INFRA-03).
+      - run: bash scripts/check-adrs.sh
+      # Toda regra central tem teste unitario e de integracao na matriz (TEST-01/TEST-02).
+      - run: bash scripts/check-coverage-matrix.sh
+
+  # auth/catalog/gateway: so Postgres (Testcontainers) ou nenhum container -> sem LocalStack, em
+  # paralelo. `-am` constroi tambem os modulos de que o servico depende.
+  sem-localstack:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false # uma perna vermelha nao esconde as outras: o run mostra qual servico quebrou
+      matrix:
+        module: [auth-service, catalog-service, gateway]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: ./mvnw -pl ${{ matrix.module }} -am verify
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-${{ matrix.module }}
+          path: |
+            ${{ matrix.module }}/target/surefire-reports
+            ${{ matrix.module }}/target/failsafe-reports
+          if-no-files-found: ignore
+      - if: always()
+        run: bash scripts/ci-summary.sh ${{ matrix.module }} >> "$GITHUB_STEP_SUMMARY"
+
+  # inventory/order/notification: cada um sobe seu LocalStack nos ITs -> uma perna por vez.
+  # CI_LOCALSTACK_DEDUP (Pitfall 9): so roda em `push` ou em PR de fork. Um PR do proprio repositorio
+  # e coberto pelo run de push da mesma SHA; dois runs simultaneos disputariam a sessao do token.
+  com-localstack:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        module: [inventory-service, order-service, notification-service]
+    env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+    steps:
+      # D-103 / Pitfall 8: falha ALTO e cedo quando falta o secret (PR de fork nao o recebe). O teste
+      # e `-z` — o valor nunca e impresso (T-07-37).
+      - name: Exigir o secret LOCALSTACK_AUTH_TOKEN
+        run: |
+          if [ -z "$LOCALSTACK_AUTH_TOKEN" ]; then
+            echo "::error::Secret LOCALSTACK_AUTH_TOKEN ausente (PR de fork ou repositório sem o secret) — veja a seção 'Para avaliadores' do README"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: ./mvnw -pl ${{ matrix.module }} -am verify
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-${{ matrix.module }}
+          path: |
+            ${{ matrix.module }}/target/surefire-reports
+            ${{ matrix.module }}/target/failsafe-reports
+          if-no-files-found: ignore
+      - if: always()
+        run: bash scripts/ci-summary.sh ${{ matrix.module }} >> "$GITHUB_STEP_SUMMARY"
+
+  # e2e: so depois de todas as pernas acima (`needs`); fica `skipped` se alguma falhar.
+  e2e:
+    needs: [sem-localstack, com-localstack]
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+    steps:
+      - name: Exigir o secret LOCALSTACK_AUTH_TOKEN
+        run: |
+          if [ -z "$LOCALSTACK_AUTH_TOKEN" ]; then
+            echo "::error::Secret LOCALSTACK_AUTH_TOKEN ausente (PR de fork ou repositório sem o secret) — veja a seção 'Para avaliadores' do README"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      # Pitfall 6: `-pl e2e-tests -am verify` rodaria de novo os ITs com LocalStack de order e
+      # inventory. Instala os jars sem testes (eles ja rodaram nas pernas de com-localstack, que este
+      # job exige em `needs`) e roda so os testes do e2e.
+      - run: ./mvnw -pl order-service,inventory-service -am install -DskipTests
+      - run: ./mvnw -pl e2e-tests verify
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-e2e-tests
+          path: |
+            e2e-tests/target/surefire-reports
+            e2e-tests/target/failsafe-reports
+          if-no-files-found: ignore
+      - if: always()
+        run: bash scripts/ci-summary.sh e2e-tests >> "$GITHUB_STEP_SUMMARY"
