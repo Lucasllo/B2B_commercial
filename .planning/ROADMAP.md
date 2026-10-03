@@ -233,7 +233,7 @@ Plans:
   4. Todo serviço tem testes unitários cobrindo suas regras de negócio centrais e ao menos um teste de integração contra dependência real (PostgreSQL ou LocalStack), sem lacunas herdadas das fases anteriores.
   5. As decisões-chave (saga por orquestração em vez de coreografia, outbox em vez de publicação direta, LocalStack em vez de AWS real, ausência deliberada de service discovery/config server) estão registradas como ADRs em português, cada uma com ao menos uma alternativa rejeitada e o motivo.
 
-**Plans:** 2/11 plans executed
+**Plans:** 3/11 plans executed
 
 Plans:
 *No máximo um plano com Testcontainers LocalStack por onda (sessão única do LocalStack Hobby por token, D-101); planos sem LocalStack rodam em paralelo, sem módulo Maven em comum na mesma onda.*
@@ -242,7 +242,7 @@ Plans:
 
 - [x] 07-01-PLAN.md — gateway: Correlation-ID nasce/valida no Gateway (header único no pedido e na resposta, MDC, log de acesso), Swagger UI única com rotas `/docs/<svc>/v3/api-docs`, URIs parametrizadas e primeiros testes do gateway (unitário + IT); estudos 27 e 28 (QUAL-01, QUAL-02, TEST-01, TEST-02)
 - [x] 07-02-PLAN.md — order-service: Correlation-ID HTTP → MDC → coluna no outbox (V4) → atributo SQS `correlationId`, listener de resultados com MDC, timeout herda `orders.correlation_id`, interceptor do `RestClient` (QUAL-02, TEST-01, TEST-02)
-- [ ] 07-03-PLAN.md — catalog e auth: OpenAPI "contratos + erros" com `ErrorResponse`, `server` `/api`, login público e JWKS oculto, travado por `OpenApiDocsIT` (QUAL-01)
+- [x] 07-03-PLAN.md — catalog e auth: OpenAPI "contratos + erros" com `ErrorResponse`, `server` `/api`, login público e JWKS oculto, travado por `OpenApiDocsIT` (QUAL-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -283,7 +283,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | Complete    | 2026-10-01 |
-| 7. Endurecimento, Observabilidade e Entrega | 2/11 | In Progress|  |
+| 7. Endurecimento, Observabilidade e Entrega | 3/11 | In Progress|  |
 
 ## Coverage
 
