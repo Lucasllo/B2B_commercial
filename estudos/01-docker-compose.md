@@ -24,16 +24,31 @@ projeto inteiro. Ele define 8 serviços (`postgres`, `localstack`, `auth-service
 - `PERSISTENCE=0` — estado não persiste entre restarts (aceitável para portfólio/dev)
 - Exposto apenas em `127.0.0.1:4566`
 - **Init hook:** a pasta `localstack-init/ready.d` é montada em
-  `/etc/localstack/init/ready.d`. Quando o LocalStack fica pronto, ele roda o script
-  `01-create-notification-resources.sh`, que cria a fila SQS `notification-events-queue`
-  e a tabela DynamoDB `notification-history`. Nenhum serviço Java cria esses recursos —
-  esse script é o único lugar que faz isso.
+  `/etc/localstack/init/ready.d`. Quando o LocalStack fica pronto, ele roda os scripts dessa
+  pasta: `01-create-notification-resources.sh` cria a fila `notification-events-queue` e a
+  tabela DynamoDB `notification-history`; `02-create-order-saga-resources.sh` cria as filas
+  da saga (`inventory-commands-queue`, `order-events-queue`) e suas DLQs. Nenhum serviço
+  Java cria esses recursos — esses scripts são o único lugar que faz isso.
+- **A chave da tabela mudou na Fase 6 (D-80).** A partição da `notification-history` agora
+  se chama `entityId` — o id do produto **ou** do pedido (ver
+  [17-dynamodb.md](17-dynamodb.md)). Um LocalStack que ficou ligado desde a Fase 5 ainda
+  guardaria a tabela antiga, com partição `productId`. Por isso o script `01` confere a
+  chave: se não for `entityId`, apaga e recria a tabela. Não há dado a perder, porque
+  `PERSISTENCE=0`. Um `docker compose down` também resolve.
 - **Healthcheck:** não usa só o endpoint `/_localstack/health`, porque ele responde
-  "saudável" *antes* de o init hook terminar (a fila e a tabela podem ainda não existir).
-  Em vez disso, o healthcheck roda
-  `awslocal sqs get-queue-url --queue-name notification-events-queue && awslocal dynamodb describe-table --table-name notification-history`
-  — ou seja, só dá "saudável" quando os recursos de verdade já existem. Assim, quem
-  depende do `localstack` só sobe quando a fila e a tabela estão lá.
+  "saudável" *antes* de os scripts terminarem (a fila e a tabela podem nem existir ainda).
+  Em vez disso, o healthcheck confere os recursos de verdade (no arquivo é uma linha só):
+
+  ```text
+  awslocal --region us-east-1 sqs get-queue-url --queue-name notification-events-queue > /dev/null
+  && awslocal --region us-east-1 dynamodb describe-table --table-name notification-history --query Table.KeySchema --output text | grep -q entityId
+  && awslocal --region us-east-1 sqs get-queue-url --queue-name inventory-commands-queue > /dev/null
+  && awslocal --region us-east-1 sqs get-queue-url --queue-name order-events-queue > /dev/null
+  ```
+
+  O `grep -q entityId` é o detalhe da Fase 6: a tabela antiga, com partição `productId`,
+  **não** conta como saudável. Quem depende do `localstack` só sobe quando as filas e a
+  tabela com a chave nova estão lá.
 
 ## 3. `auth-service` — primeiro microsserviço da arquitetura
 
@@ -56,8 +71,8 @@ projeto inteiro. Ele define 8 serviços (`postgres`, `localstack`, `auth-service
 ## 5. `inventory-service` — estoque e reserva atômica
 
 - Parecido com o `catalog-service` em estrutura (build próprio), mas depende de
-  `postgres`, `auth-service` **e** `localstack` — porque, desde a Fase 3, ele publica
-  eventos de estoque numa fila SQS
+  `postgres`, `auth-service` **e** `localstack` — porque fala com o SQS: publica pelo
+  outbox (`STOCK_ADJUSTED` e as respostas da saga) e escuta a `inventory-commands-queue`
 - Recebe `SPRING_CLOUD_AWS_ENDPOINT=http://localstack:4566` (nome do serviço no compose,
   não `localhost`) para achar o LocalStack
 - Conecta no Postgres usando `currentSchema=inventory`
@@ -77,7 +92,10 @@ projeto inteiro. Ele define 8 serviços (`postgres`, `localstack`, `auth-service
 ## 7. `order-service` — pedidos
 
 - Build próprio (`order-service/Dockerfile`, mesmo padrão)
-- Espera `postgres`, `auth-service` e `catalog-service` saudáveis
+- Espera `postgres`, `auth-service`, `catalog-service` **e** `localstack` saudáveis — desde
+  a Fase 5 ele fala com o SQS (manda comandos da saga e eventos da linha do tempo pelo
+  outbox, e escuta a `order-events-queue`), por isso também recebe
+  `SPRING_CLOUD_AWS_ENDPOINT=http://localstack:4566`
 - Conecta no Postgres usando `currentSchema=order`
 - Chama o `auth-service` e o `catalog-service` **direto pela rede do compose**, nunca pelo
   gateway. As URLs vêm de variáveis de ambiente que apontam para o nome do serviço (não
@@ -110,16 +128,17 @@ padrão do `application.yml` de cada serviço (`orderflow-auth-service`).
   `notification-service`, `order-service` e `gateway`) já estão no compose, todos atrás
   do gateway — o projeto foi crescendo "fase a fase" até aqui.
 - `auth-service`, `inventory-service`, `notification-service` e `order-service` esperam o
-  `localstack` ficar saudável antes de subir. Existem dois fluxos assíncronos de verdade:
-  - o `inventory-service` publica ajustes de estoque na `notification-events-queue`, e o
-    `notification-service` os grava no DynamoDB (Fase 3);
-  - a **saga de reserva** (Fase 5): o `order-service` manda `ReserveStock` pela
-    `inventory-commands-queue` e recebe a resposta pela `order-events-queue` (ver
-    [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md)).
-- As filas são criadas pelos scripts de `localstack-init/ready.d/`, que o LocalStack roda
-  quando fica pronto: `01-create-notification-resources.sh` (fila e tabela das notificações) e
-  `02-create-order-saga-resources.sh` (as duas filas da saga e suas DLQs). Nenhum serviço Java
-  cria fila.
+  `localstack` ficar saudável antes de subir. Existem três fluxos assíncronos:
+  - o `inventory-service` grava `STOCK_ADJUSTED` no outbox, o relay manda para a
+    `notification-events-queue` e o `notification-service` grava no DynamoDB;
+  - a **saga** (Fases 5 e 6): o `order-service` manda `ReserveStock`, `ReleaseStock` e
+    `ShipStock` pela `inventory-commands-queue` e recebe a resposta da reserva pela
+    `order-events-queue` (ver [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md));
+  - a **linha do tempo do pedido** (Fase 6): o `order-service` manda os oito eventos
+    `ORDER_*` para a `notification-events-queue` (ver
+    [31-linha-do-tempo-do-pedido.md](31-linha-do-tempo-do-pedido.md)).
+- Filas e tabela só são criadas pelos scripts de `localstack-init/ready.d/` (seção 2).
+  Nenhum serviço Java cria fila nem tabela.
 - A escolha de schema único por Postgres (`orderflow` com schemas separados) é uma
   decisão específica já tomada, diferente da alternativa "um Postgres por serviço" —
   agora com quatro schemas em uso (`auth`, `catalog`, `inventory`, `order`). O

@@ -1,14 +1,15 @@
 # SQS, Outbox e mensageria entre serviços
 
-Arquivos: `inventory-service/src/main/java/com/orderflow/inventory/stock/messaging/StockEventPublisher.java`,
-`inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java`,
-`inventory-service/src/main/java/com/orderflow/inventory/stock/StockAdjustmentResult.java`,
-`inventory-service/src/main/java/com/orderflow/inventory/stock/dto/StockAdjustedEvent.java`,
-`inventory-service/src/main/java/com/orderflow/inventory/config/SqsMessagingConfig.java`,
-`notification-service/src/main/java/com/orderflow/notification/config/SqsMessagingConfig.java`,
-`notification-service/src/main/java/com/orderflow/notification/history/messaging/NotificationEventListener.java`,
-`notification-service/src/main/java/com/orderflow/notification/history/NotificationService.java`,
-`localstack-init/ready.d/01-create-notification-resources.sh`.
+Arquivos:
+
+- `inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java` (o `setStock` grava o `STOCK_ADJUSTED` no outbox)
+- `inventory-service/src/main/java/com/orderflow/inventory/stock/dto/StockAdjustedEvent.java`
+- `inventory-service/src/main/java/com/orderflow/inventory/saga/outbox/OutboxWriter.java` e `OutboxRelay.java`
+- `order-service/src/main/java/com/orderflow/order/saga/outbox/OutboxWriter.java` e `OutboxRelay.java`
+- `inventory-service/.../config/SqsMessagingConfig.java`, `order-service/.../config/SqsMessagingConfig.java`, `notification-service/.../config/SqsMessagingConfig.java`
+- `notification-service/src/main/java/com/orderflow/notification/history/messaging/NotificationEventListener.java`
+- `notification-service/src/main/java/com/orderflow/notification/history/NotificationService.java`
+- `localstack-init/ready.d/01-create-notification-resources.sh` e `02-create-order-saga-resources.sh`
 
 ## O problema que a mensageria resolve
 
@@ -31,120 +32,187 @@ não roda na AWS de verdade — roda localmente via **LocalStack** (um
 desenvolvedor.
 
 Uma fila é basicamente uma lista: um serviço **manda** mensagens (`send`),
-outro **escuta** e processa (`listen`/`consume`). No projeto:
+outro **escuta** e processa (`listen`/`consume`). O projeto tem três filas principais:
 
-- A fila se chama `notification-events-queue`. Ela é criada por
-  `localstack-init/ready.d/01-create-notification-resources.sh:17`, que roda
-  `awslocal sqs create-queue --queue-name notification-events-queue` quando o
-  LocalStack sobe. Esse script também cria a tabela DynamoDB
-  `notification-history` (chave de partição `productId`, chave de ordenação
-  `sortKey`) na mesma execução.
-- **Quem envia**: `StockEventPublisher`, no `inventory-service`.
-- **Quem recebe**: `NotificationEventListener`, no `notification-service`,
-  usando `@SqsListener("${orderflow.notifications.queue-name}")` — essa
-  anotação do Spring diz "fique escutando essa fila; toda mensagem que
-  chegar, chame este método".
+| Fila | Quem manda | O que vai nela | Quem escuta |
+|---|---|---|---|
+| `notification-events-queue` | `inventory-service` e `order-service` | `STOCK_ADJUSTED` e os oito `ORDER_*` | `NotificationEventListener` (notification-service) |
+| `inventory-commands-queue` | `order-service` | `ReserveStock`, `ReleaseStock`, `ShipStock` | `ReservationCommandListener` (inventory-service) |
+| `order-events-queue` | `inventory-service` | `StockReserved`, `StockReservationFailed` | `ReservationResultListener` (order-service) |
 
-O script do LocalStack é comentado explicando uma decisão deliberada: **é o
-único lugar do projeto que cria esses recursos** — nenhum código Java cria a
-fila ou a tabela em tempo de execução. Por isso o `application.yml` do
-notification-service usa `queue-not-found-strategy: fail`: se o init hook
-falhar ou não rodar, a aplicação falha ao subir (erro visível), em vez de
-criar a fila silenciosamente e mascarar o problema. O `application.yml` do
-inventory-service (o lado que **envia**) também tem
-`queue-not-found-strategy: fail`: se a fila não existir porque o init hook
-quebrou, o envio falha alto em vez de o Spring Cloud AWS criar a fila
+As duas filas da saga têm uma DLQ cada (`inventory-commands-dlq` e `order-events-dlq`).
+A `notification-events-queue` não tem DLQ.
+
+As filas e a tabela DynamoDB são criadas **só** pelos scripts de
+`localstack-init/ready.d/`, que o LocalStack roda quando sobe (ver
+[01-docker-compose.md](01-docker-compose.md)). Nenhum código Java cria fila. Por isso os
+três serviços usam `queue-not-found-strategy: fail` no `application.yml`: se o script
+falhar ou não rodar, a aplicação falha alto em vez de o Spring Cloud AWS criar a fila
 sozinho e esconder o problema.
 
-### Fluxo real, passo a passo
+## O padrão Transactional Outbox
 
-1. Alguém chama `PUT /inventory/{productId}` para ajustar estoque.
-2. `InventoryController` chama `InventoryService.setStock(...)` (um método
-   `@Transactional` + `@Retryable`). Ele salva a mudança no Postgres e, ainda
-   **dentro** da transação, captura `adjustedAt = Instant.now()`, devolvendo
-   tudo num `StockAdjustmentResult` (o estoque novo, a quantidade anterior e
-   o `adjustedAt`). Quando o método retorna, o proxy do Spring já fez o
-   commit da transação.
-3. Depois disso, o controller chama
-   `StockEventPublisher.publishStockAdjusted(productId, result.previousQuantityOnHand(), result.stock().quantityOnHand(), result.adjustedAt())`:
+### O problema chamado "dual write"
+
+Toda mudança que precisa avisar outro serviço tem **duas operações**:
+
+- (a) salvar no banco Postgres (uma transação de banco);
+- (b) enviar para o SQS (uma chamada de rede).
+
+Essas duas coisas **não são atômicas** — não acontecem como uma coisa só. Pode
+acontecer de (a) funcionar e (b) falhar (rede caiu, SQS indisponível etc.). Resultado:
+o banco diz que o estoque mudou, mas ninguém foi avisado.
+
+Na Fase 3, o `STOCK_ADJUSTED` era publicado exatamente assim: um `StockEventPublisher`
+chamava o SQS **depois** do commit, e uma falha só virava uma linha `ERROR` no log
+(D-29/D-30, risco aceito na época). No plano 05-04 esse publicador foi **removido**. Hoje
+nenhum serviço chama o SQS de dentro de uma regra de negócio.
+
+### Como o outbox fecha a lacuna
+
+1. Em vez de enviar direto ao SQS, o serviço grava **na mesma transação de banco** duas
+   coisas: a mudança de negócio (ex.: o estoque) **e** uma linha na tabela
+   `outbox_event`, com o evento a ser publicado depois.
+2. Como as duas gravações acontecem na mesma transação SQL, elas são atômicas: ou as duas
+   acontecem, ou nenhuma acontece. Não tem como "salvar o estoque mas perder o evento".
+3. Um processo separado — o **relay** (`OutboxRelay`, disparado pelo `OutboxRelayJob` a
+   cada `orderflow.outbox.relay-interval: 1000` ms) — lê as linhas ainda não publicadas,
+   manda para o SQS, e só então marca a linha como publicada.
+4. Se o envio falhar, a linha continua lá (`attempts` sobe) e o relay tenta de novo no
+   próximo ciclo.
+
+Os detalhes da tabela, do `SELECT ... FOR UPDATE SKIP LOCKED` e do lote estão em
+[26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md). O `order-service` e o
+`inventory-service` têm cada um a sua cópia do outbox (mesmo código, pacote trocado, sem
+módulo comum — D-62).
+
+### O `STOCK_ADJUSTED` hoje
+
+O fluxo do ajuste de estoque ficou assim:
+
+1. Alguém chama `PUT /inventory/{productId}`.
+2. `InventoryController` chama `InventoryService.setStock(...)` (`@Transactional` +
+   `@Retryable`). Ele salva o estoque e, **na mesma transação**, grava o evento no outbox:
 
    ```java
-   public void publishStockAdjusted(UUID productId, int previousQuantityOnHand, int newQuantityOnHand,
-                                     Instant adjustedAt) {
-       StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, newQuantityOnHand, adjustedAt);
-       try {
-           sqsTemplate.send(to -> to.queue(queueName).payload(event));
-       } catch (RuntimeException e) {
-           log.error("Falha ao publicar evento {} (eventId={}) do produto {} na fila '{}' — o "
-                           + "ajuste de estoque ja foi gravado no banco, mas este evento se "
-                           + "perdeu (limitacao conhecida da Fase 3, D-30; resolvida na Fase 5 "
-                           + "pelo Transactional Outbox)",
-                   event.eventType(), event.eventId(), productId, queueName, e);
-       }
-   }
+   Instant adjustedAt = Instant.now();
+   StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, quantityOnHand, adjustedAt);
+   outboxWriter.enqueue(event.eventId(), StockAdjustedEvent.EVENT_TYPE, productId.toString(), event);
+   return StockResponse.from(inventory);
    ```
 
-   Isso monta um `StockAdjustedEvent` — com um `eventId` novo e o
-   `occurredAt` recebido da transação — e coloca a mensagem na fila SQS.
+3. A resposta do `PUT` volta para o vendedor. O controller não fala com o SQS.
+4. Em até ~1 s, o relay do inventory-service lê a linha e manda para a
+   `notification-events-queue`.
+5. O `notification-service` recebe a mensagem e grava no DynamoDB (ver
+   [17-dynamodb.md](17-dynamodb.md) e [19-sqslistener-consumo.md](19-sqslistener-consumo.md)).
 
-   Por que o `occurredAt` **não** é gerado aqui, na hora de publicar (WR-04)?
-   Porque este método roda **depois** do commit, fora da transação. Com dois
-   `PUT` concorrentes no mesmo produto, a ordem em que cada um chega ao
-   publicador pode ser o contrário da ordem em que as transações realmente
-   commitaram. Como o histórico do notification-service é ordenado por
-   `occurredAt`, o ajuste mais novo apareceria antes do mais antigo. Capturar
-   o horário dentro da transação que gravou o ajuste faz o `occurredAt`
-   refletir a ordem real.
-4. O `notification-service`, que está sempre escutando essa fila, recebe a
-   mensagem via `NotificationEventListener.onMessage(String payload)`.
-5. `NotificationService.record(...)` primeiro recusa corpos acima de 64 KB
-   (WR-02, `MAX_RAW_PAYLOAD_BYTES = 64 * 1024`), depois valida o JSON, monta uma mensagem
-   legível e grava um registro no DynamoDB (tabela `notification-history`).
+Por que o `occurredAt` é capturado **dentro** do `setStock` (WR-04)? Porque a publicação
+acontece depois, no relay, fora da transação. Com dois `PUT` concorrentes no mesmo
+produto, a ordem de publicação pode ser o contrário da ordem em que as transações
+commitaram. Como o histórico é ordenado por `occurredAt`, o horário precisa vir da
+transação que gravou o ajuste.
 
-## O `SqsTemplate` — o "telefone" que fala com o SQS
+E o retry? Se uma tentativa do `setStock` falha por conflito de versão, a transação dela
+sofre rollback — e a linha do outbox vai junto. Só a tentativa que deu commit deixa um
+evento (ver [14-spring-retry.md](14-spring-retry.md)).
 
-Antes de entender o `SqsMessagingConfig`, vale entender o que ele configura:
-o `SqsTemplate`, usado em `StockEventPublisher.publishStockAdjusted`:
+`OutboxWriter.enqueue` é `@Transactional(propagation = Propagation.MANDATORY)`: chamado
+fora de uma transação já aberta, ele falha na hora. Gravar o evento numa transação
+separada quebraria justamente a atomicidade que o outbox existe para garantir.
 
-```java
-sqsTemplate.send(to -> to.queue(queueName).payload(event));
-```
+## Para qual fila vai cada evento — o roteamento do relay
 
-O `SqsTemplate` é uma classe pronta do Spring Cloud AWS que sabe como
-conectar, formatar e enviar mensagens para uma fila SQS — você não precisa
-escrever esse código de baixo nível na mão (abrir conexão, montar a
-requisição HTTP, serializar o objeto para JSON etc.).
-
-Repara que em nenhum lugar do projeto existe um `new SqsTemplate(...)`: ele é
-apenas **injetado** no construtor de `StockEventPublisher`:
+O relay não recebe o nome da fila de quem gravou o evento. Ele decide pela coluna
+`eventType`, num método `resolveQueue`. No `order-service`:
 
 ```java
-public StockEventPublisher(SqsTemplate sqsTemplate,
-                            @Value("${orderflow.messaging.notification-events-queue}") String queueName) {
-    this.sqsTemplate = sqsTemplate;
-    this.queueName = queueName;
+private String resolveQueue(String eventType) {
+    if (ReserveStockCommand.EVENT_TYPE.equals(eventType) || RELEASE_STOCK_EVENT_TYPE.equals(eventType)
+            || ShipStockCommand.EVENT_TYPE.equals(eventType)) {
+        return inventoryCommandsQueue;
+    }
+    if (OrderLifecycleEvent.EVENT_TYPES.contains(eventType)) {
+        return notificationEventsQueue;
+    }
+    throw new IllegalStateException("No queue configured for outbox eventType '" + eventType + "'");
 }
 ```
 
-Isso funciona porque o `pom.xml` do inventory-service declara a dependência
+No `inventory-service`:
+
+```java
+private String resolveQueue(String eventType) {
+    if (StockReservedEvent.EVENT_TYPE.equals(eventType) || StockReservationFailedEvent.EVENT_TYPE.equals(eventType)) {
+        return orderEventsQueue;
+    }
+    if (StockAdjustedEvent.EVENT_TYPE.equals(eventType)) {
+        return notificationEventsQueue;
+    }
+    throw new IllegalStateException("No queue configured for outbox eventType '" + eventType + "'");
+}
+```
+
+Três detalhes:
+
+- Os eventos `ORDER_*` são roteados por uma **lista explícita**
+  (`OrderLifecycleEvent.EVENT_TYPES`, com os oito tipos), não por "começa com `ORDER_`".
+  Um tipo novo, esquecido na lista, vira erro em vez de ir para a fila errada.
+- Um `eventType` desconhecido lança `IllegalStateException`. O relay captura isso **só
+  para aquele evento** (`recordFailure` + log `WARN`) e segue com o resto do lote. Um
+  evento quebrado nunca derruba os outros.
+- A `notification-events-queue` é uma fila de **fan-out**: recebe eventos de dois
+  serviços diferentes. Quem separa é o consumidor, olhando o `eventType` (ver
+  [31-linha-do-tempo-do-pedido.md](31-linha-do-tempo-do-pedido.md)).
+
+## O Correlation-ID viaja como atributo da mensagem
+
+O relay roda numa thread `@Scheduled`, sem requisição HTTP. O Correlation-ID da
+requisição original (ver [27-correlation-id-e-mdc.md](27-correlation-id-e-mdc.md)) não
+está mais no MDC dessa thread. Por isso ele é gravado na **linha** do outbox (coluna
+`correlation_id`): o `OutboxWriter` lê `CorrelationContext.current()` na hora de gravar.
+
+Na hora de enviar, o relay põe esse valor num **atributo** da mensagem SQS — um
+"cabeçalho" que viaja junto do corpo, sem mexer no JSON:
+
+```java
+try (var scope = CorrelationContext.open(event.getCorrelationId())) {
+    Message<String> message = MessageBuilder.withPayload(event.getPayload())
+            .setHeader(CorrelationContext.SQS_ATTRIBUTE, event.getCorrelationId())
+            .build();
+    sqsOperations.send(queueName, message);
+    ...
+}
+```
+
+`CorrelationContext.SQS_ATTRIBUTE` vale `"correlationId"`. Do outro lado, cada listener lê
+esse atributo com `@Header(name = CorrelationContext.SQS_ATTRIBUTE, required = false)` e
+abre o MDC com ele (ver [19-sqslistener-consumo.md](19-sqslistener-consumo.md)). O corpo
+JSON (o contrato entre os serviços) continua igual — o ID é metadado, não dado de negócio.
+
+## Quem fala com o SQS: `SqsOperations`
+
+O relay recebe `SqsOperations` no construtor. É a interface do `SqsTemplate`, a classe
+pronta do Spring Cloud AWS que sabe conectar, formatar e enviar mensagens — você não
+escreve esse código de baixo nível na mão.
+
+Em nenhum lugar existe um `new SqsTemplate(...)`. Ele aparece pronto por injeção de
+dependência, porque o `pom.xml` declara:
 
 ```xml
 <artifactId>spring-cloud-aws-starter-sqs</artifactId>
 ```
 
-— um "starter" de auto-configuração. Assim que essa dependência está no
-classpath, o Spring Boot cria automaticamente um bean `SqsTemplate` pronto
-para uso e o disponibiliza para qualquer classe pedir no construtor, do
-mesmo jeito que outros beans do projeto (como um `@Repository`) aparecem
-prontos por injeção de dependência. Você só **pede** (`SqsTemplate
-sqsTemplate` no construtor); o Spring entrega a instância já configurada.
+— um "starter" de auto-configuração. Você só **pede** no construtor; o Spring entrega a
+instância já configurada.
 
-### Para onde ele manda a mensagem — isso vem da configuração, não do código
+O `OutboxRelay` é o **único** arquivo de produção do `order-service` e do
+`inventory-service` que importa `io.awspring.cloud.sqs.operations.` (o plano verifica isso
+com um `grep`). Quem quiser publicar alguma coisa tem que passar pelo outbox.
 
-O `SqsTemplate` autoconfigurado lê a configuração de AWS do
-`application.yml` do inventory-service (no arquivo real, esse bloco fica
-dentro de `spring:`, ou seja, as propriedades completas são
-`spring.cloud.aws.*`):
+### Para onde ele manda — isso vem da configuração
+
+O cliente lê a configuração de AWS do `application.yml`:
 
 ```yaml
 spring:
@@ -158,267 +226,122 @@ spring:
       endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
 ```
 
-- `endpoint: http://localhost:4566` — em vez de falar com a AWS real, ele
-  aponta para o **LocalStack** rodando local (ou `http://localstack:4566`
-  dentro do docker-compose, que sobrescreve essa variável de ambiente).
-- `access-key`/`secret-key: test` — credenciais fixas e falsas, porque o
-  LocalStack não valida autenticação de verdade; são propositalmente
-  diferentes das variáveis `AWS_*` reais do ambiente do desenvolvedor, para
-  nunca acidentalmente conseguir falar com a AWS de produção se o endpoint
-  local estiver ausente.
+- `endpoint` — em vez da AWS real, aponta para o **LocalStack** (`http://localstack:4566`
+  dentro do docker-compose, que sobrescreve a variável).
+- `access-key`/`secret-key: test` — credenciais falsas, de propósito. O LocalStack não
+  valida autenticação, e nunca se corre o risco de falar com a AWS de verdade por
+  acidente.
 
-Ou seja: o `SqsTemplate` em si é só a "interface de programação" —
-essa configuração é quem decide se ele fala com o LocalStack (dev/teste) ou
-com a AWS real (produção), sem precisar mudar uma linha de código Java.
-
-### A sintaxe `to -> to.queue(...).payload(...)`
-
-```java
-sqsTemplate.send(to -> to.queue(queueName).payload(event));
-```
-
-Isso é uma **lambda** (uma função anônima curta) que recebe um "construtor de
-mensagem" (`to`) e devolve como a mensagem deve ser montada:
-
-- `.queue(queueName)` — para qual fila enviar.
-- `.payload(event)` — qual objeto é o conteúdo da mensagem (o `SqsTemplate`
-  serializa esse objeto para JSON automaticamente, usando o `ObjectMapper` do
-  Spring Boot).
-
-É a mesma ideia de builder que aparece em outros lugares do projeto — só que
-em vez de montar o objeto passo a passo numa variável antes de enviar, o
-método `send` já recebe a função que constrói a mensagem inteira e a envia
-de uma vez.
+O mesmo código Java fala com o LocalStack ou com a AWS real; só a configuração muda.
 
 ### Uma analogia para o `SqsTemplate`
 
-O `SqsTemplate` é como uma **agência dos Correios pronta para uso**: você não
-precisa saber como um caminhão de carga funciona, nem como o sistema de
-rastreamento é implementado — você só chega no balcão, diz "essa carta
-(`payload`), para esse endereço (`queue`)", e a agência (o Spring Cloud AWS)
-cuida do resto. A "agência" em si (o bean `SqsTemplate`) já vem pronta assim
-que você contrata o serviço (`spring-cloud-aws-starter-sqs` no `pom.xml`); o
-endereço da agência (LocalStack local vs. AWS real) é definido pela
-configuração no `application.yml`, não pelo código.
+O `SqsTemplate` é como uma **agência dos Correios pronta para uso**: você não precisa
+saber como o caminhão funciona — só chega no balcão e diz "essa carta (`payload`), para
+esse endereço (a fila)". A agência já vem pronta assim que você contrata o serviço
+(`spring-cloud-aws-starter-sqs`); o endereço da agência (LocalStack ou AWS) vem do
+`application.yml`.
 
-## `SqsMessagingConfig` — ajustando um detalhe de como o `SqsTemplate` converte mensagens
+## `SqsMessagingConfig` — sem nome de classe Java atravessando a fronteira
 
-O `SqsTemplate` (e, do lado do consumidor, o mecanismo por trás do
-`@SqsListener`) precisam transformar objetos Java em JSON e vice-versa. Quem
-faz essa tradução é um **`MessagingMessageConverter`** — e por padrão o
-Spring Cloud AWS já fornece um, sem você precisar declarar nada. Só que o
-comportamento padrão desse conversor causa um problema específico neste
-projeto, e é isso que os dois `SqsMessagingConfig` (um em cada serviço)
-existem para corrigir. (O do inventory-service, além disso, também limita
-o tempo de espera das chamadas ao SQS — ver a subseção sobre timeouts logo
-depois do lado do produtor.)
+O `SqsTemplate` (e, do lado do consumidor, o mecanismo por trás do `@SqsListener`)
+transforma objetos Java em JSON e vice-versa. Quem faz essa tradução é um
+**`MessagingMessageConverter`**.
 
-### O problema que motivou esse bean
+### O problema
 
-Por padrão, ao enviar uma mensagem, o conversor anexa um cabeçalho técnico
-chamado `JavaType`, contendo o **nome completo da classe Java** do objeto
-enviado — por exemplo, `com.orderflow.inventory.stock.dto.StockAdjustedEvent`.
-A ideia original desse cabeçalho é ajudar quem consome a mensagem a saber
-"para qual classe Java eu devo desserializar isso".
+Por padrão, ao enviar, o conversor anexa um atributo chamado `JavaType`, com o **nome
+completo da classe Java** do objeto — por exemplo,
+`com.orderflow.inventory.stock.dto.StockAdjustedEvent`. A ideia é ajudar o consumidor a
+saber "para qual classe eu desserializo isso".
 
-O problema: o `notification-service` tem sua **própria cópia** dessa classe,
-em outro pacote e outro módulo Maven —
-`com.orderflow.notification.history.dto.StockAdjustedEvent`. Os dois serviços
-não compartilham uma biblioteca comum (cada um tem seu próprio DTO,
-propositalmente — microsserviços independentes não deveriam depender do
-mesmo `.jar` de domínio). Se o consumidor confiasse nesse cabeçalho para
-decidir qual classe carregar, ele tentaria carregar
-`com.orderflow.inventory.stock.dto.StockAdjustedEvent` — uma classe que
-**não existe** no classpath do notification-service — e explodiria com um
-erro de classe não encontrada, antes mesmo do `NotificationEventListener`
-rodar. Como o Javadoc do arquivo do notification-service explica: sem uma
-fila de mensagens mortas (DLQ), essa mensagem nunca seria confirmada e
-voltaria para a fila **para sempre**, tentando (e falhando) repetidamente.
+Só que cada serviço tem **sua própria cópia** do DTO, em outro pacote — o
+notification-service tem `com.orderflow.notification.history.dto.StockAdjustedEvent`. Se o
+consumidor confiasse no atributo, tentaria carregar uma classe que **não existe** no
+classpath dele e explodiria antes de o listener rodar.
 
-### A correção, um lado de cada vez
+### A correção, dos dois lados
 
-Cada serviço declara seu próprio `SqsMessagingConfig`, e cada um resolve a
-parte do problema que cabe a ele — não é o mesmo código copiado duas vezes,
-são duas correções diferentes:
-
-**Lado do produtor** (`inventory-service/.../config/SqsMessagingConfig.java`):
+**Quem produz** desliga o atributo na origem. O `inventory-service` e o `order-service`
+produzem **e** consomem, então fazem as duas coisas no mesmo bean:
 
 ```java
 @Bean
 public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
     SqsMessagingMessageConverter converter = new SqsMessagingMessageConverter();
     converter.doNotSendPayloadTypeHeader();
-    return converter;
-}
-```
-
-`doNotSendPayloadTypeHeader()` faz o produtor **parar de mandar** o cabeçalho
-`JavaType` desde a origem. A mensagem que chega na fila passa a carregar só o
-JSON do evento, sem nenhum metadado de classe Java grudado nela.
-
-#### Ainda no produtor: um limite de tempo para falar com o SQS (WR-03)
-
-O mesmo `SqsMessagingConfig` do inventory-service declara um segundo bean,
-que não tem nada a ver com conversão:
-
-```java
-@Bean
-public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
-    return builder -> builder.overrideConfiguration(c -> c
-            .apiCallTimeout(Duration.ofSeconds(3))
-            .apiCallAttemptTimeout(Duration.ofSeconds(1)));
-}
-```
-
-O motivo: o `SqsAsyncClient` padrão (baseado em Netty) espera cerca de 30
-segundos por tentativa e faz 3 tentativas. E o `publishStockAdjusted` roda
-**de forma síncrona, na própria thread da requisição HTTP**, depois do
-commit. Se o SQS (LocalStack) aceitasse a conexão mas nunca respondesse, a
-resposta do `PUT` ficaria presa por 1 a 2 minutos — mesmo o ajuste já tendo
-sido gravado de verdade no Postgres.
-
-Com o limite (`apiCallAttemptTimeout` de 1s por tentativa e
-`apiCallTimeout` de 3s para a chamada inteira), o cliente desiste rápido, a
-exceção cai no `catch` do `publishStockAdjusted` e vira a linha `ERROR` de
-evento perdido — e o vendedor recebe a resposta do `PUT` sem esperar.
-
-O `SqsMessagingConfig` do notification-service não tem esse bean — lá só
-existe o ajuste de conversão descrito abaixo.
-
-**Lado do consumidor** (`notification-service/.../config/SqsMessagingConfig.java`):
-
-```java
-@Bean
-public MessagingMessageConverter<Message> sqsMessagingMessageConverter() {
-    SqsMessagingMessageConverter converter = new SqsMessagingMessageConverter();
     converter.setPayloadTypeMapper(message -> null);
     return converter;
 }
 ```
 
-Aqui a correção é diferente: `setPayloadTypeMapper(message -> null)` diz ao
-conversor "nunca tente decidir o tipo de destino olhando um cabeçalho da
-mensagem — devolva sempre `null`". Nesse caso, quem passa a decidir a que
-tipo desserializar é **o parâmetro do próprio método do listener**
-(`onMessage(String payload)`, que pede `String` — o texto bruto do JSON,
-sem nenhuma tentativa de virar objeto automaticamente).
+**Quem só consome** (o `notification-service`) só tem a segunda linha:
 
-O Javadoc desse arquivo é explícito sobre por que essa segunda correção
-existe *mesmo já existindo a primeira, do lado do produtor*: **"o consumidor
-não pode depender de o produtor desligar esse atributo — quem decide a
-conversão é o tipo do parâmetro do método do listener, nunca o atributo
-enviado pelo produtor"**. Ou seja, o consumidor se defende de forma
-independente, sem confiar que quem publica a mensagem sempre vai lembrar de
-configurar isso direito — uma defesa em profundidade, não uma correção
-redundante.
+```java
+converter.setPayloadTypeMapper(message -> null);
+```
 
-### Por que isso é registrado como `@Bean` em vez de configurar na chamada
+- `doNotSendPayloadTypeHeader()` — o produtor **para de mandar** o `JavaType`.
+- `setPayloadTypeMapper(message -> null)` — o consumidor **nunca** decide o tipo olhando
+  um atributo da mensagem. Quem decide é o parâmetro do método do listener
+  (`onMessage(String payload, ...)` pede `String`, o JSON cru).
 
-Em ambos os casos, o comentário do arquivo observa que a auto-configuração
-do Spring Cloud AWS **procura** por um bean `MessagingMessageConverter` já
-existente e, se encontrar, o usa tanto no `SqsTemplate` quanto (no lado do
-consumidor) na fábrica padrão de containers de listener — continuando a
-aplicar por baixo o `ObjectMapper` do Spring Boot (o mesmo que serializa
-`Instant` como texto ISO-8601 em todo o resto da API). Isso é o padrão comum
-no Spring: em vez de configurar cada chamada individualmente, você declara
-**um bean central** e o framework aplica essa configuração em todos os
-lugares relevantes automaticamente — o mesmo princípio já visto em
-`RetryConfig` (`@EnableRetry`), só que aqui o "interruptor" é a própria
-presença do bean, não uma anotação.
+Por que o consumidor se defende mesmo com o produtor já corrigido? Porque ele não pode
+depender de todo produtor lembrar de configurar isso. É defesa em profundidade.
 
-O contrato entre os dois serviços fica sendo, no fim, só o **JSON puro do
-payload** — nada de metadado de classe Java atravessando a fronteira entre
-serviços, o que é exatamente o que se espera de dois microsserviços que não
-compartilham código de domínio.
+A auto-configuração do Spring Cloud AWS procura um bean `MessagingMessageConverter` e, se
+achar, usa no `SqsTemplate` e na fábrica de listeners — continuando a aplicar o
+`ObjectMapper` do Spring Boot (que serializa `Instant` como texto ISO-8601). O contrato
+entre os serviços fica sendo só o **JSON do payload**.
 
-## O que é o padrão Transactional Outbox (e onde ele já existe)
+### Um limite de tempo para falar com o SQS (WR-03)
 
-Aqui está o ponto mais sutil, e o motivo de comentários como "D-29"/"D-30"
-aparecerem no código.
+O `SqsMessagingConfig` do inventory-service (e o do order-service, igual) declara um
+segundo bean:
 
-**O problema chamado "dual write"**: no passo 2/3 do fluxo acima, acontecem
-**duas operações separadas**:
+```java
+@Bean
+public SqsAsyncClientCustomizer sqsAsyncClientTimeoutCustomizer() {
+    return builder -> builder.overrideConfiguration(c -> c
+            .apiCallTimeout(Duration.ofSeconds(5))
+            .apiCallAttemptTimeout(Duration.ofSeconds(2)));
+}
+```
 
-- (a) salvar no banco Postgres (uma transação de banco)
-- (b) enviar para o SQS (uma chamada de rede separada, feita **depois** que a
-  transação de (a) já commitou)
+O cliente padrão espera cerca de 30 segundos por tentativa e faz 3 tentativas. Na Fase 3,
+esse limite protegia a thread HTTP do `PUT`. Hoje quem fala com o SQS é o relay, e ele
+segura as linhas do outbox travadas enquanto envia. Um SQS lento não pode prender esse
+ciclo por minutos. Com o limite, a chamada desiste rápido, a falha vira
+`recordFailure` e o próximo ciclo tenta de novo.
 
-Essas duas coisas **não são atômicas** — não acontecem como uma coisa só.
-Pode acontecer de (a) funcionar e (b) falhar (rede caiu, SQS indisponível
-etc.). Resultado: o banco diz que o estoque mudou, mas ninguém foi avisado.
-É exatamente essa limitação que o Javadoc do `StockEventPublisher` documenta
-de forma explícita: a falha ao publicar é **capturada e apenas logada**,
-nunca relançada — porque, quando esse método roda, a transação do ajuste de
-estoque **já foi commitada**; relançar o erro faria a API responder "o
-ajuste falhou" para um vendedor quando, na verdade, o ajuste já aconteceu.
+Os valores subiram de 1s/3s para 2s/5s na Fase 5, porque o mesmo cliente é dividido com o
+listener da saga. É também por isso que esses dois serviços usam
+`spring.cloud.aws.sqs.listener.poll-timeout: 0s` (ver
+[19-sqslistener-consumo.md](19-sqslistener-consumo.md)). O notification-service não tem
+esse bean.
 
-Isso é uma **decisão deliberada e documentada** para esta fase do projeto
-(D-29: publicar direto no SQS, sem outbox; D-30: aceitar o risco de
-dual-write sem mitigação técnica por enquanto), não um bug esquecido. Cada
-evento perdido deixa uma linha `ERROR` identificável nos logs — nunca falha
-em silêncio. Isso vale também para um SQS que simplesmente não responde:
-graças ao limite de tempo do WR-03, a espera fica limitada a 3 segundos e
-termina nessa mesma linha `ERROR`.
-
-O **padrão Outbox** é a forma de fechar essa lacuna de verdade:
-
-1. Em vez de enviar direto ao SQS, o serviço grava **na mesma transação de
-   banco** duas coisas: a mudança de negócio (ex.: estoque) **e** uma linha
-   numa tabela extra chamada "outbox" (ex.: `outbox_events`), contendo o
-   evento a ser publicado depois.
-2. Como as duas gravações (dado + evento) acontecem na mesma transação SQL,
-   elas são atômicas: ou as duas acontecem, ou nenhuma acontece. Não tem como
-   "salvar o estoque mas perder o evento".
-3. Um processo separado (um "poller" — algo que roda periodicamente) lê a
-   tabela outbox, pega os eventos ainda não publicados, manda pro SQS, e só
-   então marca aquela linha como "publicada".
-4. Se o poller falhar no meio do caminho, ele simplesmente tenta de novo
-   depois — o evento continua na tabela até ser confirmado como publicado.
-
-**Onde isso está hoje (Fase 5, planos 05-01 a 05-03):** a tabela
-`outbox_event`, o relay e a saga de reserva de estoque **já existem**, no
-`order-service` e no `inventory-service`. Aprovar um pedido grava o status
-`RESERVING` e o comando `ReserveStock` na mesma transação, e o
-`inventory-service` responde pelo mesmo mecanismo. Os detalhes (tabela,
-`SELECT ... FOR UPDATE SKIP LOCKED`, filas, DLQ, idempotência) estão em
-[26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
-
-O que **ainda não mudou** é o evento desta nota: o `STOCK_ADJUSTED` continua
-saindo pelo `StockEventPublisher`, direto no SQS, com o dual-write descrito
-acima. O relay do `inventory-service` já sabe enviar `STOCK_ADJUSTED` para a
-`notification-events-queue`, mas o `InventoryController` só passa a gravar no
-outbox no plano 05-04. Até lá, o fluxo desta nota continua sendo a versão
-simplificada da Fase 3.
-
-## Consumo idempotente — por que reentrega não é um problema aqui
+## Consumo idempotente — por que reentrega não é um problema
 
 O SQS padrão não garante nem ordem de entrega, nem entrega única — a mesma
-mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
-`NotificationService` são desenhados para tolerar isso:
+mensagem pode chegar mais de uma vez. O outbox piora isso de propósito: se o relay enviou
+mas caiu antes de marcar a linha, ele envia de novo. O notification-service é desenhado
+para tolerar:
 
 - `NotificationService.record(...)` monta a chave do DynamoDB de forma
-  **determinística**: `sortKey = eventType + "#" + eventId` (o mesmo
-  `eventId` sempre produz a mesma chave). A gravação usa `PutItem` **sem
-  expressão de condição** — ou seja, gravar o mesmo evento duas vezes
-  simplesmente sobrescreve a mesma linha com o mesmo conteúdo. Não precisa de
-  uma consulta prévia "já processei este evento?": a idempotência vem de
-  graça da chave.
-- Se o JSON for inválido (`InvalidNotificationEventException`), o listener
-  captura o erro, loga um aviso e retorna normalmente — isso faz o Spring
-  Cloud AWS confirmar a mensagem e apagá-la da fila. É a única defesa contra
-  uma mensagem "envenenada" que nunca poderia ser processada (a `notification-events-queue`
-  ainda não tem fila de mensagens mortas / DLQ; só as filas da saga têm). Isso inclui corpos acima de
-  64 KB (WR-02): sem essa checagem, um item grande demais para o DynamoDB
-  (que recusa itens acima de 400 KB) faria o `putItem` falhar sempre — e,
-  como esse erro não é uma `InvalidNotificationEventException`, a mensagem
-  voltaria para a fila eternamente.
-- Qualquer **outra** exceção (por exemplo, uma falha ao gravar no DynamoDB)
-  **não** é capturada — a mensagem não é confirmada, e o SQS a entrega de
-  novo depois do timeout de visibilidade. Como a gravação é idempotente, essa
-  reentrega é segura.
-- Na leitura (`NotificationService.history`), os registros são reordenados em
-  memória por `occurredAt` — porque a fila não garante ordem de chegada e a
-  chave de ordenação do DynamoDB não é cronológica.
+  **determinística**: `sortKey = eventType + "#" + eventId`. A gravação usa `PutItem`
+  **sem expressão de condição** — gravar o mesmo evento duas vezes sobrescreve a mesma
+  linha com o mesmo conteúdo. A idempotência vem de graça da chave.
+- Se o JSON for inválido (`InvalidNotificationEventException`), o listener loga um aviso e
+  retorna normalmente — a mensagem é confirmada e some. Sem DLQ nessa fila, é a única
+  defesa contra uma mensagem "envenenada". Isso inclui corpos acima de 64 KB (WR-02,
+  `MAX_RAW_PAYLOAD_BYTES = 64 * 1024`): sem essa checagem, um item grande demais para o
+  DynamoDB (que recusa itens acima de 400 KB) faria o `putItem` falhar sempre.
+- Qualquer **outra** exceção (por exemplo, o DynamoDB fora do ar) **não** é capturada — a
+  mensagem não é confirmada e volta depois do timeout de visibilidade. Como a gravação é
+  idempotente, a reentrega é segura.
+- Na leitura, os registros são reordenados em memória (por `occurredAt` e, no empate, pela
+  posição no ciclo de vida) — porque a fila não garante ordem de chegada (ver
+  [17-dynamodb.md](17-dynamodb.md)).
 
 ## Resumindo com uma analogia
 
@@ -432,16 +355,21 @@ mensagem pode chegar mais de uma vez. O `NotificationEventListener` e o
   mesmo gesto/transação). Um mensageiro passa periodicamente, pega tudo que
   está na caixa de saída e realmente leva ao correio, riscando da caixa só
   depois de confirmar a entrega.
+- **Roteamento por `eventType`** = o mensageiro olha a etiqueta do envelope para saber
+  em qual caixa de correio depositar. Etiqueta desconhecida, o envelope fica na caixa de
+  saída com uma anotação de erro.
+- **Atributo `correlationId`** = o número do protocolo carimbado do lado de fora do
+  envelope, sem abrir a carta.
 - **Idempotência por chave** = mesmo que o carteiro entregue a mesma carta
   duas vezes por engano, ela vai pro mesmo escaninho e substitui a cópia
   anterior — não vira duas entradas duplicadas no seu arquivo.
 
 ## Estado atual
 
-| | `STOCK_ADJUSTED` (Fase 3, até o 05-04) | Saga de reserva (Fase 5, já implementada) |
+| | Antes (Fase 3) | Hoje (desde o 05-04) |
 |---|---|---|
-| Quem publica | `StockEventPublisher` chama `sqsTemplate.send` direto | `OutboxWriter` grava em `outbox_event`; `OutboxRelay` envia a cada 1 s |
+| Quem publica `STOCK_ADJUSTED` | `StockEventPublisher` chamava o SQS depois do commit | `setStock` grava no `outbox_event`; o `OutboxRelay` envia |
 | Atomicidade banco+evento | Não — dual-write conhecido (D-30) | Sim — dado e evento na mesma transação |
-| Se o SQS falhar | Evento se perde, fica só um log `ERROR` | Evento continua na tabela; `attempts` sobe e o relay tenta de novo |
-| Filas | `notification-events-queue` | `inventory-commands-queue` e `order-events-queue`, cada uma com DLQ |
-| Escopo | Ajuste de estoque → notificação | Pedido aprovado → reserva de estoque → `CONFIRMED` ou `CANCELLED` |
+| Se o SQS falhar | Evento se perdia, ficava só um log `ERROR` | Evento continua na tabela; `attempts` sobe e o relay tenta de novo |
+| Quem usa o outbox | ninguém | `order-service` (comandos da saga + oito `ORDER_*`) e `inventory-service` (respostas da saga + `STOCK_ADJUSTED`) |
+| Correlation-ID | não existia | coluna `correlation_id` → atributo SQS `correlationId` |

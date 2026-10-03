@@ -1,8 +1,9 @@
 # A saga de reserva de estoque (Fase 5)
 
 Pastas:
-- `order-service/src/main/java/com/orderflow/order/saga/` (início da saga, outbox, consumo do resultado)
-- `inventory-service/src/main/java/com/orderflow/inventory/saga/` e `.../stock/InventoryService.java` (reserva)
+- `order-service/src/main/java/com/orderflow/order/saga/` (início da saga, outbox, consumo do resultado, `SagaTimeoutJob`)
+- `inventory-service/src/main/java/com/orderflow/inventory/saga/` e `.../stock/InventoryService.java` (reserva e liberação)
+- `inventory-service/src/main/resources/db/migration/V3__allow_reservation_tombstones.sql` (lápide)
 - `localstack-init/ready.d/02-create-order-saga-resources.sh` (as filas)
 
 Continuação de [16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md), onde o outbox foi
@@ -152,7 +153,7 @@ O script `02-create-order-saga-resources.sh` roda quando o LocalStack fica pront
 
 | Fila | Direção | Mensagens | DLQ |
 |---|---|---|---|
-| `inventory-commands-queue` | order → inventory | `ReserveStock`, `ReleaseStock` | `inventory-commands-dlq` |
+| `inventory-commands-queue` | order → inventory | `ReserveStock`, `ReleaseStock` (e, desde a Fase 6, `ShipStock`) | `inventory-commands-dlq` |
 | `order-events-queue` | inventory → order | `StockReserved`, `StockReservationFailed` | `order-events-dlq` |
 
 **DLQ** (*dead-letter queue*, "fila de mensagens mortas") é para onde o SQS move uma mensagem
@@ -199,8 +200,11 @@ O método procura linhas em `stock_reservations` com esse `reservationId`:
 | Situação | O que faz |
 |---|---|
 | **Nenhuma linha** | Reserva nova (abaixo) |
+| **Alguma linha já liberada** (uma **lápide**, seção 7) | Responde `StockReservationFailed` com `RESERVATION_CANCELLED` e não reserva nada |
 | **Todos os produtos têm linha e nenhuma foi liberada** | **Replay**: o comando chegou de novo. Não mexe no estoque; só grava outro `StockReserved` no outbox, porque o `order-service` pode não ter recebido o primeiro |
 | **Qualquer outra combinação** | Estado impossível pela saga (só acontece se alguém reservar por REST com o id de um pedido). Lança `IllegalStateException`, e a mensagem vai para reentrega e depois para a DLQ |
+
+A ordem importa: a lápide é conferida **antes** do replay.
 
 ### A reserva nova: tudo ou nada
 
@@ -213,7 +217,8 @@ O método procura linhas em `stock_reservations` com esse `reservationId`:
 4. **Tudo passou?** Reserva cada item e grava `StockReserved` no outbox.
 
 A reserva aumenta a quantidade reservada, mas **não diminui `quantity_on_hand`**. A baixa física
-do estoque é da Fase 6, quando o pedido sai para entrega.
+só acontece na expedição, com o comando `ShipStock` (ver
+[30-ciclo-de-vida-expedicao-e-entrega.md](30-ciclo-de-vida-expedicao-e-entrega.md)).
 
 ### Falha de negócio ≠ falha técnica
 
@@ -238,8 +243,8 @@ avisasse o `order-service`.
 - `StockReserved` → `applyStockReserved`
 
 Os dois métodos começam igual: `findByIdForUpdate` tranca a **linha do pedido**
-(`PESSIMISTIC_WRITE`). Duas mensagens sobre o mesmo pedido, ou uma mensagem e o futuro job de
-tempo limite, nunca decidem ao mesmo tempo.
+(`PESSIMISTIC_WRITE`). Duas mensagens sobre o mesmo pedido, ou uma mensagem e o job de tempo
+limite (seção 7), nunca decidem ao mesmo tempo.
 
 ### Idempotência pelo estado
 
@@ -249,7 +254,7 @@ Não existe uma tabela de "mensagens já processadas". **O próprio status do pe
 |---|---|---|
 | `StockReservationFailed` | `RESERVING` | → `CANCELLED`, com código e motivo |
 | `StockReservationFailed` | qualquer outro | ignorada (duplicata ou atrasada) |
-| `StockReserved` | `RESERVING` | → `CONFIRMED` |
+| `StockReserved` | `RESERVING` | → `CONFIRMED` (desde a Fase 6, com transportadora e rastreio: nota 30) |
 | `StockReserved` | `CANCELLED` | **grava `ReleaseStock`** no outbox (motivo `LATE_RESERVATION`) |
 | `StockReserved` | `CONFIRMED` | ignorada (duplicata) |
 
@@ -274,7 +279,7 @@ verdade.
 
 `V2__order_reservation_saga.sql` acrescentou em `orders`:
 
-- `reservation_started_at`: quando entrou em `RESERVING`. É o relógio do futuro tempo limite.
+- `reservation_started_at`: quando entrou em `RESERVING`. É o relógio do tempo limite (seção 7).
 - `cancellation_code` e `cancellation_reason`: por que foi cancelado.
 - `cancelled_at` e `confirmed_at`: quando.
 
@@ -287,17 +292,140 @@ A mesma migration faz uma **migração de dados**: todo pedido que estava `APPRO
 Fase 4) ganha uma linha `ReserveStock` no outbox e passa para `RESERVING`. Isso acontece em SQL
 puro, dentro do Flyway, antes de a aplicação subir. Nenhum pedido antigo fica fora da saga.
 
-## 7. O que ainda falta (plano 05-04)
+## 7. Tempo limite, liberação e lápide (plano 05-04)
 
-- **O `inventory-service` ainda não processa `ReleaseStock`.** O `SagaCommandParser` só aceita
-  `ReserveStock`; qualquer outro tipo é descartado com `WARN`. Hoje, então, o `ReleaseStock` de
-  um sucesso atrasado é **enviado**, mas a devolução do estoque ainda não acontece.
-- **Tempo limite:** um job `@Scheduled` vai cancelar pedidos parados em `RESERVING` há tempo
-  demais (código `RESERVATION_TIMEOUT`) e enviar `ReleaseStock`.
-- **`STOCK_ADJUSTED` pelo outbox:** o ajuste de estoque ainda usa o envio direto da Fase 3
-  (`StockEventPublisher`). O relay do `inventory-service` já sabe mandar `STOCK_ADJUSTED` para a
-  `notification-events-queue`; falta o `InventoryController` gravar no outbox em vez de enviar
-  direto.
+A saga ainda tinha dois buracos: um pedido podia ficar **preso** em `RESERVING` se a resposta do
+estoque nunca chegasse, e o `inventory-service` recebia `ReleaseStock` mas não sabia o que fazer
+com ele. O plano 05-04 fechou os dois e, de quebra, tirou o último envio direto ao SQS.
+
+### O job de tempo limite — `SagaTimeoutJob`
+
+```java
+@Scheduled(fixedDelayString = "${orderflow.saga.timeout-check-interval}")
+public void run() {
+    OffsetDateTime cutoff = OffsetDateTime.now(ZoneOffset.UTC).minus(reservationTimeout);
+    Pageable page = PageRequest.of(0, batchSize);
+    List<UUID> expiredOrderIds = orderRepository.findExpiredReservationIds(OrderStatus.RESERVING, cutoff, page);
+    for (UUID orderId : expiredOrderIds) {
+        try {
+            orderSagaService.expireReservation(orderId, cutoff);
+        } catch (RuntimeException e) {
+            log.error("Falha ao expirar reserva do pedido orderId={} - job segue para os demais", orderId, e);
+        }
+    }
+}
+```
+
+- A cada 10 s (`timeout-check-interval: 10000`), procura até 50 pedidos (`timeout-batch-size`)
+  parados em `RESERVING` há mais de **2 minutos** (`reservation-timeout: 2m`). Os três valores
+  ficam em `orderflow.saga` no `application.yml`.
+- O relógio é `reservation_started_at`, não `decided_at`. Um pedido antigo migrado pela V2 tem
+  `decided_at` velho e seria cancelado logo no primeiro ciclo.
+- **Bean separado** do `OrderSagaService`, pelo mesmo motivo do `OutboxRelayJob`: a chamada
+  precisa passar pelo proxy do `@Transactional` (seção 3). Cada pedido vencido roda na **sua
+  própria transação**, e o `try/catch` garante que um erro num pedido não trava os outros.
+
+O `expireReservation`, já dentro da transação:
+
+```java
+Optional<Order> maybeOrder = orderRepository.findByIdForUpdate(orderId);
+...
+if (!order.getStatus().canTransitionTo(OrderStatus.CANCELLED)
+        || order.getReservationStartedAt() == null
+        || !order.getReservationStartedAt().isBefore(cutoff)) {
+    return;
+}
+...
+order.cancel(CancellationCode.RESERVATION_TIMEOUT, CancellationReasons.forTimeout(), now);
+orderTimelineEvents.cancelled(order);
+
+UUID eventId = UUID.randomUUID();
+ReleaseStockCommand command = ReleaseStockCommand.from(
+        order, eventId, now.toInstant(), ReleaseStockCommand.RESERVATION_TIMEOUT);
+outboxWriter.enqueue(command.eventId(), ReleaseStockCommand.EVENT_TYPE, order.getId().toString(), command);
+```
+
+1. **Tranca e relê.** Entre a consulta do job e esta transação, o resultado da reserva pode ter
+   chegado. Se o pedido já saiu de `RESERVING`, não faz nada.
+2. **Cancela e compensa na mesma transação.** O pedido vira `CANCELLED` com o código
+   `RESERVATION_TIMEOUT`, e o `ReleaseStock` vai para o outbox junto. Talvez o estoque tenha
+   reservado tarde, talvez não. Na dúvida, o `order-service` pede para devolver.
+
+A linha `orderTimelineEvents.cancelled(order)` chegou depois, na Fase 6: grava o evento da linha
+do tempo do pedido (ver [22-services-de-pedido.md](22-services-de-pedido.md)).
+
+Assim existe uma garantia **de código** de que nenhum pedido fica preso para sempre (D-63), sem
+depender de o SQS reentregar nada. E o crédito volta, porque `CANCELLED` não consome crédito.
+
+### A devolução — `releaseAll`
+
+O `SagaCommandParser` do `inventory-service` passou a aceitar `ReleaseStock`, e o
+`ReservationCommandListener` escolhe pelo tipo (`instanceof`) entre `reserveAll` e `releaseAll`.
+
+`releaseAll` tem o mesmo par `@Retryable` + `@Transactional` do `reserveAll` e processa um
+produto por vez, ordenado por `productId`:
+
+| Linha no livro para (produto, `reservationId`) | O que faz |
+|---|---|
+| Existe e está **viva** | `inventory.release(quantidade)` e `reservation.markReleased(agora)` |
+| Existe e **já foi liberada** | Nada. Repetir o `ReleaseStock` não muda nada (idempotente) |
+| **Não existe** | Grava uma **lápide** (abaixo) |
+
+Não grava resposta no outbox: o `order-service` não espera resultado da compensação.
+
+### A lápide — a corrida numa fila sem ordem
+
+A `inventory-commands-queue` é uma fila SQS **padrão**, não FIFO: a ordem de entrega **não é
+garantida**. Então o `ReleaseStock` (do tempo limite) pode chegar **antes** do `ReserveStock` do
+mesmo pedido. Se o estoque simplesmente ignorasse esse `ReleaseStock` ("não há nada para
+liberar") e depois processasse o `ReserveStock`, a reserva ficaria órfã para sempre.
+
+A solução é a **lápide** (*tombstone*): uma linha em `stock_reservations` que já nasce
+liberada, como uma placa "este pedido morreu":
+
+```java
+public static StockReservation tombstone(UUID productId, String reservationId, int quantity, OffsetDateTime now) {
+    StockReservation reservation = new StockReservation(productId, reservationId, quantity);
+    reservation.markReleased(now);
+    return reservation;
+}
+```
+
+Quando o `ReserveStock` atrasado chega, o `reserveAll` encontra uma linha liberada e responde
+`StockReservationFailed` com `RESERVATION_CANCELLED`, sem tocar no estoque (seção 5). E se os
+dois chegarem **ao mesmo tempo**? A restrição `UNIQUE (product_id, reservation_id)` faz um deles
+falhar, o `@Retryable` executa de novo, e na segunda volta ele enxerga o que o outro gravou. Em
+qualquer ordem, o resultado final é sempre **"nada reservado"**, sem precisar de fila FIFO (D-66).
+
+Um detalhe: a lápide precisa existir até para produto **sem linha de estoque** (o pedido pode ter
+falhado justamente com `PRODUCT_NOT_STOCKED`). A chave estrangeira antiga
+(`stock_reservations.product_id → inventory`) impediria isso, então a `V3` a removeu:
+
+```sql
+ALTER TABLE stock_reservations DROP CONSTRAINT stock_reservations_product_id_fkey;
+```
+
+A alternativa seria criar uma linha de estoque zerada para o produto, mas aí
+`GET /inventory/{productId}` deixaria de responder 404 para um produto nunca cadastrado.
+
+Desde a Fase 6, `releaseAll` também **pula reservas já expedidas** (ver
+[30-ciclo-de-vida-expedicao-e-entrega.md](30-ciclo-de-vida-expedicao-e-entrega.md)).
+
+### `STOCK_ADJUSTED` também pelo outbox
+
+O ajuste manual de estoque (`PUT /inventory/{productId}`) ainda usava o envio direto da Fase 3,
+com o risco de *dual-write* explicado na nota 16. Agora o `InventoryService.setStock` grava o
+evento no outbox, na mesma transação do ajuste:
+
+```java
+StockAdjustedEvent event = StockAdjustedEvent.of(productId, previousQuantityOnHand, quantityOnHand, adjustedAt);
+outboxWriter.enqueue(event.eventId(), StockAdjustedEvent.EVENT_TYPE, productId.toString(), event);
+```
+
+O `StockEventPublisher` foi apagado (D-60). O único código do `inventory-service` que envia para
+o SQS é o `OutboxRelay`: `STOCK_ADJUSTED` vai para a `notification-events-queue`, e as respostas
+da saga para a `order-events-queue`. A regra do projeto ("Transactional Outbox no
+`order-service` e no `inventory-service`") está cumprida por inteiro.
 
 ## Resumindo com uma analogia
 
@@ -315,3 +443,7 @@ atacadista, que só se falam por **escaninhos**:
 - O atendente olha a **ficha** antes de agir: se já está "confirmado", ignora a resposta
   repetida. Se já está "cancelado" e chega "separei", manda outro bilhete: "pode devolver para a
   prateleira".
+- Se o almoxarifado demora demais, um **despertador** (o job de tempo limite) cancela a ficha e
+  manda o bilhete "pode devolver". Se esse bilhete chegar antes do pedido de separação, o
+  almoxarife pendura uma **placa** na prateleira ("pedido morto"). Quando o pedido de separação
+  aparecer, ele vê a placa e não separa nada.

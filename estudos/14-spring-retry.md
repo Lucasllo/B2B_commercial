@@ -84,8 +84,10 @@ public StockResponse reserve(UUID productId, String reservationId, int quantity)
 }
 ```
 
-`InventoryService` usa essa anotação em três métodos — `reserve`, `release` e
-`setStock` — sempre com os mesmos parâmetros:
+`InventoryService` usa essa anotação em seis métodos — `setStock`, `reserve` e `release`
+(chamados pelo `InventoryController`) e `reserveAll`, `releaseAll` e `shipAll` (chamados
+pelo `ReservationCommandListener`, a partir dos comandos da saga) — sempre com os mesmos
+`retryFor`, `maxAttempts` e `backoff`:
 
 - **`retryFor = {...}`** — só reexecuta se a exceção lançada for
   `ObjectOptimisticLockingFailureException` (conflito de versão) ou
@@ -133,15 +135,15 @@ quantity`). Se você mudar os parâmetros de `reserve`, precisa mudar
 falha ao subir.
 
 Além dos parâmetros, o `@Recover` precisa ter o **mesmo tipo de retorno** do método
-original. Um bom exemplo disso é o `setStock`: desde a Fase 3 ele não devolve mais
-`StockResponse`, e sim `StockAdjustmentResult` — um `record` com o estoque, a quantidade
-anterior ao ajuste e o momento do ajuste (`adjustedAt`), tudo capturado **dentro** da
-transação. Por isso o `recoverSetStock` também foi declarado devolvendo
-`StockAdjustmentResult` (mesmo que, na prática, ele só lance uma exceção) — se os tipos
-não batessem, o Spring não reconheceria esse `@Recover` como o plano B do `setStock`.
+original. Por isso `recoverSetStock` devolve `StockResponse` (como `setStock`),
+`recoverReserveAll` devolve `ReservationOutcome` (como `reserveAll`) e `recoverShipAll`
+devolve `void` (como `shipAll`) — mesmo que, na prática, todos eles só lancem uma exceção.
+Se os tipos não batessem, o Spring não reconheceria o método como o plano B daquele
+`@Retryable`.
 
-`InventoryService` tem um `@Recover` para cada método com `@Retryable`
-(`recoverReserve`, `recoverRelease`, `recoverSetStock`), e todos fazem a mesma
+Cada método com `@Retryable` tem um `@Recover` para o conflito esgotado
+(`recoverSetStock`, `recoverReserve`, `recoverRelease`, `recoverReserveAll`,
+`recoverReleaseAll`, `recoverShipAll`), e todos fazem a mesma
 coisa: lançam `ReservationConflictException` — uma exceção de negócio, mapeada
 para um HTTP 503 (Service Unavailable) com `error: "reservation_conflict"` — em vez
 de deixar vazar para a API um detalhe de implementação (`DataAccessException`, um
@@ -154,6 +156,73 @@ estoque de verdade é uma recusa definitiva — tentar de novo não vai mudar na
 disputa que esgotou as tentativas é passageira — o estoque existe, só houve briga
 demais pela mesma linha naquele instante, então vale a pena o cliente tentar de novo
 um pouco depois. O `503` comunica exatamente isso.
+
+## Um segundo `@Recover`, para a exceção que não é retentável
+
+Os métodos da saga (`reserveAll`, `releaseAll`, `shipAll`) às vezes lançam
+`IllegalStateException`. É uma **anomalia técnica**: por exemplo, um `ShipStock` para uma
+reserva que não existe no livro. Ela não está no `retryFor`, então não deveria passar pelo
+mecanismo de retry.
+
+Só que passa. O aspecto do Spring Retry intercepta **qualquer** exceção que escapa de um
+método `@Retryable`, não só as do `retryFor`. Ele não reexecuta, mas vai procurar um
+`@Recover`. Se não achar um cujo primeiro parâmetro aceite `IllegalStateException`, ele
+lança `ExhaustedRetryException("Cannot locate recovery method")`. A mensagem real (com
+`productId`, `reservationId` e `orderId`) some.
+
+A correção foi um segundo `@Recover` por método, que só registra e relança a exceção
+original:
+
+```java
+@Recover
+public void recoverShipAll(IllegalStateException ex, UUID orderId, String reservationId,
+                                           List<ReservationLine> lines) {
+    log.warn("ShipStock anomalo (pedido {}): {}", orderId, ex.getMessage());
+    throw ex;
+}
+```
+
+Agora `recoverShipAll` e `recoverReleaseAll` têm **duas versões cada** (sobrecargas): uma
+recebe `DataAccessException` (conflito esgotado → `ReservationConflictException`), a outra
+recebe `IllegalStateException` (anomalia → WARN e relança). O Spring escolhe entre as duas
+pelo tipo da exceção. O `reserveAll` tem o mesmo par, mas com nomes diferentes
+(`recoverReserveAll` e `recoverReserveAllInconsistentBook`).
+
+## `recover = "..."` — dizer ao Spring qual `@Recover` usar (WR-02)
+
+Aqui apareceu um bug sutil. `releaseAll` e `shipAll` têm **a mesma assinatura**:
+
+```java
+public void releaseAll(UUID orderId, String reservationId, List<ReservationLine> lines)
+public void shipAll(UUID orderId, String reservationId, List<ReservationLine> lines)
+```
+
+Os dois devolvem `void` e recebem `(UUID, String, List)`. Lembra a regra da seção anterior:
+o Spring casa o `@Recover` pela **assinatura**. Para o Spring, os `@Recover` dos dois
+métodos eram igualmente compatíveis. Ele escolhia sempre o de `releaseAll`. Resultado: um
+`ShipStock` anômalo gerava o WARN `ReleaseStock anomalo (...)`, e o WARN
+`ShipStock anomalo (...)` nunca aparecia no log. O comando errado levava a culpa.
+
+A correção (plano 07-09, WR-02) foi o atributo `recover` no `@Retryable`:
+
+```java
+@Retryable(
+        retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
+        maxAttempts = RETRY_MAX_ATTEMPTS,
+        backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS),
+        recover = "recoverShipAll")
+@Transactional
+public void shipAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
+```
+
+Com `recover = "recoverShipAll"`, o Spring Retry só considera métodos `@Recover` **com esse
+nome**. Dentro desse nome, a escolha pelo tipo da exceção continua valendo: é por isso que
+as duas sobrecargas (`DataAccessException` e `IllegalStateException`) têm o mesmo nome. O
+`releaseAll` ganhou o mesmo atributo, com `recover = "recoverReleaseAll"`.
+
+Pensa num prédio com dois porteiros com o mesmo uniforme. Quem chega procurando "um
+porteiro de uniforme azul" pode ser atendido por qualquer um. `recover = "..."` é chamar o
+porteiro pelo **nome**.
 
 ## Uma regra estrutural que este projeto documenta explicitamente
 
@@ -169,14 +238,17 @@ de um proxy que o Spring cria ao redor do bean, e uma chamada interna
 Isso não gera erro de compilação nem exceção em tempo de execução — é um
 comportamento errado silencioso. Por isso é um cuidado a manter ao adicionar
 código novo nessa classe: qualquer nova lógica que precise reaproveitar
-`reserve`/`release`/`setStock` deve chamá-los de fora, nunca internamente.
+`reserve`/`release`/`setStock` deve chamá-los de fora, nunca internamente. A mesma regra
+vale para `reserveAll`, `releaseAll` e `shipAll`: eles são chamados só pelo
+`ReservationCommandListener` (outro bean), e por isso leem e gravam direto pelos
+repositórios, sem chamar `reserve`/`release` por dentro.
 
-Um cuidado parecido aparece desde a Fase 3 com a mensageria: o evento de ajuste de
-estoque no SQS é publicado pelo `InventoryController` **só depois** que `setStock`
-retornou — ou seja, com a transação já commitada —, nunca de dentro do método com
-retry. Se a publicação ficasse lá dentro, uma tentativa que falhasse e fosse
-reexecutada poderia publicar o mesmo evento duas vezes, ou publicar um ajuste que
-nunca chegou a ser gravado (ver [16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md)).
+E a mensageria? Desde o plano 05-04, o `setStock` grava o evento `STOCK_ADJUSTED` no
+**outbox**, dentro da própria transação que tem retry. Isso é seguro: se uma tentativa
+falha por conflito de versão, a transação dela sofre rollback — e a linha do outbox vai
+junto. Só a tentativa que deu commit deixa o evento gravado. Nada é enviado ao SQS de
+dentro do método; quem envia é o relay, depois (ver
+[16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md)).
 
 Vale notar também: o Spring Retry continua sendo usado **só no `inventory-service`**.
 O `order-service` resolve a concorrência de outro jeito, com uma trava por empresa
@@ -191,3 +263,6 @@ O `order-service` resolve a concorrência de outro jeito, com uma trava por empr
 - **`@Recover`** = "se mesmo depois de N tentativas continuar falhando, é aqui que
   eu decido o que fazer" — geralmente traduzir o erro técnico numa exceção de
   negócio clara.
+- **`recover = "nome"`** (no `@Retryable`) = "use só o `@Recover` com este nome" —
+  necessário quando dois métodos têm a mesma assinatura e o Spring não teria como
+  saber qual plano B é de quem.

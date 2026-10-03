@@ -174,9 +174,16 @@ com a mesma ideia de "pacotinho de dados imutável":
 
 - `order-service/.../order/PricedItem.java` — um item de pedido já validado e com preço
   vindo do catálogo, que passa de um service para outro sem nada de JPA.
-- `inventory-service/.../stock/StockAdjustmentResult.java` — leva o estoque ajustado, a
-  quantidade anterior e o momento do ajuste (`adjustedAt`) do `InventoryService` para o
-  `InventoryController`, sem expor esses campos na resposta HTTP.
+- `inventory-service/.../stock/ReservationOutcome.java` — o resultado interno do
+  `reserveAll` (reservou ou não, o código do motivo e as linhas que falharam), devolvido ao
+  listener da saga só para log e teste: o evento de resposta já foi gravado no outbox antes.
+  (Até o plano 05-04 existia aqui um `StockAdjustmentResult`; ele sumiu quando o
+  `STOCK_ADJUSTED` passou a sair pelo outbox — ver
+  [16-sqs-outbox-mensageria.md](16-sqs-outbox-mensageria.md).)
+- `order-service/.../shipping/CarrierAssignment.java` — transportadora e código de rastreio
+  atribuídos na confirmação do pedido; o **construtor compacto** do `record` recusa um código
+  fora do formato S10 antes que ele chegue ao banco (ver
+  [30-ciclo-de-vida-expedicao-e-entrega.md](30-ciclo-de-vida-expedicao-e-entrega.md)).
 - `order-service/.../config/ClientProperties.java` — um `record` usado para ler
   configuração do `application.yml` (ver
   [20-configuration-properties.md](20-configuration-properties.md)).

@@ -1,7 +1,10 @@
-# Os services de pedido — `OrderCreationService`, `OrderService` e `OrderDecisionService`
+# Os services de pedido — `OrderCreationService`, `OrderService`, `OrderDecisionService` e `OrderShipmentService`
 
-Pasta: `order-service/src/main/java/com/orderflow/order/order/`
-(chamados por `OrderController` e `OrderDecisionController`, na mesma pasta).
+Arquivos:
+- `order-service/src/main/java/com/orderflow/order/order/` (os services e os controllers
+  `OrderController`, `OrderDecisionController` e `OrderShipmentController`)
+- `order-service/src/main/java/com/orderflow/order/timeline/OrderTimelineEvents.java` (os eventos
+  da linha do tempo, desde a Fase 6)
 
 ## O que são, em uma frase
 
@@ -13,6 +16,10 @@ para eles, e cada um cuida de uma parte da vida de um pedido.
 | `OrderCreationService` | **Preparar** um pedido novo: conferir produtos, calcular preços, buscar o limite de crédito | `POST /orders` |
 | `OrderService` | **Gravar** o pedido novo com a checagem de crédito, e **consultar** pedidos | `OrderCreationService`, `GET /orders`, `GET /orders/{id}` |
 | `OrderDecisionService` | **Decidir** um pedido pendente: o vendedor aprova ou rejeita | `POST /orders/{id}/approve` e `/reject` |
+| `OrderShipmentService` | **Expedir** e registrar a **entrega** de um pedido confirmado (Fase 6) | `POST /orders/{id}/ship` e `/deliver` |
+
+Os quatro usam um ajudante comum, o `OrderTimelineEvents`, que grava no outbox um evento de linha
+do tempo a cada mudança de status (seção 6).
 
 ## 1. Por que existe uma camada "Service"?
 
@@ -23,7 +30,7 @@ Cliente (navegador, Postman)
    ↓  requisição HTTP
 Controller   → "recepção": recebe o pedido, lê quem é o usuário no JWT, devolve a resposta
    ↓
-Service      → "gerência": aplica as regras de negócio (é aqui que estão as 3 classes)
+Service      → "gerência": aplica as regras de negócio (é aqui que estão estas classes)
    ↓
 Repository   → "arquivo": lê e grava no banco de dados
 ```
@@ -148,7 +155,7 @@ chamada ao `auth-service` só acontece se todo o resto passou.
 
 ## 3. Por que separar `OrderCreationService` e `OrderService`?
 
-Esta é a decisão mais importante das três classes, e tem dois motivos.
+Esta é a decisão mais importante das classes de criação, e tem dois motivos.
 
 ### Motivo A: não fazer chamadas de rede com a empresa trancada
 
@@ -201,9 +208,21 @@ Recebe os itens já precificados e o limite já lido. Em detalhes na nota 21, ma
 3. Soma quanto a empresa já deve (a exposição)
 4. Cabe no limite? **Aprova automaticamente.** Não cabe? **Fica pendente** para o vendedor
 5. Salva no banco
-6. Se foi aprovado, **entra na saga**: `sagaStarter.start(order, now)` muda o status para
+6. Grava os eventos da linha do tempo: `ORDER_CREATED` e, em seguida, `ORDER_APPROVED` ou
+   `ORDER_PENDING_APPROVAL` (seção 6)
+7. Se foi aprovado, **entra na saga**: `sagaStarter.start(order, now)` muda o status para
    `RESERVING` e grava o comando `ReserveStock` no outbox, **na mesma transação** (Fase 5, ver
    [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md))
+
+```java
+orderTimelineEvents.created(order);
+if (order.getStatus() == OrderStatus.APPROVED) {
+    orderTimelineEvents.approved(order);
+    sagaStarter.start(order, now);
+} else {
+    orderTimelineEvents.pendingApproval(order);
+}
+```
 
 Por isso um pedido dentro do limite **responde `RESERVING`**, não `APPROVED`. A aprovação
 continua registrada (`decidedBy = SYSTEM`, `decidedAt`), mas `APPROVED` virou só um passo
@@ -286,25 +305,27 @@ Quando um pedido estoura o limite, ele fica `PENDING_APPROVAL`. Um vendedor (pap
 @Transactional
 public OrderResponse approve(UUID orderId, String sellerId, String reason) {
     Order order = decide(orderId, o -> o.approveManually(sellerId, reason, currentInstant()));
-    sagaStarter.start(order, order.getDecidedAt());   // Fase 5: RESERVING + ReserveStock no outbox
+    orderTimelineEvents.approved(order);
+    sagaStarter.start(order, order.getDecidedAt());
     return OrderResponse.from(order);
 }
 
 @Transactional
 public OrderResponse reject(UUID orderId, String sellerId, String reason) {
     Order order = decide(orderId, o -> o.reject(sellerId, reason, currentInstant()));
+    orderTimelineEvents.rejected(order);
     return OrderResponse.from(order);
 }
 ```
 
-Desde a Fase 5, o `approve` tem uma linha a mais: a aprovação manual entra na **mesma saga** da
-aprovação automática, pelo mesmo `ReservationSagaStarter`, e responde 200 com o pedido já em
-`RESERVING`. A rejeição não muda: pedido rejeitado nunca pede estoque.
+- **`sagaStarter.start`** (Fase 5): a aprovação manual entra na **mesma saga** da aprovação
+  automática, pelo mesmo `ReservationSagaStarter`, e responde 200 com o pedido já em
+  `RESERVING`. Pedido rejeitado nunca pede estoque.
+- **`orderTimelineEvents.approved` / `.rejected`** (Fase 6): gravam `ORDER_APPROVED` ou
+  `ORDER_REJECTED` no outbox para a linha do tempo (seção 6).
 
-Tirando essa linha, os dois métodos são quase iguais. A única diferença é **qual ação** fazer no
-pedido. Em vez
-de repetir o código, os dois chamam um método comum, `decide`, e passam a ação como
-parâmetro.
+O miolo dos dois métodos é igual. A única diferença é **qual ação** fazer no pedido. Em vez de
+repetir o código, os dois chamam um método comum, `decide`, e passam a ação como parâmetro.
 
 ### O que é `o -> o.approveManually(...)`?
 
@@ -360,7 +381,83 @@ sujeira": um objeto alterado está "sujo" e precisa ser gravado).
   corpo da requisição. Ninguém consegue se passar por outro vendedor escrevendo o id de outra
   pessoa no JSON.
 
-## 6. O caminho completo de um pedido
+## 6. Os services mais novos (Fases 5 e 6)
+
+Depois que o pedido foi criado e decidido, outras classes cuidam do resto da vida dele. Aqui vai
+só o resumo; o detalhe está nas notas 26 e 30.
+
+### `OrderShipmentService`: expedir e entregar
+
+Chamado pelo `OrderShipmentController` (só `SELLER_ADMIN`, sem corpo, quem agiu vem do `sub`
+do JWT):
+
+```java
+@Transactional
+public OrderResponse ship(UUID orderId, String sellerId) {
+    Order order = lockOrder(orderId);
+    OffsetDateTime now = currentInstant();
+
+    order.ship(sellerId, now);
+
+    ShipStockCommand command = ShipStockCommand.from(order, UUID.randomUUID(), now.toInstant());
+    outboxWriter.enqueue(command.eventId(), ShipStockCommand.EVENT_TYPE, order.getId().toString(), command);
+    orderTimelineEvents.shipped(order);
+    return OrderResponse.from(order);
+}
+```
+
+- **`lockOrder`** usa `findByIdForUpdate`: tranca a **linha do pedido**, a mesma trava da saga.
+  Não precisa da trava de crédito da empresa, porque `CONFIRMED`, `SHIPPED` e `DELIVERED` já
+  consomem crédito e a exposição não muda.
+- **`ship`** leva `CONFIRMED` → `SHIPPED` e grava, na mesma transação, o comando `ShipStock`
+  (para o estoque dar baixa física) e o evento `ORDER_SHIPPED`.
+- **`deliver`** leva `SHIPPED` → `DELIVERED` e só grava `ORDER_DELIVERED`. Não fala com o
+  estoque.
+- Fora de ordem (expedir um pedido `RESERVING`, entregar um `CONFIRMED`…): 409
+  `invalid_order_transition`.
+
+Tudo isso está em [30-ciclo-de-vida-expedicao-e-entrega.md](30-ciclo-de-vida-expedicao-e-entrega.md).
+
+### `OrderTimelineEvents`: o "escrivão" da linha do tempo
+
+Cada mudança de status precisa virar um evento `ORDER_*` para o `notification-service` montar a
+linha do tempo do pedido. Quem grava é esta classe, com um método por tipo de evento:
+
+```java
+@Transactional(propagation = Propagation.MANDATORY)
+public void shipped(Order order) {
+    enqueue(order, OrderLifecycleEvent.ORDER_SHIPPED, OrderLifecycleEvent::shipped);
+}
+```
+
+- **`Propagation.MANDATORY`** de novo: o método **exige** uma transação já aberta e falha alto se
+  não houver. Assim o evento é gravado na mesma transação da mudança de status. A linha do tempo
+  nunca mostra uma transição que não aconteceu, nem esquece uma que aconteceu. É o mesmo truque
+  do `CompanyCreditLocker` (nota 21) e do `ReservationSagaStarter` (nota 26).
+- **Nunca fala com o SQS.** Só chama `outboxWriter.enqueue`. Quem envia é o `OutboxRelay`, que
+  manda os tipos `ORDER_*` para a `notification-events-queue`.
+- São oito tipos: `ORDER_CREATED`, `ORDER_PENDING_APPROVAL`, `ORDER_APPROVED`, `ORDER_REJECTED`,
+  `ORDER_CONFIRMED`, `ORDER_CANCELLED`, `ORDER_SHIPPED` e `ORDER_DELIVERED`. A entrada em
+  `RESERVING` não tem evento próprio: o `ORDER_APPROVED` já cobre.
+
+Quem chama cada método:
+
+| Onde | Eventos |
+|---|---|
+| `OrderService.createWithCreditCheck` | `created` + `approved` ou `pendingApproval` |
+| `OrderDecisionService.approve` / `reject` | `approved` / `rejected` |
+| `OrderSagaService.applyStockReserved` (só quando confirma) | `confirmed` |
+| `OrderSagaService.applyReservationFailed` e `expireReservation` | `cancelled` |
+| `OrderShipmentService.ship` / `deliver` | `shipped` / `delivered` |
+
+### `OrderSagaService` e `SagaTimeoutJob`: a parte assíncrona
+
+Não são chamados por controller nenhum. O `OrderSagaService` reage às respostas do estoque
+(`CONFIRMED` ou `CANCELLED`), e o `SagaTimeoutJob` (`@Scheduled`) cancela pedidos parados em
+`RESERVING` há mais de 2 minutos. Os dois estão em
+[26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
+
+## 7. O caminho completo de um pedido
 
 ```
 Comprador: POST /orders
@@ -377,13 +474,19 @@ Vendedor: POST /orders/{id}/approve ou /reject  → OrderDecisionController (exi
 Se ficou RESERVING (Fase 5, assíncrono):
    OutboxRelay → inventory-commands-queue → inventory-service reserva
    → order-events-queue → OrderSagaService → CONFIRMED ou CANCELLED
+   (ou SagaTimeoutJob → CANCELLED, se a resposta não chegar a tempo)
+
+Se ficou CONFIRMED (Fase 6):
+Vendedor: POST /orders/{id}/ship     → OrderShipmentController → OrderShipmentService → SHIPPED
+Vendedor: POST /orders/{id}/deliver  → OrderShipmentController → OrderShipmentService → DELIVERED
 ```
 
-A última parte está em [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md).
+A parte assíncrona está em [26-saga-de-reserva-de-estoque.md](26-saga-de-reserva-de-estoque.md);
+a expedição e a entrega, em [30-ciclo-de-vida-expedicao-e-entrega.md](30-ciclo-de-vida-expedicao-e-entrega.md).
 
 ## Resumindo com uma analogia
 
-Pensa numa loja de atacado com três funcionários:
+Pensa numa loja de atacado com quatro funcionários:
 
 - O **atendente** (`OrderCreationService`) recebe a lista do cliente, confere se não há itens
   repetidos, liga para o estoque perguntando se cada produto existe e quanto custa, soma tudo
@@ -396,3 +499,8 @@ Pensa numa loja de atacado com três funcionários:
 - O **gerente** (`OrderDecisionService`) olha os pedidos pendentes e decide. Antes, entra na
   mesma sala do cofre e **relê a ficha**, para garantir que outro gerente não decidiu aquele
   pedido enquanto ele esperava na porta.
+- O **expedidor** (`OrderShipmentService`) pega a ficha de um pedido já confirmado, carimba
+  "expedido" e, no mesmo caderno, deixa um bilhete para o almoxarifado dar baixa. Depois, quando
+  o cliente recebe, carimba "entregue".
+- E todos eles, a cada carimbo, ditam uma linha para o **escrivão** (`OrderTimelineEvents`), que
+  só escreve se o carimbo estiver acontecendo naquele mesmo momento, no mesmo caderno.
