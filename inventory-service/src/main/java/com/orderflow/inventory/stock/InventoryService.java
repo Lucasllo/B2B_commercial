@@ -407,7 +407,8 @@ public class InventoryService {
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
             maxAttempts = RETRY_MAX_ATTEMPTS,
-            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS),
+            recover = "recoverReleaseAll")
     @Transactional
     public void releaseAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
         List<ReservationLine> sortedLines = lines.stream()
@@ -460,11 +461,19 @@ public class InventoryService {
      * @Retryable}; sem um {@code @Recover} cujo tipo de parametro corresponda, a excecao real fica
      * soterrada por {@code ExhaustedRetryException("Cannot locate recovery method")}, escondendo
      * {@code productId}/{@code reservationId}/{@code orderId} do chamador e dos logs. Este metodo
-     * apenas relanca a excecao original, preservando a mensagem diagnostica.
+     * registra o WARN {@code ReleaseStock anomalo (pedido ...)} e relanca a excecao original,
+     * preservando a mensagem diagnostica.
+     *
+     * <p>WR-02 (D-107): e uma sobrecarga de {@link #recoverReleaseAll(DataAccessException, UUID, String,
+     * List)} — o {@code @Retryable} de {@code releaseAll} declara {@code recover = "recoverReleaseAll"},
+     * e com {@code recover} preenchido o Spring Retry 2.0.x so considera metodos com esse nome (a
+     * escolha por tipo de excecao entre as duas sobrecargas continua valendo), sem poder cair no
+     * {@code @Recover} de {@code shipAll}.
      */
     @Recover
-    public void recoverReleaseAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
-                                                   List<ReservationLine> lines) {
+    public void recoverReleaseAll(IllegalStateException ex, UUID orderId, String reservationId,
+                                  List<ReservationLine> lines) {
+        log.warn("ReleaseStock anomalo (pedido {}): {}", orderId, ex.getMessage());
         throw ex;
     }
 
@@ -497,7 +506,8 @@ public class InventoryService {
     @Retryable(
             retryFor = {ObjectOptimisticLockingFailureException.class, DataIntegrityViolationException.class},
             maxAttempts = RETRY_MAX_ATTEMPTS,
-            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS))
+            backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = RETRY_MULTIPLIER, maxDelay = RETRY_MAX_DELAY_MS),
+            recover = "recoverShipAll")
     @Transactional
     public void shipAll(UUID orderId, String reservationId, List<ReservationLine> lines) {
         List<ReservationLine> sortedLines = lines.stream()
@@ -539,7 +549,7 @@ public class InventoryService {
     }
 
     /**
-     * Mesma lição de {@link #recoverReleaseAllInconsistentBook}: {@code shipAll} lanca {@link
+     * Mesma lição de {@link #recoverReleaseAll(IllegalStateException, UUID, String, List)}: {@code shipAll} lanca {@link
      * IllegalStateException} para reserva ausente/liberada/sem inventory (anomalia tecnica, nunca
      * retentavel — nao esta em {@code retryFor}), mas o aspecto de reexecucao do Spring Retry
      * intercepta QUALQUER excecao escapando de um metodo {@code @Retryable}; sem um {@code @Recover}
@@ -548,16 +558,16 @@ public class InventoryService {
      * productId}/{@code reservationId}/{@code orderId}. Relanca a excecao original apos registrar um
      * WARN.
      *
-     * <p><b>Observado em {@code ShipStockConsumptionIT} (06-03):</b> {@code shipAll} e {@code
-     * releaseAll} tem a MESMA assinatura de parametros ({@code UUID, String, List}) e ambos
-     * retornam {@code void}, entao o Spring Retry nao distingue os dois {@code @Recover} com {@code
-     * IllegalStateException} pelo tipo — na pratica ele resolveu {@link
-     * #recoverReleaseAllInconsistentBook} (o WARN deste metodo nunca e emitido). O comportamento e
-     * identico (relanca a causa original com {@code orderId}/{@code productId}); este metodo existe
-     * para tornar a intencao explicita e continuar correto se a resolucao mudar.
+     * <p><b>WR-02 (D-107):</b> {@code shipAll} e {@code releaseAll} tem a MESMA assinatura de
+     * parametros ({@code UUID, String, List}) e ambos retornam {@code void}, entao o Spring Retry nao
+     * os distingue pelo tipo — em 06-03 ele resolvia sempre o {@code @Recover} de {@code releaseAll}
+     * e o WARN abaixo nunca era emitido. Agora o {@code @Retryable} de {@code shipAll} declara
+     * {@code recover = "recoverShipAll"}: com {@code recover} preenchido o Spring Retry 2.0.x so
+     * considera metodos com esse nome, entao este metodo e o escolhido (e a sobrecarga {@link
+     * #recoverShipAll(DataAccessException, UUID, String, List)} cobre o conflito esgotado).
      */
     @Recover
-    public void recoverShipAllInconsistentBook(IllegalStateException ex, UUID orderId, String reservationId,
+    public void recoverShipAll(IllegalStateException ex, UUID orderId, String reservationId,
                                                List<ReservationLine> lines) {
         log.warn("ShipStock anomalo (pedido {}): {}", orderId, ex.getMessage());
         throw ex;

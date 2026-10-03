@@ -7,6 +7,9 @@ import com.orderflow.inventory.stock.InventoryService;
 import com.orderflow.inventory.support.SagaQueues;
 import com.orderflow.inventory.support.TestJwt;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -40,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * resposta nem {@code STOCK_ADJUSTED} (decisao {@code SHIP_STOCK_ADJUSTED_EVENT=none}), entao as
  * provas sao o {@code GET /inventory/{productId}} e o proprio banco.
  */
+@ExtendWith(OutputCaptureExtension.class)
 class ShipStockConsumptionIT extends AbstractIntegrationTest {
 
     @Autowired
@@ -241,7 +245,8 @@ class ShipStockConsumptionIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void shipAllForReservationWithoutBookRowThrowsIllegalStateNotExhaustedRetryAndChangesNothing() throws Exception {
+    void shipAllForReservationWithoutBookRowThrowsIllegalStateNotExhaustedRetryAndChangesNothing(
+            CapturedOutput output) throws Exception {
         UUID productId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         setStock(productId, 10);
@@ -252,10 +257,33 @@ class ShipStockConsumptionIT extends AbstractIntegrationTest {
                 .hasMessageContaining(orderId.toString())
                 .hasMessageContaining(productId.toString());
         assertStock(productId, 10, 0);
+        // WR-02 (D-107): o @Recover do PROPRIO shipAll e escolhido pelo nome e emite o WARN de ShipStock.
+        assertThat(output.getAll()).contains("ShipStock anomalo (pedido " + orderId + ")");
     }
 
     @Test
-    void shipAllForReleasedReservationThrowsIllegalStateAndChangesNothing() throws Exception {
+    void releaseAllForLiveReservationWithoutInventoryRowEmitsReleaseStockAnomalyWarnNotShipStockOne(
+            CapturedOutput output) throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        // Reserva viva sem linha de inventory (a FK foi removida na V3): anomalia tecnica de releaseAll.
+        jdbcTemplate.update("INSERT INTO inventory.stock_reservations (product_id, reservation_id, quantity) "
+                + "VALUES (?, ?, 2)", productId, orderId.toString());
+
+        assertThatThrownBy(() -> inventoryService.releaseAll(orderId, orderId.toString(),
+                List.of(new ReservationLine(productId, 2))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(orderId.toString())
+                .hasMessageContaining(productId.toString());
+
+        assertThat(output.getAll())
+                .contains("ReleaseStock anomalo (pedido " + orderId + ")")
+                .doesNotContain("ShipStock anomalo (pedido " + orderId + ")");
+        assertThat(reservationReleased(orderId, productId)).isFalse();
+    }
+
+    @Test
+    void shipAllForReleasedReservationThrowsIllegalStateAndChangesNothing(CapturedOutput output) throws Exception {
         UUID productId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         setStock(productId, 10);
@@ -271,6 +299,7 @@ class ShipStockConsumptionIT extends AbstractIntegrationTest {
                 .hasMessageContaining(orderId.toString());
         assertStock(productId, 10, 0);
         assertThat(reservationShipped(orderId, productId)).isFalse();
+        assertThat(output.getAll()).contains("ShipStock anomalo (pedido " + orderId + ")");
     }
 
     @Test
