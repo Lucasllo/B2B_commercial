@@ -1,6 +1,11 @@
 server:
   port: 8084
 
+logging:
+  pattern:
+    # Prefixo do MDC correlationId nas linhas de log (D-93). O traço entra quando a thread não tem ID.
+    correlation: "[%X{correlationId:-}] "
+
 spring:
   application:
     name: notification-service

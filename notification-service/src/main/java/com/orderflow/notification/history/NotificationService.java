@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.orderflow.notification.history.dto.NotificationResponse;
 import com.orderflow.notification.history.dto.OrderLifecycleEvent;
 import com.orderflow.notification.history.dto.StockAdjustedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.RoundingMode;
@@ -27,6 +29,8 @@ import java.util.regex.Pattern;
  */
 @Service
 public class NotificationService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
     static final String SORT_KEY_SEPARATOR = "#";
 
@@ -121,6 +125,7 @@ public class NotificationService {
         // da a sobrescrita em reentrega de graca. Nao ha leitura previa "ja processei este
         // evento?" — a chave deterministica ja resolve a idempotencia.
         notificationRepository.save(record);
+        log.info("Evento registrado eventType={} entityId={}", record.getEventType(), record.getEntityId());
     }
 
     /**
@@ -157,6 +162,7 @@ public class NotificationService {
 
         // Mesma idempotencia do caminho de produto: chave deterministica + putItem sem condicao.
         notificationRepository.save(record);
+        log.info("Evento registrado eventType={} entityId={}", record.getEventType(), record.getEntityId());
     }
 
     private static String orderMessage(OrderLifecycleEvent event) {

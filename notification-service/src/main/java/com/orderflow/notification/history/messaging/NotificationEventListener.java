@@ -2,10 +2,12 @@ package com.orderflow.notification.history.messaging;
 
 import com.orderflow.notification.history.InvalidNotificationEventException;
 import com.orderflow.notification.history.NotificationService;
+import com.orderflow.notification.observability.CorrelationContext;
 import io.awspring.cloud.sqs.annotation.SqsListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,6 +22,10 @@ import org.springframework.stereotype.Component;
  * faz o Spring Cloud AWS confirmar e apagar a mensagem. Qualquer outra excecao (ex.: falha de
  * gravacao no DynamoDB) nao e capturada aqui — sem confirmacao, a mensagem volta a fila depois do
  * timeout de visibilidade, e como a gravacao e idempotente por chave, a reentrega e segura.
+ *
+ * <p>O atributo SQS {@code correlationId} abre o escopo de MDC de cada mensagem (D-94, D-97): o ID
+ * so entra no log se casar o formato esperado; a thread do listener e reutilizada, entao o escopo
+ * restaura o MDC ao fim (T-07-23).
  */
 @Component
 public class NotificationEventListener {
@@ -36,11 +42,20 @@ public class NotificationEventListener {
     }
 
     @SqsListener("${orderflow.notifications.queue-name}")
-    public void onMessage(String payload) {
-        try {
-            notificationService.record(payload);
-        } catch (InvalidNotificationEventException e) {
-            log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
+    public void onMessage(String payload,
+                          @Header(name = CorrelationContext.SQS_ATTRIBUTE, required = false) String correlationId) {
+        try (var scope = CorrelationContext.open(correlationId)) {
+            log.info("Mensagem recebida da fila '{}'", queueName);
+            try {
+                notificationService.record(payload);
+            } catch (InvalidNotificationEventException e) {
+                log.warn("Mensagem descartada da fila '{}': {}", queueName, e.getMessage());
+            }
         }
+    }
+
+    /** Sobrecarga sem atributo e sem {@code @SqsListener}: delega com ID nulo (o escopo gera um UUID). */
+    public void onMessage(String payload) {
+        onMessage(payload, null);
     }
 }
