@@ -1,6 +1,15 @@
 package com.orderflow.notification.history;
 
+import com.orderflow.notification.config.ErrorResponse;
 import com.orderflow.notification.history.dto.NotificationResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -29,6 +38,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/notifications")
+@Tag(name = "Histórico de notificações", description = "Histórico de eventos consumidos da fila: ajustes de estoque por produto e linha do tempo por pedido, em ordem cronológica.")
 public class NotificationController {
 
     private static final String SELLER_ADMIN_AUTHORITY = "ROLE_SELLER_ADMIN";
@@ -40,16 +50,53 @@ public class NotificationController {
     }
 
     @GetMapping("/orders/{orderId}")
+    @Operation(summary = "Linha do tempo do pedido",
+            description = "SELLER_ADMIN lê a linha do tempo de qualquer pedido; BUYER só a do pedido da própria empresa. "
+                    + "Pedido de outra empresa, inexistente ou sem eventos devolve o mesmo 404 (order_not_found), "
+                    + "sem revelar se o pedido existe.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Eventos ORDER_* do pedido em ordem cronológica",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = NotificationResponse.class)))),
+            @ApiResponse(responseCode = "400", description = "Identificador não é UUID (invalid_identifier)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token ausente ou inválido (unauthorized)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Papel sem acesso ou comprador sem company_id válido (forbidden)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Pedido não encontrado para quem consultou (order_not_found)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "DynamoDB indisponível (notification_store_unavailable)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     @PreAuthorize("hasAnyRole('SELLER_ADMIN','BUYER')")
-    public List<NotificationResponse> getOrderTimeline(@PathVariable UUID orderId, Authentication authentication) {
+    public List<NotificationResponse> getOrderTimeline(
+            @Parameter(description = "Identificador do pedido (UUID)", example = "3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b")
+            @PathVariable UUID orderId, Authentication authentication) {
         boolean sellerView = isSellerAdmin(authentication);
         UUID callerCompanyId = sellerView ? null : requireCompanyId((Jwt) authentication.getPrincipal());
         return notificationService.historyForOrder(orderId, callerCompanyId, sellerView);
     }
 
     @GetMapping("/{productId}")
+    @Operation(summary = "Histórico de ajustes de estoque do produto",
+            description = "Exige o papel SELLER_ADMIN: o histórico de estoque é dado operacional do vendedor. "
+                    + "Lista vazia quando o produto não tem eventos registrados.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Eventos do produto em ordem cronológica",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = NotificationResponse.class)))),
+            @ApiResponse(responseCode = "400", description = "Identificador não é UUID (invalid_identifier)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token ausente ou inválido (unauthorized)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Papel diferente de SELLER_ADMIN (forbidden)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "DynamoDB indisponível (notification_store_unavailable)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     @PreAuthorize("hasRole('SELLER_ADMIN')")
-    public List<NotificationResponse> getHistory(@PathVariable UUID productId) {
+    public List<NotificationResponse> getHistory(
+            @Parameter(description = "Identificador do produto (UUID)", example = "7d9e4a20-1b3c-4f5d-8e6a-2b4c6d8e0f12")
+            @PathVariable UUID productId) {
         return notificationService.history(productId);
     }
 
