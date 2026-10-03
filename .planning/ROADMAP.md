@@ -233,7 +233,7 @@ Plans:
   4. Todo serviço tem testes unitários cobrindo suas regras de negócio centrais e ao menos um teste de integração contra dependência real (PostgreSQL ou LocalStack), sem lacunas herdadas das fases anteriores.
   5. As decisões-chave (saga por orquestração em vez de coreografia, outbox em vez de publicação direta, LocalStack em vez de AWS real, ausência deliberada de service discovery/config server) estão registradas como ADRs em português, cada uma com ao menos uma alternativa rejeitada e o motivo.
 
-**Plans:** 8/11 plans executed
+**Plans:** 9/11 plans executed
 
 Plans:
 *No máximo um plano com Testcontainers LocalStack por onda (sessão única do LocalStack Hobby por token, D-101); planos sem LocalStack rodam em paralelo, sem módulo Maven em comum na mesma onda.*
@@ -260,7 +260,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 07-09-PLAN.md — inventory-service: WR-01 (`ShipStock` inválido vai à DLQ) e WR-02 (`@Recover` por nome em `shipAll`/`releaseAll`) com testes (TEST-01, TEST-02)
+- [x] 07-09-PLAN.md — inventory-service: WR-01 (`ShipStock` inválido vai à DLQ) e WR-02 (`@Recover` por nome em `shipAll`/`releaseAll`) com testes (TEST-01, TEST-02)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -283,7 +283,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Núcleo do Pedido — Criação e Aprovação por Limite de Crédito | 5/5 | Complete    | 2026-09-25 |
 | 5. Saga de Reserva de Estoque — Outbox, Compensação e Confirmação | 6/6 | Complete    | 2026-09-30 |
 | 6. Ciclo de Vida Completo — Expedição, Entrega e Histórico do Pedido | 7/7 | Complete    | 2026-10-01 |
-| 7. Endurecimento, Observabilidade e Entrega | 8/11 | In Progress|  |
+| 7. Endurecimento, Observabilidade e Entrega | 9/11 | In Progress|  |
 
 ## Coverage
 
