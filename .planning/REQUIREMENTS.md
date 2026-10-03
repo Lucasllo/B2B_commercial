@@ -53,7 +53,7 @@ Requisitos da primeira versão. Cada um será mapeado para uma fase do roadmap.
 
 - [x] **INFRA-01**: Todo o sistema (microsserviços + Postgres + LocalStack) sobe localmente com um único comando `docker-compose up`
 - [ ] **INFRA-02**: Pipeline de CI (GitHub Actions) builda e testa cada serviço a cada push
-- [ ] **INFRA-03**: Decisões arquiteturais são documentadas como ADRs em português
+- [x] **INFRA-03**: Decisões arquiteturais são documentadas como ADRs em português
 
 ### Testing
 
@@ -129,7 +129,7 @@ Preenchida durante a criação do roadmap (2026-09-16).
 | QUAL-02 | Phase 7 | Complete |
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 7 | Pending |
-| INFRA-03 | Phase 7 | Pending |
+| INFRA-03 | Phase 7 | Complete |
 | TEST-01 | Phase 7 | Complete |
 | TEST-02 | Phase 7 | Complete |
 | TEST-03 | Phase 5 | Complete |
