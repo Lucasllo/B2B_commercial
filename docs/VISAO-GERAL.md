@@ -213,11 +213,30 @@ reserva de estoque (Fase 5), e o `inventory-service` publica `STOCK_ADJUSTED` pa
 mesmo JVM para provar a saga inteira com Postgres/LocalStack via Testcontainers
 (`./mvnw -B -pl e2e-tests -am verify`).
 
+## Observabilidade: Correlation-ID (Fase 7)
+
+Cada requisição carrega um identificador de correlação (`X-Correlation-Id`) que permite seguir uma
+operação pelos logs de todos os serviços. Ele nasce no **Gateway**, que aceita o valor do cliente
+quando é válido ou gera um UUID, e segue este caminho:
+
+1. **Gateway** → coloca o ID no MDC do SLF4J e repassa o header ao serviço de destino;
+2. **Serviço** → um filtro põe o ID no MDC; o padrão de log imprime `[<id>]` em toda linha;
+3. **Outbox** → ao gravar o evento, o `order-service` e o `inventory-service` guardam o ID na linha de
+   `outbox_event`;
+4. **SQS** → o relay publica o ID como atributo da mensagem;
+5. **Listeners** → o consumidor lê o atributo, o põe no MDC e limpa o MDC ao terminar.
+
+A prova na stack real é `bash scripts/smoke-correlation-id.sh`. A escolha por um ID próprio, em vez de
+tracing distribuído, está no [ADR 0008](adr/0008-correlation-id-proprio-em-vez-de-tracing-distribuido.md).
+Todas as decisões de arquitetura estão em [`adr/README.md`](adr/README.md).
+
 ## Documentação interativa (Swagger UI)
 
+**Use a Swagger UI do Gateway: http://localhost:8080/swagger-ui.html.** Ela agrega os specs dos cinco
+serviços de negócio num seletor só e o **Try it out** passa pelo Gateway (`server` relativo `/api`).
 Além da referência estática em [API.md](API.md), `auth-service`, `catalog-service`,
-`inventory-service`, `notification-service` e `order-service` servem Swagger UI na própria porta
-direta de cada um — **não** pelo Gateway:
+`inventory-service`, `notification-service` e `order-service` ainda servem uma Swagger UI na própria
+porta direta de cada um — **não** pelo Gateway, e só para ler o spec (o Try it out ali não funciona):
 
 | Serviço | Swagger UI |
 |---|---|

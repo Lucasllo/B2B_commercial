@@ -6,12 +6,32 @@
 > Gateway. Veja [VISAO-GERAL.md](VISAO-GERAL.md) para o contexto do projeto e o estado atual dos
 > serviços.
 >
-> **Prefere testar no navegador em vez de ler?** Cada serviço também expõe uma Swagger UI
-> interativa na própria porta (não pelo Gateway): `http://localhost:8081/swagger-ui.html`
-> (auth-service), `:8082` (catalog-service), `:8083` (inventory-service), `:8084`
-> (notification-service), `:8085` (order-service). Cole um JWT no botão **Authorize** e exercite
-> qualquer endpoint abaixo via **Try it out** — ver
+> **Referência viva:** a Swagger UI do Gateway, `http://localhost:8080/swagger-ui.html`, agrega os
+> specs dos cinco serviços num seletor só e é gerada do código — é a fonte mais atual dos
+> contratos. Cole um JWT no botão **Authorize** e exercite qualquer endpoint abaixo via
+> **Try it out** (a chamada passa pelo Gateway, em `/api`). As UIs por porta (`:8081` a `:8085`)
+> servem só para ler o spec. Ver
 > [VISAO-GERAL.md § Documentação interativa](VISAO-GERAL.md#documentação-interativa-swagger-ui).
+>
+> **Por que o projeto é assim:** as decisões de arquitetura estão registradas em
+> [`adr/README.md`](adr/README.md).
+
+## Header `X-Correlation-Id`
+
+Toda resposta do Gateway traz **exatamente um** header `X-Correlation-Id`, o identificador que
+permite achar a requisição nos logs de todos os serviços (`[<id>]` depois da thread).
+
+- **Envio opcional.** Se o cliente mandar `X-Correlation-Id` com um valor que casa
+  `[A-Za-z0-9-]{1,64}`, o Gateway o reaproveita.
+- **Geração.** Se o header faltar, ou o valor for inválido (espaços, símbolos, mais de 64
+  caracteres), o Gateway gera um UUID novo. O valor inválido nunca aparece nos logs.
+- **Presença na resposta.** O ID usado, enviado ou gerado, volta no header `X-Correlation-Id` da
+  resposta, inclusive nas respostas de erro.
+- **Propagação.** O mesmo ID segue o pedido pelas chamadas HTTP entre serviços e, nas operações
+  assíncronas, pelo outbox e pelo atributo da mensagem SQS até o `notification-service`.
+
+Para ver um ID nos logs: `docker compose logs --no-color <serviço> | grep -F "[<id>]"`, ou rode
+`bash scripts/smoke-correlation-id.sh`.
 
 ## URL base
 

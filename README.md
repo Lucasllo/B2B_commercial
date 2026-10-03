@@ -6,7 +6,7 @@ pedidos sujeitos a aprovação por limite de crédito, reserva de estoque, atrib
 transportadora e acompanhamento até a entrega. É um projeto de portfólio técnico voltado a
 demonstrar competências exigidas para uma vaga de Desenvolvedor Java Pleno.
 
-O que já funciona hoje (Fases 1 a 6): autenticação com JWT auto-emitido, gestão de empresas
+O que já funciona hoje (Fases 1 a 7): autenticação com JWT auto-emitido, gestão de empresas
 compradoras e limite de crédito, catálogo de produtos, controle de estoque com reserva protegida
 contra concorrência, um histórico de notificações assíncrono — um ajuste de estoque publica um
 evento numa fila SQS real que o `notification-service` consome e grava no DynamoDB, sem nenhuma
@@ -17,7 +17,116 @@ assíncrona no `inventory-service` (padrão Transactional Outbox nos dois servi�
 Fase 6, o ciclo completo do pedido: o pedido confirmado recebe uma transportadora simulada e um
 código de rastreio, o vendedor o expede (baixa física do estoque) e o entrega, e cada transição fica
 registrada numa linha do tempo consultável no histórico de notificações; tudo rodando atrás de um API
-Gateway com a stack inteira subindo localmente via `docker compose`.
+Gateway com a stack inteira subindo localmente via `docker compose`. A Fase 7 acrescentou o
+endurecimento e a entrega: rastreabilidade por Correlation-ID nos logs de todos os serviços, uma
+Swagger UI única no Gateway, os registros de decisões arquiteturais (ADRs), a matriz regra → teste e
+o pipeline de CI no GitHub Actions.
+
+## Para avaliadores
+
+Roteiro curto para quem está avaliando o projeto. Cada item leva ao detalhe mais abaixo ou em `docs/`.
+
+### 1. Subir a stack
+
+1. Copie `.env.example` para `.env` (`cp .env.example .env`).
+2. Preencha, no `.env`, `LOCALSTACK_AUTH_TOKEN` com o token de uma conta gratuita (tier Hobby) em
+   [https://app.localstack.cloud](https://app.localstack.cloud) (Workspace → Auth Token) e
+   `POSTGRES_PASSWORD` com qualquer string não vazia. A imagem do LocalStack não inicia sem o token.
+   O `.env` é ignorado pelo git; nunca versione o token.
+3. Suba tudo e espere os oito serviços ficarem saudáveis:
+
+   ```bash
+   docker compose up -d --build --wait
+   ```
+
+Para derrubar: `docker compose down`.
+
+### 2. Documentação da API (Swagger UI única)
+
+Abra **[http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)**. É a única
+Swagger UI de que o avaliador precisa: o seletor no topo alterna entre `auth-service`,
+`catalog-service`, `inventory-service`, `notification-service` e `order-service`.
+
+1. No `auth-service`, execute `POST /auth/login` com a credencial de demonstração
+   (`admin@orderflow.local` / `ChangeMe!123`, ver "Credenciais de demonstração").
+2. Clique em **Authorize** e cole só o valor de `accessToken` (sem a palavra `Bearer`).
+3. Use **Try it out** em qualquer operação. Ele passa pelo Gateway: o spec declara o `server` relativo
+   `/api`, então a chamada vai para `http://localhost:8080/api/...` e a resposta já traz o header
+   `X-Correlation-Id`.
+
+Referência estática dos mesmos endpoints: [`docs/API.md`](docs/API.md).
+
+### 3. Decisões de arquitetura (ADRs)
+
+O índice está em [`docs/adr/README.md`](docs/adr/README.md). Os quatro mais estruturantes:
+
+- [0001 — Saga por orquestração no order-service](docs/adr/0001-saga-por-orquestracao-no-order-service.md)
+- [0002 — Transactional Outbox em vez de publicação direta](docs/adr/0002-transactional-outbox-em-vez-de-publicacao-direta.md)
+- [0003 — LocalStack em vez de AWS real](docs/adr/0003-localstack-em-vez-de-aws-real.md)
+- [0004 — Sem service discovery nem config server](docs/adr/0004-sem-service-discovery-nem-config-server.md)
+
+Cada ADR lista as alternativas rejeitadas e o motivo. A consistência é verificada por
+`bash scripts/check-adrs.sh`.
+
+### 4. Seguir um Correlation-ID pelos logs
+
+Todo log de todo serviço imprime `[<correlationId>]` depois da thread. O Gateway aceita o
+`X-Correlation-Id` do cliente (se casar `[A-Za-z0-9-]{1,64}`) ou gera um UUID, e o ID segue o pedido
+pelo MDC, pelo outbox, pelo atributo da mensagem SQS e pelos listeners — um pedido atravessa Gateway,
+`order-service`, `inventory-service` e `notification-service` sob o mesmo ID (e, pela propagação HTTP,
+também `catalog-service` e `auth-service`).
+
+```bash
+# prova automática: cria um pedido com um ID conhecido e procura esse ID nos logs dos 6 serviços
+bash scripts/smoke-correlation-id.sh
+
+# à mão: manda o seu próprio ID e procura nos logs de qualquer serviço
+curl -s -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: meu-id-123" -d '{"email":"admin@orderflow.local","password":"ChangeMe!123"}' >/dev/null
+docker compose logs --no-color gateway auth-service | grep -F "[meu-id-123]"
+```
+
+### 5. CI (GitHub Actions)
+
+O pipeline fica em [`.github/workflows/ci.yml`](.github/workflows/ci.yml) e os runs em
+[https://github.com/Lucasllo/B2B_commercial/actions](https://github.com/Lucasllo/B2B_commercial/actions).
+A cada push (qualquer branch) e a cada pull request ele roda:
+
+- `guardas` — nenhum teste desabilitado em silêncio, ADRs consistentes e matriz de cobertura completa;
+- `sem-localstack` — `auth-service`, `catalog-service` e `gateway`, em paralelo (`./mvnw verify`);
+- `com-localstack` — `inventory-service`, `order-service` e `notification-service`, **um de cada vez**
+  (`max-parallel: 1`), porque a exclusividade de sessão do token do LocalStack no CI não foi
+  confirmada;
+- `e2e` — o módulo `e2e-tests`, depois dos dois jobs anteriores.
+
+Cada job publica os relatórios do Surefire/Failsafe como artifact e um resumo por módulo na página do
+run.
+
+**Secret obrigatório.** Os jobs com LocalStack precisam do secret `LOCALSTACK_AUTH_TOKEN`: no GitHub,
+**Settings → Secrets and variables → Actions → New repository secret**, nome `LOCALSTACK_AUTH_TOKEN`,
+valor igual ao do `.env` local (ou o "CI Auth Token" da conta LocalStack, se o token de desenvolvedor for
+recusado). **Sem o secret esses jobs falham de propósito** no primeiro passo, com a mensagem
+`::error::Secret LOCALSTACK_AUTH_TOKEN ausente` — nenhum teste é pulado em silêncio. Pull requests de
+fork não recebem secrets, então os jobs com LocalStack também falham nelas.
+
+### 6. Testes
+
+`./mvnw verify` roda a suíte completa (unitários e integração com Testcontainers; exige Docker e o
+`LOCALSTACK_AUTH_TOKEN`, ver "Build e testes"). A matriz regra → teste, que mostra para cada regra
+central o teste unitário e o de integração que a cobrem, está em
+[`.planning/phases/07-endurecimento-observabilidade-e-entrega/07-COVERAGE.md`](.planning/phases/07-endurecimento-observabilidade-e-entrega/07-COVERAGE.md)
+e é verificada por `bash scripts/check-coverage-matrix.sh`.
+
+### 7. Smokes (com a stack de pé)
+
+Cada script cria os próprios dados, não exige passo manual e termina com `SMOKE OK ...` ou
+`SMOKE FALHOU: ...`:
+
+- `scripts/smoke-notification-flow.sh` — ajuste de estoque até o histórico de notificações (SQS → DynamoDB).
+- `scripts/smoke-order-flow.sh` — criação de pedido, aprovação por crédito e decisão do vendedor.
+- `scripts/smoke-order-saga.sh` — a saga de reserva de estoque até `CONFIRMED`/`CANCELLED`.
+- `scripts/smoke-order-lifecycle.sh` — o ciclo de vida completo: transportadora, expedição, entrega e linha do tempo.
+- `scripts/smoke-correlation-id.sh` — o mesmo Correlation-ID nos logs do Gateway e dos cinco serviços.
 
 ## Pré-requisitos
 
@@ -126,23 +235,26 @@ Todos os endpoints abaixo são acessados através do API Gateway, em `http://loc
 
 ### Documentação interativa (Swagger UI)
 
-Cada serviço com endpoints de negócio expõe sua própria Swagger UI, servida direto na porta do
-serviço — não através do Gateway:
+**A UI a usar é a do Gateway: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html).**
+Ela agrega os specs dos cinco serviços de negócio num seletor só (o Gateway busca cada spec em
+`/docs/<serviço>/v3/api-docs`, na mesma origem da página). Os caminhos aparecem **sem** o prefixo
+`/api` e o spec declara o `server` relativo `/api`, então o **Try it out** chama
+`http://localhost:8080/api/...` — passa pelo Gateway, com o `X-Correlation-Id` na resposta.
+
+Para exercitar um endpoint protegido: obtenha um token com o `POST /auth/login` (no `auth-service`
+do seletor) ou com o fluxo de demonstração abaixo, clique em **Authorize**, cole apenas o valor do
+token (sem escrever a palavra `Bearer` — a UI acrescenta o prefixo sozinha) e então use o **Try it
+out** de qualquer operação.
+
+As Swagger UIs por porta continuam existindo, mas o **Try it out nelas deixou de funcionar** (o
+`server` relativo `/api` apontaria para a porta do próprio serviço, onde o prefixo não existe); use-as
+só para ler o spec:
 
 - `http://localhost:8081/swagger-ui.html` (auth-service)
 - `http://localhost:8082/swagger-ui.html` (catalog-service)
 - `http://localhost:8083/swagger-ui.html` (inventory-service)
 - `http://localhost:8084/swagger-ui.html` (notification-service)
 - `http://localhost:8085/swagger-ui.html` (order-service)
-
-Como essas páginas são servidas na porta direta de cada serviço, e não pelo Gateway, os caminhos
-mostrados ali aparecem **sem** o prefixo `/api` que o Gateway acrescenta (`StripPrefix=1`): o que
-no Gateway é `POST /api/products` aparece na Swagger UI do catalog-service como `POST /products`.
-
-Para exercitar um endpoint protegido: obtenha um token com o `POST /api/auth/login` do fluxo de
-demonstração abaixo, clique em **Authorize** na Swagger UI, cole apenas o valor do token (sem
-escrever a palavra `Bearer` — a UI acrescenta o prefixo sozinha) e então use o **Try it out** de
-qualquer operação.
 
 A UI e o spec JSON (`/v3/api-docs`) são deliberadamente acessíveis sem token — é uma ferramenta
 local de desenvolvimento, e as portas 8081/8082/8083/8084/8085 estão ligadas apenas a `127.0.0.1` no
@@ -637,6 +749,25 @@ curl -s http://localhost:8080/api/notifications/$PRODUCT_ID -H "Authorization: B
     roda com `PERSISTENCE=0` esse ramo nunca é exercitado numa subida normal — a tabela já nasce com
     `entityId`. Se um ambiente tiver uma tabela antiga viva, `docker compose down` (e subir de novo)
     também resolve.
+
+## Limitações conhecidas (Fase 7)
+
+1. **Gateway publicado em `0.0.0.0:8080` por desenho.** É uma demo local: os specs OpenAPI e a Swagger
+   UI são públicos, e todo endpoint de negócio continua exigindo JWT. As portas dos serviços
+   (8081-8085) seguem ligadas só a `127.0.0.1`. Um deploy real fecharia a UI e os specs.
+2. **`approve`, `ship` e `deliver` usam o ID da própria requisição.** O `X-Correlation-Id` dessas ações
+   do vendedor é o da requisição que as provocou, não o gravado no pedido quando o comprador o criou
+   (decisão `TRANSITION_CORRELATION_SOURCE=request-id`, ADR 0008). Já o timeout da saga, que não tem
+   requisição HTTP, herda o ID do pedido.
+3. **Exclusividade de sessão do LocalStack no CI não confirmada.** Por isso os jobs com LocalStack
+   rodam em sequência (`max-parallel: 1`); se o token Hobby aceitar sessões simultâneas, o paralelismo
+   pode ser liberado depois (ver `estudos/29-github-actions-ci.md`). O CI só prova "builda e testa a
+   cada push" depois que o secret `LOCALSTACK_AUTH_TOKEN` é cadastrado e um run é observado no GitHub.
+4. **Sem medição de cobertura por linhas (JaCoCo).** "Sem lacunas" é a matriz regra → teste
+   (`07-COVERAGE.md`), não uma porcentagem.
+5. **Sem tracing distribuído e sem Resilience4j.** A rastreabilidade é por Correlation-ID nos logs
+   (ADR 0008) e as chamadas síncronas falham fechadas com `503`, sem circuit breaker nem retry
+   (ADR 0010).
 
 ## Arquitetura
 
