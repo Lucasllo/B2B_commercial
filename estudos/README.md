@@ -156,3 +156,9 @@ pasta é para consulta própria durante o aprendizado.
     — explicação para iniciantes, com analogias, de BOM (o kit de peças testadas juntas),
     bleeding-edge, trem de releases do Spring Cloud ("Northfields"), churn de versão e service
     discovery (a recepção do hotel), e por que o projeto dispensa Eureka/Consul
+37. [Design patterns usados no projeto](37-design-patterns-do-projeto.md) — o mapa dos
+    padrões de arquitetura (gateway, banco por serviço), de mensageria (saga, outbox, relay,
+    compensação, idempotência, DLQ, lápide, Correlation-ID), de persistência (repository,
+    locks otimista e pessimista, `MANDATORY`) e de código (máquina de estados, strategy,
+    decorator, factory, builder...), com onde, em que fase e por que cada um entrou, e os
+    padrões rejeitados de propósito
