@@ -1,8 +1,16 @@
 package com.orderflow.order.order;
 
+import com.orderflow.order.config.ErrorResponse;
 import com.orderflow.order.order.dto.ApproveOrderRequest;
 import com.orderflow.order.order.dto.OrderResponse;
 import com.orderflow.order.order.dto.RejectOrderRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +33,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/orders")
+@Tag(name = "Decisão do vendedor", description = "Aprovação e rejeição manual de pedidos em PENDING_APPROVAL. Exige o papel SELLER_ADMIN.")
 public class OrderDecisionController {
 
     private final OrderDecisionService orderDecisionService;
@@ -35,8 +44,26 @@ public class OrderDecisionController {
 
     @PostMapping("/{orderId}/approve")
     @PreAuthorize("hasRole('SELLER_ADMIN')")
-    public OrderResponse approve(@PathVariable UUID orderId,
-                                  @Valid @RequestBody(required = false) ApproveOrderRequest request,
+    @Operation(summary = "Aprovar pedido",
+            description = "Exige o papel SELLER_ADMIN. Só vale para pedido em PENDING_APPROVAL; a aprovação registra o decisor e o motivo opcional e o pedido entra em RESERVING, iniciando a reserva de estoque pela saga. O corpo é opcional.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pedido aprovado (já em RESERVING)",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))),
+            @ApiResponse(responseCode = "400", description = "orderId que não é UUID (invalid_parameter), motivo longo demais (validation_failed) ou corpo malformado (malformed_request)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token ausente ou inválido (unauthorized)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Papel diferente de SELLER_ADMIN (forbidden)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Pedido inexistente (order_not_found)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "Pedido fora de PENDING_APPROVAL (order_not_pending)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public OrderResponse approve(
+            @Parameter(description = "Identificador do pedido", example = "7c9e6679-7425-40de-944b-e07fc1f90ae7")
+            @PathVariable UUID orderId,
+            @Valid @RequestBody(required = false) ApproveOrderRequest request,
                                   @AuthenticationPrincipal Jwt jwt) {
         String sellerId = requireSellerId(jwt);
         String reason = request == null ? null : request.reason();
@@ -45,8 +72,26 @@ public class OrderDecisionController {
 
     @PostMapping("/{orderId}/reject")
     @PreAuthorize("hasRole('SELLER_ADMIN')")
-    public OrderResponse reject(@PathVariable UUID orderId,
-                                 @Valid @RequestBody RejectOrderRequest request,
+    @Operation(summary = "Rejeitar pedido",
+            description = "Exige o papel SELLER_ADMIN. Só vale para pedido em PENDING_APPROVAL; o motivo é obrigatório. O pedido vai a REJECTED, estado terminal que libera o crédito.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pedido rejeitado (REJECTED)",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))),
+            @ApiResponse(responseCode = "400", description = "orderId que não é UUID (invalid_parameter), motivo ausente ou em branco (validation_failed) ou corpo ausente/malformado (malformed_request)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token ausente ou inválido (unauthorized)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Papel diferente de SELLER_ADMIN (forbidden)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Pedido inexistente (order_not_found)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "Pedido fora de PENDING_APPROVAL (order_not_pending)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public OrderResponse reject(
+            @Parameter(description = "Identificador do pedido", example = "7c9e6679-7425-40de-944b-e07fc1f90ae7")
+            @PathVariable UUID orderId,
+            @Valid @RequestBody RejectOrderRequest request,
                                  @AuthenticationPrincipal Jwt jwt) {
         String sellerId = requireSellerId(jwt);
         return orderDecisionService.reject(orderId, sellerId, request.reason());

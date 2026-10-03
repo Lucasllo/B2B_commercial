@@ -1,6 +1,7 @@
 package com.orderflow.order.order.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -10,5 +11,9 @@ import jakarta.validation.constraints.Size;
  * {@code GlobalExceptionHandler} já devolve {@code malformed_request}.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record RejectOrderRequest(@NotBlank @Size(max = ApproveOrderRequest.MAX_REASON_LENGTH) String reason) {
+@Schema(description = "Corpo obrigatório da rejeição manual.")
+public record RejectOrderRequest(
+        @Schema(description = "Motivo da rejeição, obrigatório, até 500 caracteres",
+                example = "Limite de crédito excedido")
+        @NotBlank @Size(max = ApproveOrderRequest.MAX_REASON_LENGTH) String reason) {
 }

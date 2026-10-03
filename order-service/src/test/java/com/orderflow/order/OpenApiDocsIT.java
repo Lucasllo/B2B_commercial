@@ -126,6 +126,52 @@ class OpenApiDocsIT extends AbstractIntegrationTest {
         assertThat(itemProps.path("quantity").hasNonNull("example")).isTrue();
     }
 
+    @Test
+    void specHasExactlySevenOperationsEachWithSummaryTagAndErrors() throws Exception {
+        JsonNode paths = spec().path("paths");
+        int[] count = {0};
+        paths.fields().forEachRemaining(pathEntry -> pathEntry.getValue().fields().forEachRemaining(methodEntry -> {
+            if (!HTTP_METHODS.contains(methodEntry.getKey())) {
+                return;
+            }
+            count[0]++;
+            String label = methodEntry.getKey().toUpperCase() + " " + pathEntry.getKey();
+            JsonNode operation = methodEntry.getValue();
+            assertThat(operation.path("summary").asText()).as(label + " summary").isNotBlank();
+            assertThat(operation.path("tags").size()).as(label + " tags").isGreaterThan(0);
+            assertThat(operation.path("responses").has("401")).as(label + " 401").isTrue();
+            operation.path("responses").fields().forEachRemaining(entry -> {
+                if (entry.getKey().startsWith("4") || entry.getKey().startsWith("5")) {
+                    assertErrorResponseRef(entry.getValue(), label + " " + entry.getKey());
+                }
+            });
+        }));
+        assertThat(count[0]).isEqualTo(7);
+    }
+
+    @Test
+    void decisionAndShipmentOperationsDocumentRealErrors() throws Exception {
+        JsonNode paths = spec().path("paths");
+
+        JsonNode approve = operation(paths, "/orders/{orderId}/approve", "post");
+        JsonNode reject = operation(paths, "/orders/{orderId}/reject", "post");
+        for (JsonNode decision : List.of(approve, reject)) {
+            assertThat(decision.path("responses").has("403")).isTrue();
+            assertThat(decision.path("responses").has("404")).isTrue();
+            assertThat(decision.path("responses").path("409").path("description").asText())
+                    .contains("order_not_pending");
+        }
+        assertThat(reject.path("responses").has("400")).isTrue();
+
+        for (String action : List.of("ship", "deliver")) {
+            JsonNode op = operation(paths, "/orders/{orderId}/" + action, "post");
+            assertThat(op.path("responses").has("403")).as(action + " 403").isTrue();
+            assertThat(op.path("responses").has("404")).as(action + " 404").isTrue();
+            assertThat(op.path("responses").path("409").path("description").asText())
+                    .as(action + " 409").contains("invalid_order_transition");
+        }
+    }
+
     private JsonNode spec() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
