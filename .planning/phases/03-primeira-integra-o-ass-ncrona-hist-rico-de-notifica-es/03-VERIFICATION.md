@@ -70,7 +70,7 @@ re_verification:
   gaps_closed:
     - "Navegação BUYER 403 pela Swagger UI do notification-service — confirmada pass em 03-UAT.md (2026-09-23)"
     - "Clareza da seção 'Limitações conhecidas (Fase 3)' do README para avaliador externo — confirmada pass em 03-UAT.md (2026-09-23)"
-    - "T-03-02 (Spoofing, high, iss não validado) e WR-07 (paridade teste/produção quebrada) fechados pela quick task 260923-tj9 (commits d442929, 711061f, 619e239): notification-service, catalog-service e inventory-service agora validam issuer-uri no decoder de produção"
+    - "T-03-02 (Spoofing, high, iss não validado) e WR-07 (paridade teste/produção quebrada) fechados pela quick task 260923-tj9 (commits 56f9117, e05083a, eac39a8): notification-service, catalog-service e inventory-service agora validam issuer-uri no decoder de produção"
   gaps_remaining: []
   regressions: []
 ---
@@ -88,12 +88,12 @@ re_verification:
 Esta é uma re-verificação, não uma primeira verificação. Duas mudanças de estado desde a 03-VERIFICATION.md anterior motivaram este relatório:
 
 1. **Os dois itens de verificação humana foram concluídos.** `03-UAT.md` registra `result: pass` para os dois testes (navegação BUYER 403 na Swagger UI, clareza do README) em 2026-09-23, com `total: 2, passed: 2, issues: 0`.
-2. **A quick task `260923-tj9` modificou 9 arquivos cobertos por esta fase** (commits `d442929`, `711061f`, `619e239`) para fechar a ameaça T-03-02 (Spoofing, high — `iss` do JWT não validado) e a finding WR-07 do `03-REVIEW.md` (paridade teste/produção quebrada). Isso invalida a evidência anterior sobre a truth #8 (autorização do endpoint de notificações) e sobre o comportamento de segurança do `notification-service` em geral, então reverifiquei essa área do zero e reexecutei o resto como checagem de regressão.
+2. **A quick task `260923-tj9` modificou 9 arquivos cobertos por esta fase** (commits `56f9117`, `e05083a`, `eac39a8`) para fechar a ameaça T-03-02 (Spoofing, high — `iss` do JWT não validado) e a finding WR-07 do `03-REVIEW.md` (paridade teste/produção quebrada). Isso invalida a evidência anterior sobre a truth #8 (autorização do endpoint de notificações) e sobre o comportamento de segurança do `notification-service` em geral, então reverifiquei essa área do zero e reexecutei o resto como checagem de regressão.
 
 Reexecutei, de forma independente do executor da quick task e do orquestrador, o seguinte:
 
 - Conferi o conteúdo real dos 9 arquivos modificados (não apenas o que o SUMMARY da quick task afirma): as três `application.yml` (`notification-service`, `catalog-service`, `inventory-service`) têm a linha `issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:orderflow-auth-service}` logo abaixo de `jwk-set-uri`; os três `TestJwt.java` têm `JwkSetUriJwtDecoderBuilderCustomizer` e zero ocorrências de `withPublicKey` fora de comentários (confirma que o `JwtDecoder` de teste próprio foi removido); os três testes adversariais novos (`tokenSignedByTrustedKeyButWrongIssuerReturns401`, `getProductWithTokenSignedByTrustedKeyButWrongIssuerReturns401`, `getStockWithTokenSignedByTrustedKeyButWrongIssuerReturns401`) existem nos arquivos de IT correspondentes.
-- Conferi o escopo do diff eu mesmo: `git diff --stat 48da638..619e239` lista exatamente os 9 arquivos declarados em `files_modified` do plano da quick task — nenhum `SecurityConfig.java`, `docker-compose.yml`, `auth-service/` ou `gateway/` foi tocado.
+- Conferi o escopo do diff eu mesmo: `git diff --stat 121ab7a..eac39a8` lista exatamente os 9 arquivos declarados em `files_modified` do plano da quick task — nenhum `SecurityConfig.java`, `docker-compose.yml`, `auth-service/` ou `gateway/` foi tocado.
 - **Subi a stack real com as imagens reconstruídas** (`docker compose up -d --build --wait`), o que forçosamente reconstrói `notification-service`, `catalog-service` e `inventory-service` com o `application.yml` novo — os 7 serviços ficaram `healthy`.
 - **Reexecutei `bash scripts/smoke-notification-flow.sh`** contra essa stack reconstruída: `SMOKE OK`, com um token real emitido pelo `auth-service` (que carrega `iss = orderflow-auth-service`) aceito de ponta a ponta pelo Gateway → `inventory-service` (PUT 200) → `notification-service` (histórico consultável, sem duplicação em reentrega, 3 ajustes distintos acumulados). Isso prova, com tráfego real e não apenas testes de integração, que a nova checagem de `issuer-uri` aceita o token real do `auth-service` e não quebrou o fluxo ponta a ponta que é o próprio objetivo da fase.
 - Derrubei a stack depois (`docker compose down`) para liberar a sessão do LocalStack Hobby, no mesmo espírito da nota do orquestrador.
@@ -141,7 +141,7 @@ Nenhum gap encontrado. Nenhum item de verificação humana pendente.
 | `notification-service/.../NotificationControllerIT.java` | teste `tokenSignedByTrustedKeyButWrongIssuerReturns401` | ✓ VERIFIED | Presente, 1 ocorrência |
 | `catalog-service/.../ProductControllerIT.java` | teste `getProductWithTokenSignedByTrustedKeyButWrongIssuerReturns401` | ✓ VERIFIED | Presente, 1 ocorrência |
 | `inventory-service/.../InventoryControllerIT.java` | teste `getStockWithTokenSignedByTrustedKeyButWrongIssuerReturns401` | ✓ VERIFIED | Presente, 1 ocorrência |
-| Demais 40+ artefatos da fase (init hook, `NotificationRecord`/`Repository`/`Service`/`Controller`, `StockEventPublisher`, `docker-compose.yml`, rota do Gateway, smoke script, README) | inalterados desde a verificação anterior | ✓ VERIFIED (regressão) | Nenhum desses arquivos aparece no diff `48da638..619e239`; comportamento reconfirmado indiretamente pelo smoke e pelo verify agregado |
+| Demais 40+ artefatos da fase (init hook, `NotificationRecord`/`Repository`/`Service`/`Controller`, `StockEventPublisher`, `docker-compose.yml`, rota do Gateway, smoke script, README) | inalterados desde a verificação anterior | ✓ VERIFIED (regressão) | Nenhum desses arquivos aparece no diff `121ab7a..eac39a8`; comportamento reconfirmado indiretamente pelo smoke e pelo verify agregado |
 
 ## Key Links (checagem de regressão + área modificada)
 
@@ -159,7 +159,7 @@ Nenhum gap encontrado. Nenhum item de verificação humana pendente.
 | Stack real reconstruída com o fix de issuer sobe saudável | `docker compose up -d --build --wait` | 7/7 `Healthy` | ✓ PASS |
 | Fluxo ponta a ponta com token real do `auth-service` sob a nova validação de `issuer-uri` | `bash scripts/smoke-notification-flow.sh` | `SMOKE OK` — evento em 0s, reentrega 1 elemento, 3 ajustes distintos | ✓ PASS |
 | Conteúdo real do fix (não apenas o SUMMARY) | `grep` nos 9 arquivos modificados (issuer-uri, customizer, testes novos) | Todos presentes conforme declarado | ✓ PASS |
-| Escopo do diff da quick task | `git diff --stat 48da638..619e239` | Exatamente os 9 arquivos de `files_modified`, sem `SecurityConfig.java`/`docker-compose.yml`/`auth-service`/`gateway` | ✓ PASS |
+| Escopo do diff da quick task | `git diff --stat 121ab7a..eac39a8` | Exatamente os 9 arquivos de `files_modified`, sem `SecurityConfig.java`/`docker-compose.yml`/`auth-service`/`gateway` | ✓ PASS |
 | Gates de anti-acoplamento (sem createQueue/createTable, sem REST client no notification-service) | 2 `grep` isolados | Limpos | ✓ PASS |
 | Nenhuma migração Flyway nova no inventory-service | `ls db/migration/` | Só `V1__init_inventory_schema.sql` | ✓ PASS |
 | Debt markers nos 9 arquivos modificados | `grep -nE "TBD\|FIXME\|XXX\|TODO\|HACK\|PLACEHOLDER"` | Nenhuma ocorrência | ✓ PASS |
@@ -184,7 +184,7 @@ Nenhum requisito órfão.
 
 | Achado | Severidade original | Status nesta re-verificação |
 |---|---|---|
-| WR-07 — resource server de produção não validava `iss`, testes davam falsa garantia | ⚠️ Warning | **Resolvido** pela quick task 260923-tj9 (commits d442929, 711061f, 619e239); `03-SECURITY.md` já registra T-03-02 como `closed` |
+| WR-07 — resource server de produção não validava `iss`, testes davam falsa garantia | ⚠️ Warning | **Resolvido** pela quick task 260923-tj9 (commits 56f9117, e05083a, eac39a8); `03-SECURITY.md` já registra T-03-02 como `closed` |
 | WR-01 a WR-06, IN-01 a IN-07 | ⚠️ Warning / ℹ️ Info | Inalterados — nenhum arquivo relacionado a essas findings foi tocado pela quick task; nenhum é BLOCKER (mesma avaliação da verificação anterior) |
 
 Nenhum debt marker não referenciado encontrado.

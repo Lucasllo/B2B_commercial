@@ -21,7 +21,7 @@ actuals:
   tasks: 3
   commits: 3
 
-plan_head_before: 9ac25980779a41151d7a00ed1ed88d3bc3ffbd30
+plan_head_before: 15df8a7363dafbc46048aa6b0369e02fc85139b1
 
 # Tech tracking
 tech-stack:
@@ -182,9 +182,9 @@ Este e o corpo JSON exato que `com.orderflow.notification.history.dto.StockAdjus
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — evento na fila vira historico no DynamoDB, lido de volta pelo vendedor** — `c324f26` (feat) — RED (4 testes de `NotificationEventFlowIT`) → GREEN (4/4), depois de resolver o deadlock descrito em Deviations
-2. **Task 2: Entrega confiavel — reentrega sobrescreve, ajustes distintos acumulam, mensagem venenosa nao trava a fila** — `2d85de9` (feat) — RED (19 unitarios + 4 integracao) → GREEN (23/23 novos, 27/27 no total do modulo)
-3. **Task 3: Consulta vira contrato — so o vendedor le, erro nunca vaza detalhe da AWS** — `b2f51c0` (feat) — RED (6 testes) → GREEN (6/6 novos, 33/33 no total do modulo)
+1. **Task 1: Tracer — evento na fila vira historico no DynamoDB, lido de volta pelo vendedor** — `1909da6` (feat) — RED (4 testes de `NotificationEventFlowIT`) → GREEN (4/4), depois de resolver o deadlock descrito em Deviations
+2. **Task 2: Entrega confiavel — reentrega sobrescreve, ajustes distintos acumulam, mensagem venenosa nao trava a fila** — `6532787` (feat) — RED (19 unitarios + 4 integracao) → GREEN (23/23 novos, 27/27 no total do modulo)
+3. **Task 3: Consulta vira contrato — so o vendedor le, erro nunca vaza detalhe da AWS** — `a91ecfc` (feat) — RED (6 testes) → GREEN (6/6 novos, 33/33 no total do modulo)
 
 **Plan metadata:** commit de documentacao final a ser criado logo apos este SUMMARY.
 
@@ -222,7 +222,7 @@ Each task was committed atomically:
 - **Fix:** Extraida a logica de espera para uma classe auxiliar nova e separada (`LocalStackProvisioningWaiter`), ja totalmente inicializada antes do lambda comecar a rodar — o metodo estatico invocado pela thread de background do Awaitility passa a pertencer a uma classe sem inicializacao pendente, eliminando o ciclo.
 - **Files modified:** `notification-service/src/test/java/com/orderflow/notification/support/LocalStackTestSupport.java` (simplificada), `notification-service/src/test/java/com/orderflow/notification/support/LocalStackProvisioningWaiter.java` (nova)
 - **Verification:** `NotificationEventFlowIT` (4/4), depois toda a suite de integracao (14/14), verdes contra LocalStack real apos o fix.
-- **Commit:** `c324f26`
+- **Commit:** `1909da6`
 
 ---
 
@@ -262,4 +262,4 @@ All key files and commit hashes verified present:
   `NotificationRecord.java`, `NotificationRepository.java`, `SqsMessagingConfig.java`,
   `GlobalExceptionHandler.java`, `LocalStackProvisioningWaiter.java`, `NotificationControllerIT.java`,
   `NotificationStoreUnavailableIT.java` — all found.
-- Commits `c324f26`, `2d85de9`, `b2f51c0` — all found in `git log --oneline --all`.
+- Commits `1909da6`, `6532787`, `a91ecfc` — all found in `git log --oneline --all`.

@@ -20,7 +20,7 @@ actuals:
   tokens: 10700
   tasks: 2
   commits: 2
-  plan_head_before: 8fa203beafb864859e71f8428b5ef3656eb5a306
+  plan_head_before: ac9fcbf0f7c78f49c2c1be1902f45c48f021013f
 
 tech-stack:
   added:
@@ -186,8 +186,8 @@ status: complete
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1: Consulta e atualização do limite de crédito, com autorização granular por papel e por empresa** - `db81511` (feat, TDD: RED confirmado com 12 falhas de 404 antes da implementação de `CompanyGuard`/endpoints/DTOs, depois GREEN)
-2. **Task 2: Isolamento por empresa e rejeição de token — comprovados, incluindo a ausência de chamada ao emissor** - `6e76e26` (test — nenhum furo real de produção encontrado: todos os 12 testes adversariais novos + 3 do `JwksContractIT` passaram com a implementação da Task 1)
+1. **Task 1: Consulta e atualização do limite de crédito, com autorização granular por papel e por empresa** - `3d8330c` (feat, TDD: RED confirmado com 12 falhas de 404 antes da implementação de `CompanyGuard`/endpoints/DTOs, depois GREEN)
+2. **Task 2: Isolamento por empresa e rejeição de token — comprovados, incluindo a ausência de chamada ao emissor** - `f0a3e54` (test — nenhum furo real de produção encontrado: todos os 12 testes adversariais novos + 3 do `JwksContractIT` passaram com a implementação da Task 1)
 
 ## Files Created/Modified
 - `auth-service/.../company/CompanyGuard.java` - bean de isolamento por empresa consultado via SpEL
@@ -215,7 +215,7 @@ Cada task foi commitada atomicamente:
 - **Issue:** O reactor pai não herda de `spring-boot-starter-parent` (BOMs importados manualmente por decisão do 01-01), e por isso nunca recebeu a flag `-parameters` que esse parent ativaria por padrão. Sem ela, nem `@PathVariable UUID companyId` nem o SpEL `#companyId` de `@PreAuthorize` conseguiam resolver o nome do parâmetro via reflection — toda requisição a `GET`/`PUT /companies/{companyId}/credit-limit` falhava com 500 (`IllegalArgumentException: Name for argument of type [java.util.UUID] not specified`) em vez do 200/403/404 esperado.
 - **Fix:** Adicionado `<parameters>true</parameters>` à configuração do `maven-compiler-plugin` em `pluginManagement` do `pom.xml` raiz — aplica-se a todos os módulos do reactor (auth-service e os futuros catalog/inventory/order/notification-service), prevenindo a mesma falha nas próximas fases.
 - **Files modified:** `pom.xml` (raiz)
-- **Commit:** `db81511`
+- **Commit:** `3d8330c`
 
 **Total deviations:** 1 auto-fixed (Rule 3 - blocking)
 **Impact on plan:** Correção necessária para que qualquer endpoint com `@PathVariable` + `@PreAuthorize` baseado em SpEL funcionasse — sem ela, a Fase 4 (que também vai reutilizar `CompanyGuard`-like guards com `@PathVariable`) reproduziria o mesmo 500 silencioso. Nenhum scope creep: a mudança é de configuração de build, não de comportamento de negócio.
@@ -248,5 +248,5 @@ None - nenhuma configuração de serviço externo é necessária para este plano
 - FOUND: auth-service/src/test/java/com/orderflow/auth/support/JwksAccessCounter.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/CompanyControllerIT.java
 - FOUND: pom.xml
-- FOUND commit: db81511
-- FOUND commit: 6e76e26
+- FOUND commit: 3d8330c
+- FOUND commit: f0a3e54

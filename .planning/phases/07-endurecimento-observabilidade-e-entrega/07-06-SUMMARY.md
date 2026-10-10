@@ -90,8 +90,8 @@ coverage:
 duration: 25min
 completed: 2026-10-03
 status: complete
-plan_head_before: 370bd0448557eba4df1877306e8dc49fbdf1afbb
-plan_head_after: 1ebf5a13dfa04b9f6b051aab0260d3a64a7f9b0e
+plan_head_before: a39a9de7d787c5923d68a1eeeb2f78c17e28b658
+plan_head_after: d78dbf055dcdddf5553bff0fd7b006c74b46e891
 ---
 
 # Phase 07 Plan 06: ADRs e verificação mecânica Summary
@@ -114,9 +114,9 @@ plan_head_after: 1ebf5a13dfa04b9f6b051aab0260d3a64a7f9b0e
 
 ## Task Commits
 
-1. **Task 1 (tracer): ADRs 0001-0004, índice, script e COVERAGE.md** - `1ba55f3` (docs)
-2. **Task 2: ADRs 0005-0008** - `221f094` (docs)
-3. **Task 3: ADRs 0009-0011 e índice completo** - `1ebf5a1` (docs)
+1. **Task 1 (tracer): ADRs 0001-0004, índice, script e COVERAGE.md** - `1805b70` (docs)
+2. **Task 2: ADRs 0005-0008** - `82ba870` (docs)
+3. **Task 3: ADRs 0009-0011 e índice completo** - `d78dbf0` (docs)
 
 ## Decisions Made
 
@@ -169,6 +169,6 @@ None.
 - FOUND: docs/adr/README.md
 - FOUND: docs/adr/0001-saga-por-orquestracao-no-order-service.md ... docs/adr/0011-codigo-duplicado-por-servico-em-vez-de-modulo-comum.md (11 ADRs)
 - FOUND: .planning/phases/07-endurecimento-observabilidade-e-entrega/COVERAGE.md
-- FOUND: 1ba55f3
-- FOUND: 221f094
-- FOUND: 1ebf5a1
+- FOUND: 1805b70
+- FOUND: 82ba870
+- FOUND: d78dbf0

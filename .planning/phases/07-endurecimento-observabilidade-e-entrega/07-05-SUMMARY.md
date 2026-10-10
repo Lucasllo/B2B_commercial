@@ -97,8 +97,8 @@ coverage:
 duration: 25min
 completed: 2026-10-03
 status: complete
-plan_head_before: ca4a14a947967f775b53d8496cfac681054fc2f6
-plan_head_after: 00b4f7af113df007afc212e19c0aa8266d4cc253
+plan_head_before: a272d770291112a90d374dcf2bc61b51b3e4497f
+plan_head_after: fa3314d5fb7e5315d615a4712336c0bff93527d6
 ---
 
 # Phase 07 Plan 05: Correlation-ID em auth e catalog e unitários das regras centrais Summary
@@ -120,8 +120,8 @@ plan_head_after: 00b4f7af113df007afc212e19c0aa8266d4cc253
 
 ## Task Commits
 
-1. **Task 1 (tracer): filtro, padrão de log, filtro unitário e ITs de log** - `8b51462` (feat)
-2. **Task 2: unitários das regras centrais** - `00b4f7a` (test)
+1. **Task 1 (tracer): filtro, padrão de log, filtro unitário e ITs de log** - `4d0f4b6` (feat)
+2. **Task 2: unitários das regras centrais** - `fa3314d` (test)
 
 ## Classes de teste novas (insumo da matriz de 07-10)
 
@@ -146,7 +146,7 @@ Resultado de `./mvnw -B -pl auth-service,catalog-service verify`: BUILD SUCCESS.
 - **Found during:** Task 2 (`TokenServiceTest`)
 - **Issue:** o `iss` emitido é o literal `orderflow-auth-service`, que não é URL, então `getIssuer()` lança `IllegalArgumentException`. Era erro do teste, não do código de produção.
 - **Fix:** o teste lê `getClaimAsString("iss")`.
-- **Commit:** `00b4f7a`
+- **Commit:** `fa3314d`
 
 ### TDD sequencing
 
@@ -166,8 +166,8 @@ Resultado de `./mvnw -B -pl auth-service,catalog-service verify`: BUILD SUCCESS.
 - FOUND: catalog-service/src/main/java/com/orderflow/catalog/observability/CorrelationIdFilter.java
 - FOUND: auth-service/src/main/java/com/orderflow/auth/observability/CorrelationIdFilter.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/auth/TokenServiceTest.java
-- FOUND: 8b51462
-- FOUND: 00b4f7a
+- FOUND: 4d0f4b6
+- FOUND: fa3314d
 
 ## Known Stubs
 

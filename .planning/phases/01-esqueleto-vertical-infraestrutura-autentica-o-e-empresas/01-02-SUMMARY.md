@@ -25,7 +25,7 @@ actuals:
   tokens: 19842
   tasks: 2
   commits: 3
-  plan_head_before: df15ce6f89d6767b1ce02b04c6e01969f13e069f
+  plan_head_before: ed503dbcaf2942642f336f9cbccbd8c02950af0d
 
 tech-stack:
   added:
@@ -201,8 +201,8 @@ status: complete
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1: Reactor Maven, wrapper commitado, módulos empacotáveis e Dockerfiles fixados** - `2b32fbf` (feat) + `d589b0f` (fix: bit executável do mvnw)
-2. **Task 2: Tracer — login real do SELLER_ADMIN semeado, do Flyway ao JWT verificável** - `954dd70` (feat, TDD: RED confirmado por falha de compilação/NoClassDefFoundError antes da implementação, depois GREEN)
+1. **Task 1: Reactor Maven, wrapper commitado, módulos empacotáveis e Dockerfiles fixados** - `ccd4781` (feat) + `e6c9665` (fix: bit executável do mvnw)
+2. **Task 2: Tracer — login real do SELLER_ADMIN semeado, do Flyway ao JWT verificável** - `c2c5745` (feat, TDD: RED confirmado por falha de compilação/NoClassDefFoundError antes da implementação, depois GREEN)
 
 **Plan metadata:** (a ser adicionado no commit final de documentação, fora deste SUMMARY)
 
@@ -237,35 +237,35 @@ _Nota: a Task 2 é `type="tracer" tdd="true"` — testes (`SeedPasswordHashTest`
 - **Issue:** O goal `repackage` (ligado à fase `package`, antes de `integration-test`) substituía o artefato principal `auth-service.jar` pelo jar gordo do Spring Boot. O `maven-failsafe-plugin`, ao montar o classpath de teste na fase seguinte, encontrava as classes da aplicação apenas dentro de `BOOT-INF/classes/` do jar gordo — invisível a um `URLClassLoader` comum — resultando em `NoClassDefFoundError` para toda classe do pacote `com.orderflow.auth.*` referenciada no teste de integração.
 - **Fix:** Adicionado `<classifier>exec</classifier>` à execução `repackage` no `pom.xml` raiz. O jar plano (`auth-service.jar`) permanece o artefato principal (usado por Maven/failsafe); o jar executável passa a se chamar `auth-service-exec.jar` (idem para o gateway).
 - **Files modified:** `pom.xml`, `auth-service/Dockerfile`, `gateway/Dockerfile` (Dockerfiles atualizados para copiar `*-exec.jar`)
-- **Commit:** `954dd70`
+- **Commit:** `c2c5745`
 
 **2. [Rule 3 - Blocking] `spring-boot-testcontainers` ausente da lista de dependências do plano**
 - **Found during:** Task 2, RED — erro de compilação `package org.springframework.boot.testcontainers.service.connection does not exist`
 - **Issue:** `@ServiceConnection` (usado em `AbstractIntegrationTest`) vem do artefato `spring-boot-testcontainers`, não capturado na lista de dependências do plano original.
 - **Fix:** Adicionada a dependência de teste `org.springframework.boot:spring-boot-testcontainers` ao `auth-service/pom.xml`.
 - **Files modified:** `auth-service/pom.xml`
-- **Commit:** `954dd70`
+- **Commit:** `c2c5745`
 
 **3. [Rule 1 - Bug] `mvnw` commitado sem bit executável (Windows `core.filemode=false`)**
 - **Found during:** Task 1, após o primeiro commit
 - **Issue:** `git ls-files -s mvnw` mostrava modo `100644`; um checkout Linux (CI GitHub Actions) sem `chmod` prévio falharia com "Permission denied" ao rodar `./mvnw`.
 - **Fix:** `git update-index --chmod=+x mvnw`, commitado separadamente.
 - **Files modified:** `mvnw` (apenas metadado de modo, sem alteração de conteúdo)
-- **Commit:** `d589b0f`
+- **Commit:** `e6c9665`
 
 **4. [Rule 2 - Missing Critical] Comentário de `V2__seed_seller_admin.sql` embutia a senha de demonstração em texto claro**
 - **Found during:** Task 2, verificação final dos acceptance criteria ("não contém a senha em texto claro")
 - **Issue:** O comentário explicativo da migração citava literalmente `"ChangeMe!123"` como exemplo de como o hash foi gerado — violando ao pé da letra o acceptance criteria do plano, mesmo sendo um comentário e não um valor de coluna.
 - **Fix:** Reescrito o comentário para referenciar o README do projeto e `SeedPasswordHashTest` em vez de citar a senha literal.
 - **Files modified:** `auth-service/src/main/resources/db/migration/V2__seed_seller_admin.sql`
-- **Commit:** `954dd70`
+- **Commit:** `c2c5745`
 
 **5. [Rule 3 - Blocking] `maven-failsafe-plugin` sem versão explícita no `pluginManagement`**
 - **Found during:** Task 2, warning do Maven ("It is highly recommended to fix these problems")
 - **Issue:** O plano já declarava o plugin em `pluginManagement` sem `<version>`, deixando a resolução a cargo do Maven — inconsistente com a exigência de nunca deixar versão implícita/flutuante.
 - **Fix:** Adicionada a propriedade `maven-failsafe-plugin.version=3.2.5` e referenciada na declaração do plugin.
 - **Files modified:** `pom.xml`
-- **Commit:** `954dd70`
+- **Commit:** `c2c5745`
 
 ---
 
@@ -297,6 +297,6 @@ None - nenhuma configuração de serviço externo é necessária para este plano
 - FOUND: auth-service/src/main/java/com/orderflow/auth/auth/AuthController.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/AuthControllerIT.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/SeedPasswordHashTest.java
-- FOUND commit: 2b32fbf
-- FOUND commit: d589b0f
-- FOUND commit: 954dd70
+- FOUND commit: ccd4781
+- FOUND commit: e6c9665
+- FOUND commit: c2c5745

@@ -25,7 +25,7 @@ actuals:
   tokens: 12619
   tasks: 3
   commits: 3
-plan_head_before: 241b660bc09fab53f4d3704aa40aaa5a94a8b55e
+plan_head_before: c5f134353b1da3c255d924a0bce54e31246797e9
 
 # Tech tracking
 tech-stack:
@@ -168,9 +168,9 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — o vendedor aprova um pedido pendente, a decisão fica registrada e passa a consumir crédito** - `4ecf5b5` (feat)
-2. **Task 2: O vendedor rejeita com motivo obrigatório, e toda decisão fora de hora ou de quem não pode decidir é recusada** - `70a1de5` (feat)
-3. **Task 3: Decisões concorrentes não se sobrepõem, e a aprovação manual é vista pelas criações que vêm depois** - `2ab6031` (test)
+1. **Task 1: Tracer — o vendedor aprova um pedido pendente, a decisão fica registrada e passa a consumir crédito** - `ae6d3c5` (feat)
+2. **Task 2: O vendedor rejeita com motivo obrigatório, e toda decisão fora de hora ou de quem não pode decidir é recusada** - `0fd343d` (feat)
+3. **Task 3: Decisões concorrentes não se sobrepõem, e a aprovação manual é vista pelas criações que vêm depois** - `fcba22b` (test)
 
 **Plan metadata:** commit de documentação a ser criado logo após este SUMMARY.
 
@@ -217,4 +217,4 @@ None - nenhuma configuração de serviço externo é necessária.
 
 ## Self-Check: PASSED
 
-All key files verified present on disk (`OrderDecisionService.java`, `OrderDecisionController.java`, `ApproveOrderRequest.java`, `RejectOrderRequest.java`, `OrderNotPendingException.java`, `OrderApprovalIT.java`, `OrderDecisionConcurrencyIT.java`). All three task commits (`4ecf5b5`, `70a1de5`, `2ab6031`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across all 8 test classes: `OrderApprovalIT` 2/2, `OrderDecisionConcurrencyIT` 3/3, `OrderDomainTest` 8/8, plus the 5 pre-existing suites unchanged). Both plan-level `<verification>` commands re-run and passing; source gate re-checked (`OrderDecisionService` has no `import com.orderflow.order.client.*`); `OrderController.java` confirmed untouched by this plan (`git diff` against the plan's starting commit shows no changes to that file).
+All key files verified present on disk (`OrderDecisionService.java`, `OrderDecisionController.java`, `ApproveOrderRequest.java`, `RejectOrderRequest.java`, `OrderNotPendingException.java`, `OrderApprovalIT.java`, `OrderDecisionConcurrencyIT.java`). All three task commits (`ae6d3c5`, `0fd343d`, `fcba22b`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across all 8 test classes: `OrderApprovalIT` 2/2, `OrderDecisionConcurrencyIT` 3/3, `OrderDomainTest` 8/8, plus the 5 pre-existing suites unchanged). Both plan-level `<verification>` commands re-run and passing; source gate re-checked (`OrderDecisionService` has no `import com.orderflow.order.client.*`); `OrderController.java` confirmed untouched by this plan (`git diff` against the plan's starting commit shows no changes to that file).

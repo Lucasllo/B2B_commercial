@@ -58,7 +58,7 @@ num estado intermediário.
 **Verified:** 2026-09-30
 **Status:** passed
 **Re-verification:** Sim — o relatório de 2026-09-29 (human_needed) ficou obsoleto porque os commits de
-code-review fix f48e759 (WR-01), 3b7eb3c (WR-02) e d9082b2 (WR-04) tocaram arquivos cobertos. Esta
+code-review fix 4226a87 (WR-01), cd97c8a (WR-02) e 83eefaf (WR-04) tocaram arquivos cobertos. Esta
 rodada reconfere os must-haves contra o HEAD, reconcilia o item humano pendente com o `05-UAT.md` e
 atualiza `covered_files`/`covered_digest`.
 
@@ -66,11 +66,11 @@ atualiza `covered_files`/`covered_digest`.
 
 | Commit | Arquivo | O que mudou | Risco de regressão nos must-haves | Conclusão |
 |---|---|---|---|---|
-| f48e759 (WR-01) | `inventory-service/.../stock/InventoryService.java` | Novo `@Recover recoverReleaseAllInconsistentBook(IllegalStateException, UUID, String, List)` que apenas relança a exceção original. Lido no HEAD (linhas ~429–450): o `@Recover` anterior `recoverReleaseAll(DataAccessException…)` continua intacto; o novo só intercepta `IllegalStateException` (anomalia "reserva viva sem linha de inventory", nunca retentável). Não altera os ramos de sucesso/falha/replay/lápide de `releaseAll` nem `reserveAll`. | Nenhum: só muda qual exceção chega ao chamador no caminho de anomalia técnica (antes `ExhaustedRetryException`). Idempotência (SC4) e tudo-ou-nada (SC2/3) intactos. | Mantém SC2, SC3, SC4 |
-| 3b7eb3c (WR-02) | `order-service/.../saga/messaging/SagaEventParser.java` (+4 testes em `SagaEventParserTest`) | `requireIntAtLeast` → `requireIntInRange` (piso e teto checados em `long` antes do cast; teto 1.000.000 para `quantity`/`requested`, `Integer.MAX_VALUE` para `available`); `productId` repetido em `items` rejeitado com `InvalidSagaMessageException`. | Baixo: só endurece validação de mensagem malformada na fronteira de confiança; quantidades legítimas (E2E/ITs usam valores pequenos) não são afetadas. Testes novos presentes: `stockReservedWithDuplicateProductIdIsRejected`, `…QuantityAboveCeilingIsRejected`, `failureWithRequestedAboveCeilingIsRejected`, `failureWithAvailableAboveIntRangeIsRejected`. | Mantém SC2, SC3 |
-| d9082b2 (WR-04) | `order-service/src/main/resources/application.yml` | `spring.task.scheduling.pool-size: 2` (comentário explicando: `OutboxRelayJob` e `SagaTimeoutJob` deixam de serializar um ao outro). | Nenhum negativo; fortalece a garantia "pedido nunca preso" (SC3) sob SQS lento. | Reforça SC3 |
+| 4226a87 (WR-01) | `inventory-service/.../stock/InventoryService.java` | Novo `@Recover recoverReleaseAllInconsistentBook(IllegalStateException, UUID, String, List)` que apenas relança a exceção original. Lido no HEAD (linhas ~429–450): o `@Recover` anterior `recoverReleaseAll(DataAccessException…)` continua intacto; o novo só intercepta `IllegalStateException` (anomalia "reserva viva sem linha de inventory", nunca retentável). Não altera os ramos de sucesso/falha/replay/lápide de `releaseAll` nem `reserveAll`. | Nenhum: só muda qual exceção chega ao chamador no caminho de anomalia técnica (antes `ExhaustedRetryException`). Idempotência (SC4) e tudo-ou-nada (SC2/3) intactos. | Mantém SC2, SC3, SC4 |
+| cd97c8a (WR-02) | `order-service/.../saga/messaging/SagaEventParser.java` (+4 testes em `SagaEventParserTest`) | `requireIntAtLeast` → `requireIntInRange` (piso e teto checados em `long` antes do cast; teto 1.000.000 para `quantity`/`requested`, `Integer.MAX_VALUE` para `available`); `productId` repetido em `items` rejeitado com `InvalidSagaMessageException`. | Baixo: só endurece validação de mensagem malformada na fronteira de confiança; quantidades legítimas (E2E/ITs usam valores pequenos) não são afetadas. Testes novos presentes: `stockReservedWithDuplicateProductIdIsRejected`, `…QuantityAboveCeilingIsRejected`, `failureWithRequestedAboveCeilingIsRejected`, `failureWithAvailableAboveIntRangeIsRejected`. | Mantém SC2, SC3 |
+| 83eefaf (WR-04) | `order-service/src/main/resources/application.yml` | `spring.task.scheduling.pool-size: 2` (comentário explicando: `OutboxRelayJob` e `SagaTimeoutJob` deixam de serializar um ao outro). | Nenhum negativo; fortalece a garantia "pedido nunca preso" (SC3) sob SQS lento. | Reforça SC3 |
 
-`git diff --stat d9082b2 HEAD -- . ':!.planning'` está **vazio**: nenhuma alteração de código de produção ou teste posterior ao último fix — os commits seguintes (UAT, SECURITY, VALIDATION) são só documentação.
+`git diff --stat 83eefaf HEAD -- . ':!.planning'` está **vazio**: nenhuma alteração de código de produção ou teste posterior ao último fix — os commits seguintes (UAT, SECURITY, VALIDATION) são só documentação.
 
 ## Goal Achievement
 
@@ -88,7 +88,7 @@ atualiza `covered_files`/`covered_digest`.
 
 ### Evidência de execução pós-fix (não re-executada pelo verificador, por instrução)
 
-`$HOME/orderflow-verify-05.log` (modificado 2026-09-30 19:35, posterior aos commits 19:03–19:05 dos fixes): `./mvnw -B verify` → **BUILD SUCCESS**, 8 módulos; ocorrências por módulo no log: inventory-service 32 unit + 51 IT, order-service 58 unit + 70 IT, e2e-tests 12; `Failures: 0, Errors: 0, Skipped: 0` em todas as linhas de resumo. Como o diff de código desde d9082b2 é vazio, o log vale para o HEAD. Não havia razão específica para duvidar dele, portanto a suíte não foi re-executada (nem o `docker compose` foi tocado).
+`$HOME/orderflow-verify-05.log` (modificado 2026-09-30 19:35, posterior aos commits 19:03–19:05 dos fixes): `./mvnw -B verify` → **BUILD SUCCESS**, 8 módulos; ocorrências por módulo no log: inventory-service 32 unit + 51 IT, order-service 58 unit + 70 IT, e2e-tests 12; `Failures: 0, Errors: 0, Skipped: 0` em todas as linhas de resumo. Como o diff de código desde 83eefaf é vazio, o log vale para o HEAD. Não havia razão específica para duvidar dele, portanto a suíte não foi re-executada (nem o `docker compose` foi tocado).
 
 ### Requisitos da Fase (ORD-04, ORD-05, ORD-06, TEST-03)
 

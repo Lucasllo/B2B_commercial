@@ -19,7 +19,7 @@ actuals:
   tasks: 3
   commits: 3
 
-plan_head_before: ca188a7dfdda316551997d0bd65668f6ac0736a1
+plan_head_before: 72878f40bb757107df87219bc00058bd5cc22903
 
 tech-stack:
   added: []
@@ -124,9 +124,9 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1 (tracer): diagrama no README e teste de consistencia** - `26d0fac` (test)
-2. **Task 2: visao geral detalhada, README com endpoints/smoke/limitacoes e teste cobrindo os dois documentos** - `45ea0c7` (docs)
-3. **Task 3: referencia da API da Fase 6** - `d508554` (docs)
+1. **Task 1 (tracer): diagrama no README e teste de consistencia** - `f539a7c` (test)
+2. **Task 2: visao geral detalhada, README com endpoints/smoke/limitacoes e teste cobrindo os dois documentos** - `ad3c987` (docs)
+3. **Task 3: referencia da API da Fase 6** - `5910f8c` (docs)
 
 ## Verification
 
@@ -145,7 +145,7 @@ status: complete
 - **Issue:** O texto escrito na Task 2 dizia que `GET /api/orders` tambem traz `carrier`/`trackingCode`/etc.; o resumo da listagem (`OrderSummaryResponse`) nao os inclui.
 - **Fix:** README e `docs/API.md` passaram a dizer que so o detalhe (`POST /orders`, `GET /orders/{orderId}`, `approve`, `reject`, `ship`, `deliver`) tem os campos e que a listagem continua sem itens e sem campos de saga/expedicao.
 - **Files modified:** `README.md`, `docs/API.md`
-- **Commit:** `d508554`
+- **Commit:** `5910f8c`
 
 **2. [Process] Execucao de RED em arquivo de teste diferente do final**
 - O primeiro RED rodou com os dois documentos registrados (README e visao geral) e foi corrigido para so o README na Task 1 (a visao geral so ganha o diagrama na Task 2), conforme o plano; o teste e o diagrama da Task 1 entraram no mesmo commit.
@@ -180,4 +180,4 @@ Ultimo plano da Fase 6: fase pronta para verificacao (`/gsd-verify-work`). A Fas
 ## Self-Check: PASSED
 
 - `OrderStatusDiagramConsistencyTest.java` existe em disco; `README.md`, `docs/VISAO-GERAL.md` e `docs/API.md` alterados.
-- Commits `26d0fac`, `45ea0c7` e `d508554` presentes em `git log`.
+- Commits `f539a7c`, `ad3c987` e `5910f8c` presentes em `git log`.

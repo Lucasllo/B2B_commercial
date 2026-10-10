@@ -81,8 +81,8 @@ coverage:
 duration: 19min
 completed: 2026-10-03
 status: complete
-plan_head_before: 6c4f063f2fc2a02c6e7fd2eb16d4c8e91775eacb
-plan_head_after: da81d2c6df21778ccabef146102c940cd6ad101f
+plan_head_before: 243d1ec85883acde83aff3603d45c5c72a997b38
+plan_head_after: 685a2f4c6abb15f695c5997707080cd13c93fdd2
 ---
 
 # Phase 07 Plan 04: Correlation-ID no inventory Summary
@@ -108,10 +108,10 @@ plan_head_after: da81d2c6df21778ccabef146102c940cd6ad101f
 
 Each task was committed atomically:
 
-1. **Task 1 RED: failing relay and writer tests** - `e5ac57b` (test)
-2. **Task 1 GREEN: saga propagation and E2E** - `a7fdbf0` (feat)
-3. **Task 2 RED: failing HTTP filter test** - `e3300ab` (test)
-4. **Task 2 GREEN: filter, command attribute and STOCK_ADJUSTED** - `da81d2c` (feat)
+1. **Task 1 RED: failing relay and writer tests** - `5adcfb6` (test)
+2. **Task 1 GREEN: saga propagation and E2E** - `e607b02` (feat)
+3. **Task 2 RED: failing HTTP filter test** - `52c43b2` (test)
+4. **Task 2 GREEN: filter, command attribute and STOCK_ADJUSTED** - `685a2f4` (feat)
 
 ## Files Created/Modified
 
@@ -152,10 +152,10 @@ None.
 
 | Gate | Commit | Result |
 |------|--------|--------|
-| RED task 1 | `e5ac57b` | `eventWithCorrelationIdSendsItAsMessageHeader` falhou (publicado 0; `send` ainda era `String`) — `RED_EVIDENCE_OK` |
-| GREEN task 1 | `a7fdbf0` | `OutboxRelayTest` + `OutboxWriterTest` verdes; `CorrelationIdE2EIT` 1 teste, 0 falhas |
-| RED task 2 | `e3300ab` | `filterExposesTheHeaderInTheMdcAndDoesNotEchoItOnTheResponse` falhou (`abc-123` vs null) — `RED_EVIDENCE_OK` |
-| GREEN task 2 | `da81d2c` | `./mvnw -B -pl inventory-service verify` — Failsafe 65 testes, 0 falhas |
+| RED task 1 | `5adcfb6` | `eventWithCorrelationIdSendsItAsMessageHeader` falhou (publicado 0; `send` ainda era `String`) — `RED_EVIDENCE_OK` |
+| GREEN task 1 | `e607b02` | `OutboxRelayTest` + `OutboxWriterTest` verdes; `CorrelationIdE2EIT` 1 teste, 0 falhas |
+| RED task 2 | `52c43b2` | `filterExposesTheHeaderInTheMdcAndDoesNotEchoItOnTheResponse` falhou (`abc-123` vs null) — `RED_EVIDENCE_OK` |
+| GREEN task 2 | `685a2f4` | `./mvnw -B -pl inventory-service verify` — Failsafe 65 testes, 0 falhas |
 
 ## Issues Encountered
 
@@ -175,10 +175,10 @@ None - no external service configuration required.
 
 - FOUND: inventory-service/src/main/resources/db/migration/V5__outbox_correlation_id.sql
 - FOUND: e2e-tests/src/test/java/com/orderflow/e2e/CorrelationIdE2EIT.java
-- FOUND: e5ac57b
-- FOUND: a7fdbf0
-- FOUND: e3300ab
-- FOUND: da81d2c
+- FOUND: 5adcfb6
+- FOUND: e607b02
+- FOUND: 52c43b2
+- FOUND: 685a2f4
 
 ## Known Stubs
 

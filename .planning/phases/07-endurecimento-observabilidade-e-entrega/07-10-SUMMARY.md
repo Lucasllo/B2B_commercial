@@ -14,7 +14,7 @@ provides:
   - Testes unitários das regras de estoque, da orquestração do pedido, do login e da tabela de rotas do gateway
 affects: [07-11]
 
-plan_head_before: 9f9907783b03441e2a6cc637654ad7e549633800
+plan_head_before: ec1985ae572af736d3493b7a12a86df5a98499b1
 actuals:
   tokens: 35000
   tasks: 2
@@ -78,9 +78,9 @@ requirements-completed: [TEST-01, TEST-02]
 
 ## Task Commits
 
-1. **Task 1: matriz + script (tracer)** — `4b79d94` (feat)
-2. **Task 2: lacunas fechadas e matriz sem LACUNA** — `4f71286` (test)
-3. **Task 2: correção do E2eContextsSmokeIT achada pelo verify do reactor** — `6ca1a70` (fix)
+1. **Task 1: matriz + script (tracer)** — `2b14481` (feat)
+2. **Task 2: lacunas fechadas e matriz sem LACUNA** — `3ac1eaf` (test)
+3. **Task 2: correção do E2eContextsSmokeIT achada pelo verify do reactor** — `ca0d966` (fix)
 
 ## Testes criados para fechar lacunas
 
@@ -102,13 +102,13 @@ Os cinco previstos no plano — `InventoryTest`, `StockReservationTest`, `OrderS
 - **Issue:** 07-02 adicionou `V4__correlation_id.sql` no order e 07-04 adicionou `V5__outbox_correlation_id.sql` no inventory; os dois testes de contagem do e2e (`...ThreeMigrations...`, `...FourMigrations...`) ficaram inválidos. O e2e-tests só roda no verify do reactor inteiro, por isso não apareceu nos planos anteriores.
 - **Fix:** testes renomeados para `orderSchemaHasExactlyItsOwnFourMigrationsApplied` (V1-V4) e `inventorySchemaHasExactlyItsOwnFiveMigrationsApplied` (V1-V5); linha 9 do e2e na matriz atualizada. Só teste — nenhum código de produção alterado.
 - **Files modified:** `e2e-tests/src/test/java/com/orderflow/e2e/E2eContextsSmokeIT.java`, `07-COVERAGE.md`
-- **Commit:** `6ca1a70`
+- **Commit:** `ca0d966`
 
 **2. [Rule 2 - Missing coverage] Lacunas além das cinco previstas**
 - **Found during:** Task 1 (montagem da matriz lendo os testes)
 - **Issue:** `InventoryService`, `OrderSagaService`, o login (`AuthController`), a tabela de rotas e a linha de acesso do gateway só tinham IT.
 - **Fix:** testes listados acima, conforme a instrução da Task 2 para "qualquer outra linha LACUNA".
-- **Commit:** `4f71286`
+- **Commit:** `3ac1eaf`
 
 Nenhum bug de produção foi encontrado pelos testes novos (nenhum código de produção foi alterado neste plano).
 
@@ -129,5 +129,5 @@ None — o plano só adiciona testes, um script de verificação e documentaçã
 ## Self-Check: PASSED
 
 - `scripts/check-coverage-matrix.sh` (estrito) -> `COVERAGE CHECK OK 72 regras`
-- Arquivos criados presentes; commits `4b79d94`, `4f71286`, `6ca1a70` existem
+- Arquivos criados presentes; commits `2b14481`, `3ac1eaf`, `ca0d966` existem
 - `./mvnw -B verify` -> `BUILD SUCCESS` em todos os módulos

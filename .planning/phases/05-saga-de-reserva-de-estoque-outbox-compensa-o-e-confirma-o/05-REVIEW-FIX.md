@@ -27,19 +27,19 @@ status: partial
 ### WR-01: `InventoryService.releaseAll` sem `@Recover` para `IllegalStateException`
 
 **Files modified:** `inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java`
-**Commit:** f48e759
+**Commit:** 4226a87
 **Applied fix:** adicionado `recoverReleaseAllInconsistentBook(IllegalStateException, UUID, String, List<ReservationLine>)` que relança a exceção original, espelhando o `@Recover` já existente em `reserveAll`. Assim a mensagem com `productId`/`reservationId`/`orderId` não fica soterrada por `ExhaustedRetryException`. Status: fixed, requires human verification (comportamento do Spring Retry só é exercitável em IT; não há IT cobrindo este caminho e Docker estava indisponível).
 
 ### WR-02: `SagaEventParser` valida com menos rigor que `SagaCommandParser`
 
 **Files modified:** `order-service/src/main/java/com/orderflow/order/saga/messaging/SagaEventParser.java`, `order-service/src/test/java/com/orderflow/order/saga/messaging/SagaEventParserTest.java`
-**Commit:** 3b7eb3c
+**Commit:** cd97c8a
 **Applied fix:** `requireIntAtLeast` virou `requireIntInRange` (piso e teto checados em `long` antes do cast para `int`, rejeitando também números que não cabem em `long`). `quantity` e `requested` usam teto de 1.000.000 (igual ao `SagaCommandParser`); `available` usa `Integer.MAX_VALUE`, pois reflete o saldo em estoque, que o inventory-service permite até esse valor. `requireReservationLines` agora rejeita `productId` repetido com `InvalidSagaMessageException`. Quatro testes unitários novos cobrem os casos. Status: fixed, requires human verification (lógica de validação; escolha do teto de `available` diverge levemente da sugestão do review, que propunha o mesmo teto do comando).
 
 ### WR-04: `OutboxRelayJob` e `SagaTimeoutJob` competem por um pool `@Scheduled` de 1 thread
 
 **Files modified:** `order-service/src/main/resources/application.yml`
-**Commit:** d9082b2
+**Commit:** 83eefaf
 **Applied fix:** adicionado `spring.task.scheduling.pool-size: 2` com comentário explicando o motivo. YAML validado por parse com snakeyaml.
 
 ## Skipped Issues

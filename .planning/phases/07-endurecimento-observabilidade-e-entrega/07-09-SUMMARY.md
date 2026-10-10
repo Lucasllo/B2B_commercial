@@ -14,7 +14,7 @@ provides:
   - WARN "ShipStock anomalo" realmente emitido e novo WARN "ReleaseStock anomalo"
 affects: [07-10, 07-11]
 
-plan_head_before: a7f5aa1610753bb931df5df3307b976c5bf4aa50
+plan_head_before: 2ff10d579cc205b9a3c848e67da7c38a0f3dd2af
 actuals:
   tokens: 45000
   tasks: 2
@@ -60,8 +60,8 @@ completed: 2026-10-03
 
 ## Task Commits
 
-1. Task 1 (tracer, WR-01): `9bcd21e` — fix(07-09): ShipStock invalido vai para a DLQ com log ERROR
-2. Task 2 (WR-02): `b8a462e` — fix(07-09): @Recover de shipAll e releaseAll escolhidos pelo nome
+1. Task 1 (tracer, WR-01): `65dc8f0` — fix(07-09): ShipStock invalido vai para a DLQ com log ERROR
+2. Task 2 (WR-02): `0da4317` — fix(07-09): @Recover de shipAll e releaseAll escolhidos pelo nome
 
 Tracer feedback gate: verificado de ponta a ponta (parser, listener e IT com DLQ real) antes da Task 2.
 
@@ -83,4 +83,4 @@ None — nenhuma superfície nova; T-07-30 a T-07-33 mitigadas (DLQ real testada
 
 ## Self-Check: PASSED
 
-- Arquivos criados/modificados existem; commits `9bcd21e` e `b8a462e` presentes; `commits: 2` medido via ledger (`a7f5aa1..HEAD`).
+- Arquivos criados/modificados existem; commits `65dc8f0` e `0da4317` presentes; `commits: 2` medido via ledger (`2ff10d5..HEAD`).

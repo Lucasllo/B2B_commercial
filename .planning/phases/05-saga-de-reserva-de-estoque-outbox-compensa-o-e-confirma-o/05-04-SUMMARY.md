@@ -25,7 +25,7 @@ actuals:
   tokens: 27275
   tasks: 3
   commits: 6
-  plan_head_before: 78147d1d945040612ec125561fadfc6f5b07a98e
+  plan_head_before: 9e619ecdfcc764ac301adc7b34da0271c396d153
 
 tech-stack:
   added: []
@@ -187,12 +187,12 @@ status: complete
 
 Cada task seguiu o ciclo RED → GREEN (TDD):
 
-1. **Task 1 RED** — `68fac2b` (test): `SagaTimeoutIT` (5 casos) + `SagaTimeoutJobTest` (2 casos) + `CancellationReasonsTest.forTimeout` + todo o scaffolding de produção (`findExpiredReservationIds`, `expireReservation`, `forTimeout()`, `application.yml`/`application-test.yml`) já implementado, com o corpo de `SagaTimeoutJob.run()` temporariamente vazio. RED confirmado: 4/5 `SagaTimeoutIT` falharam pelo motivo certo (pedido nunca cancelado), o 5º (`orderWithinDeadlineIsUntouched...`) passou corretamente (job inerte não deveria mesmo tocar o pedido).
-2. **Task 1 GREEN** — `270c84d` (feat): corpo de `run()` restaurado — 5/5 `SagaTimeoutIT`, 2/2 `SagaTimeoutJobTest`, suíte inteira do order-service verde (70 testes).
-3. **Task 2 RED** — `8e4e6e6` (test): `TombstoneReleaseIT` (4 casos) + `SagaCommandParserTest` (6 casos novos) + toda a produção (`V3`, `ReleaseStockCommand`, `StockReservation#tombstone`, `InventoryService#releaseAll`/`recoverReleaseAll`, ramo `RESERVATION_CANCELLED` de `reserveAll`) já implementada, com o despacho de `ReleaseStock` no `ReservationCommandListener` comentado. RED confirmado: 3/4 `TombstoneReleaseIT` falharam pelo motivo certo (estoque nunca devolvido/lápide nunca gravada); o teste do `DELETE` REST (não depende de SQS) passou.
-4. **Task 2 GREEN** — `721ea38` (feat): despacho restaurado — 4/4 `TombstoneReleaseIT`, suíte inteira verde (51 testes, após a Task 3 remover `StockEventPublishFailureIT`).
-5. **Task 3 RED** — `63da4f5` (test): `StockAdjustedEventPublishingIT` com asserções de linha do outbox + `OutboxRelayTest` do inventory (cópia do order-service) + `InventoryController`/`InventoryService`/`SqsMessagingConfig`/`AbstractIntegrationTest` já atualizados e `StockEventPublisher`/`StockAdjustmentResult`/`StockEventPublishFailureIT` já removidos, com a gravação no outbox de `setStock` temporariamente comentada. RED confirmado: 2/4 `StockAdjustedEventPublishingIT` falharam pelo motivo certo (nenhum evento publicado); os 2 testes que nunca esperavam publicação (400/403) passaram. Este commit também traz o achado e a correção do `StockReservationConcurrencyIT` (ver Deviations).
-6. **Task 3 GREEN** — `5b17ad5` (feat): gravação no outbox restaurada — `./mvnw -B -pl inventory-service verify` inteiro verde (51 testes).
+1. **Task 1 RED** — `3aa2187` (test): `SagaTimeoutIT` (5 casos) + `SagaTimeoutJobTest` (2 casos) + `CancellationReasonsTest.forTimeout` + todo o scaffolding de produção (`findExpiredReservationIds`, `expireReservation`, `forTimeout()`, `application.yml`/`application-test.yml`) já implementado, com o corpo de `SagaTimeoutJob.run()` temporariamente vazio. RED confirmado: 4/5 `SagaTimeoutIT` falharam pelo motivo certo (pedido nunca cancelado), o 5º (`orderWithinDeadlineIsUntouched...`) passou corretamente (job inerte não deveria mesmo tocar o pedido).
+2. **Task 1 GREEN** — `0612e38` (feat): corpo de `run()` restaurado — 5/5 `SagaTimeoutIT`, 2/2 `SagaTimeoutJobTest`, suíte inteira do order-service verde (70 testes).
+3. **Task 2 RED** — `e6b1d81` (test): `TombstoneReleaseIT` (4 casos) + `SagaCommandParserTest` (6 casos novos) + toda a produção (`V3`, `ReleaseStockCommand`, `StockReservation#tombstone`, `InventoryService#releaseAll`/`recoverReleaseAll`, ramo `RESERVATION_CANCELLED` de `reserveAll`) já implementada, com o despacho de `ReleaseStock` no `ReservationCommandListener` comentado. RED confirmado: 3/4 `TombstoneReleaseIT` falharam pelo motivo certo (estoque nunca devolvido/lápide nunca gravada); o teste do `DELETE` REST (não depende de SQS) passou.
+4. **Task 2 GREEN** — `2cfbb46` (feat): despacho restaurado — 4/4 `TombstoneReleaseIT`, suíte inteira verde (51 testes, após a Task 3 remover `StockEventPublishFailureIT`).
+5. **Task 3 RED** — `c294b84` (test): `StockAdjustedEventPublishingIT` com asserções de linha do outbox + `OutboxRelayTest` do inventory (cópia do order-service) + `InventoryController`/`InventoryService`/`SqsMessagingConfig`/`AbstractIntegrationTest` já atualizados e `StockEventPublisher`/`StockAdjustmentResult`/`StockEventPublishFailureIT` já removidos, com a gravação no outbox de `setStock` temporariamente comentada. RED confirmado: 2/4 `StockAdjustedEventPublishingIT` falharam pelo motivo certo (nenhum evento publicado); os 2 testes que nunca esperavam publicação (400/403) passaram. Este commit também traz o achado e a correção do `StockReservationConcurrencyIT` (ver Deviations).
+6. **Task 3 GREEN** — `d3f9ff8` (feat): gravação no outbox restaurada — `./mvnw -B -pl inventory-service verify` inteiro verde (51 testes).
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -224,7 +224,7 @@ Ver `key-decisions` do frontmatter — `TOMBSTONE_FK=dropped`, `REST_RESERVATION
 - **Fix:** `StockReservationConcurrencyIT` passou a reaproveitar `AbstractIntegrationTest.postgres` (campo package-private, mesmo pacote) em vez de instanciar um segundo container — elimina o split-brain sem alterar o motivo original da classe evitar `MockMvc`.
 - **Files modified:** `inventory-service/src/test/java/com/orderflow/inventory/StockReservationConcurrencyIT.java`
 - **Verification:** `./mvnw -B -pl inventory-service verify` reexecutado 3 vezes consecutivas após a correção, 51/51 testes verdes em todas, `TombstoneReleaseIT` estável em ~8s (antes: falhava por volta de 45-97s de tentativa).
-- **Committed in:** `63da4f5` (Task 3 RED) e `5b17ad5` (Task 3 GREEN)
+- **Committed in:** `c294b84` (Task 3 RED) e `d3f9ff8` (Task 3 GREEN)
 
 ---
 
@@ -254,7 +254,7 @@ None - nenhuma configuração de serviço externo nova (`LOCALSTACK_AUTH_TOKEN` 
 ## Self-Check: PASSED
 
 - Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): `SagaTimeoutJob.java`, `SagaTimeoutIT.java`, `SagaTimeoutJobTest.java`, `V3__allow_reservation_tombstones.sql`, `ReleaseStockCommand.java` (inventory), `TombstoneReleaseIT.java`, `OutboxRelayTest.java` (inventory), este SUMMARY.
-- Todos os 6 commits do plano confirmados em `git log --oneline --all`: `68fac2b`, `270c84d`, `8e4e6e6`, `721ea38`, `63da4f5`, `5b17ad5`.
+- Todos os 6 commits do plano confirmados em `git log --oneline --all`: `3aa2187`, `0612e38`, `e6b1d81`, `2cfbb46`, `c294b84`, `d3f9ff8`.
 - Arquivos removidos confirmados ausentes (`[ ! -e ]`): `StockAdjustmentResult.java`, `stock/messaging/StockEventPublisher.java`, `StockEventPublishFailureIT.java`.
 - Gate de grep reverificado: `grep -rl 'import io.awspring.cloud.sqs.operations\.' inventory-service/src/main/java` devolve só `OutboxRelay.java` (count 1); `grep -vE '^\s*(\*|//)' InventoryService.java | grep -cE '(^|[^.A-Za-z])release\('` devolve 1.
 - `./mvnw -B -pl order-service clean verify` re-executado: 70 testes verdes. `./mvnw -B -pl inventory-service clean verify` re-executado 3x consecutivas: 51 testes verdes em todas (sem flakiness residual).

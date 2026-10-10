@@ -112,8 +112,8 @@ coverage:
 duration: 35min
 completed: 2026-10-03
 status: complete
-plan_head_before: df9ccd5d9573e77ba9a6cf2ae2bd80879daf58d4
-plan_head_after: 5143cdf5c12474f5ef8dcf2ca4a8b9f56df2852b
+plan_head_before: a465fb6d4d7f95ff61012eaf304451d43f17bdb3
+plan_head_after: 8e73f2a5db995d61390a94435bd6238069aca94d
 ---
 
 # Phase 07 Plan 07: Correlation-ID, WR-03 e OpenAPI no notification-service Summary
@@ -136,9 +136,9 @@ plan_head_after: 5143cdf5c12474f5ef8dcf2ca4a8b9f56df2852b
 
 ## Task Commits
 
-1. **Task 1 (tracer): filtro, padrão de log, listener com atributo, INFO de registro e IT com LocalStack** - `c546989` (feat)
-2. **Task 2: WR-03, WARN de descarte com orderId e eventType** - `11950e4` (fix)
-3. **Task 3: spec OpenAPI com contratos, erros e server /api** - `5143cdf` (feat)
+1. **Task 1 (tracer): filtro, padrão de log, listener com atributo, INFO de registro e IT com LocalStack** - `8416d48` (feat)
+2. **Task 2: WR-03, WARN de descarte com orderId e eventType** - `d4a86ba` (fix)
+3. **Task 3: spec OpenAPI com contratos, erros e server /api** - `8e73f2a` (feat)
 
 ## Classes de teste novas ou ampliadas (insumo da matriz de 07-10)
 
@@ -179,6 +179,6 @@ None.
 - FOUND: notification-service/src/main/java/com/orderflow/notification/observability/CorrelationIdFilter.java
 - FOUND: notification-service/src/main/java/com/orderflow/notification/config/ErrorResponse.java
 - FOUND: notification-service/src/test/java/com/orderflow/notification/CorrelationIdConsumptionIT.java
-- FOUND: c546989
-- FOUND: 11950e4
-- FOUND: 5143cdf
+- FOUND: 8416d48
+- FOUND: d4a86ba
+- FOUND: 8e73f2a

@@ -19,7 +19,7 @@ actuals:
   tokens: 28048
   tasks: 2
   commits: 4
-  plan_head_before: f4eed0948b5185218eb558b2168d5cce7e744570
+  plan_head_before: 59fb27bc18dc12b84ba664db59e3b76f2ea3cb1a
 
 tech-stack:
   added: []
@@ -189,10 +189,10 @@ status: complete
 
 Cada task seguiu o ciclo RED → GREEN (TDD):
 
-1. **Task 1 RED** — `235fd8b` (test): `ReservationCommandConsumptionIT` (5 casos de falha) + `SagaCommandParserTest` (22 casos) + todo o scaffolding de produção necessário para compilar, com a chamada `inventoryService.reserveAll(...)` comentada em `ReservationCommandListener`. RED confirmado manualmente rodando `./mvnw -B -pl inventory-service verify -Dit.test=ReservationCommandConsumptionIT`: os 5 testes de integração falharam no assert esperado (resultado nunca chega em 15s), não em erro de compilação/infra.
-2. **Task 1 GREEN** — `60319e2` (feat): wiring restaurada — 5/5 `ReservationCommandConsumptionIT` + 22/22 `SagaCommandParserTest` + `./mvnw -B -pl inventory-service verify` inteiro verde (42 testes). Inclui a correção do `poll-timeout`/timeouts do `SqsAsyncClient` (deviation abaixo).
-3. **Task 2 RED** — `0ba4d94` (test): `IdempotentReservationIT` (4 casos) + caminho feliz acrescentado a `ReservationCommandConsumptionIT` + correção de `SagaQueues.awaitResultsForOrders`. RED confirmado manualmente com o ramo de replay e o `@Recover` de `IllegalStateException` removidos de `reserveAll`: `resendingTheSameCommand...` falhou no timeout esperado, `inconsistentBookThrows...` falhou com o tipo de exceção errado (achado que expôs o bug do `@Recover`, corrigido no GREEN); os outros dois casos já passavam (exercitam a Task 1).
-4. **Task 2 GREEN** — `9ffc8af` (feat): replay idempotente + `@Recover` corrigido — 11/11 testes novos verdes e `./mvnw -B -pl inventory-service verify` inteiro verde (48 testes).
+1. **Task 1 RED** — `e2decb2` (test): `ReservationCommandConsumptionIT` (5 casos de falha) + `SagaCommandParserTest` (22 casos) + todo o scaffolding de produção necessário para compilar, com a chamada `inventoryService.reserveAll(...)` comentada em `ReservationCommandListener`. RED confirmado manualmente rodando `./mvnw -B -pl inventory-service verify -Dit.test=ReservationCommandConsumptionIT`: os 5 testes de integração falharam no assert esperado (resultado nunca chega em 15s), não em erro de compilação/infra.
+2. **Task 1 GREEN** — `ebb6291` (feat): wiring restaurada — 5/5 `ReservationCommandConsumptionIT` + 22/22 `SagaCommandParserTest` + `./mvnw -B -pl inventory-service verify` inteiro verde (42 testes). Inclui a correção do `poll-timeout`/timeouts do `SqsAsyncClient` (deviation abaixo).
+3. **Task 2 RED** — `4314c15` (test): `IdempotentReservationIT` (4 casos) + caminho feliz acrescentado a `ReservationCommandConsumptionIT` + correção de `SagaQueues.awaitResultsForOrders`. RED confirmado manualmente com o ramo de replay e o `@Recover` de `IllegalStateException` removidos de `reserveAll`: `resendingTheSameCommand...` falhou no timeout esperado, `inconsistentBookThrows...` falhou com o tipo de exceção errado (achado que expôs o bug do `@Recover`, corrigido no GREEN); os outros dois casos já passavam (exercitam a Task 1).
+4. **Task 2 GREEN** — `f5d82a3` (feat): replay idempotente + `@Recover` corrigido — 11/11 testes novos verdes e `./mvnw -B -pl inventory-service verify` inteiro verde (48 testes).
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -219,7 +219,7 @@ Ver `key-decisions` do frontmatter — nenhuma decisão nova de arquitetura alé
 - **Fix:** `spring.cloud.aws.sqs.listener.poll-timeout: 0s` desliga o long polling (cabe folgado no teto existente); `apiCallTimeout`/`apiCallAttemptTimeout` ganharam folga de 3s/1s para 5s/2s.
 - **Files modified:** `inventory-service/src/main/resources/application.yml`, `inventory-service/src/main/java/com/orderflow/inventory/config/SqsMessagingConfig.java`
 - **Verification:** `ReservationCommandConsumptionIT` 5/5 verde, `./mvnw -B -pl inventory-service verify` inteiro verde (inclui `StockEventPublishFailureIT`, que não depende do valor exato do timeout).
-- **Committed in:** `60319e2` (Task 1 GREEN)
+- **Committed in:** `ebb6291` (Task 1 GREEN)
 
 **2. [Rule 1 - Bug] `@Recover recoverReserveAllInconsistentBook(IllegalStateException, ...)`**
 - **Found during:** Task 2, escrita do teste do livro inconsistente (`IdempotentReservationIT`)
@@ -227,7 +227,7 @@ Ver `key-decisions` do frontmatter — nenhuma decisão nova de arquitetura alé
 - **Fix:** Novo método `recoverReserveAllInconsistentBook(IllegalStateException ex, ...)` que apenas relança a exceção original.
 - **Files modified:** `inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java`
 - **Verification:** `IdempotentReservationIT#inconsistentBookThrowsIllegalStateExceptionWithoutTouchingTheOutbox` verde.
-- **Committed in:** `9ffc8af` (Task 2 GREEN)
+- **Committed in:** `f5d82a3` (Task 2 GREEN)
 
 **3. [Rule 1 - Bug] `SagaQueues.awaitResultsForOrders(Set<UUID>, int)`**
 - **Found during:** Task 2, teste de disputa concorrente (`concurrentOrdersDisputingTheLastUnitsNeverSellBeyondStock`)
@@ -235,7 +235,7 @@ Ver `key-decisions` do frontmatter — nenhuma decisão nova de arquitetura alé
 - **Fix:** Novo método `awaitResultsForOrders(Set<UUID>, int)` que casa QUALQUER `orderId` do conjunto na mesma rodada de dreno; `awaitResultsForOrder` passou a delegar para ele com um conjunto de um elemento.
 - **Files modified:** `inventory-service/src/test/java/com/orderflow/inventory/support/SagaQueues.java`, `inventory-service/src/test/java/com/orderflow/inventory/IdempotentReservationIT.java`
 - **Verification:** `concurrentOrdersDisputingTheLastUnitsNeverSellBeyondStock` verde (antes falhava deterministicamente, não por flakiness).
-- **Committed in:** `0ba4d94` (Task 2 RED, já que a correção é infraestrutura de teste necessária para o teste compilar/fazer sentido) e mantida em `9ffc8af`.
+- **Committed in:** `4314c15` (Task 2 RED, já que a correção é infraestrutura de teste necessária para o teste compilar/fazer sentido) e mantida em `f5d82a3`.
 
 ---
 
@@ -244,7 +244,7 @@ Ver `key-decisions` do frontmatter — nenhuma decisão nova de arquitetura alé
 
 ## Issues Encountered
 
-- **Bloqueio de guarda de branch protegida (não é um bug de código):** ao tentar commitar a Task 1 (RED), a asserção de segurança pré-commit do executor (`gsd_run query git.base-branch --is-protected master` → `true`) impediu o commit porque `.planning/config.json` não tinha `git.allow_default_branch_commits` configurado, apesar de este projeto inteiro (Fases 1-4 e o plano 05-01) já commitar direto em `master` por design (`branching_strategy: "none"`, sem outra branch). Reportei o bloqueio ao orquestrador em vez de contornar a guarda unilateralmente; o usuário optou por definir `git.allow_default_branch_commits: true` (commit `f4eed09`, feito pelo orquestrador, não por este executor), e a execução foi retomada exatamente do ponto onde parou — nenhum trabalho foi perdido, mas a pausa consumiu tempo de execução real, refletido na duração acima.
+- **Bloqueio de guarda de branch protegida (não é um bug de código):** ao tentar commitar a Task 1 (RED), a asserção de segurança pré-commit do executor (`gsd_run query git.base-branch --is-protected master` → `true`) impediu o commit porque `.planning/config.json` não tinha `git.allow_default_branch_commits` configurado, apesar de este projeto inteiro (Fases 1-4 e o plano 05-01) já commitar direto em `master` por design (`branching_strategy: "none"`, sem outra branch). Reportei o bloqueio ao orquestrador em vez de contornar a guarda unilateralmente; o usuário optou por definir `git.allow_default_branch_commits: true` (commit `59fb27b`, feito pelo orquestrador, não por este executor), e a execução foi retomada exatamente do ponto onde parou — nenhum trabalho foi perdido, mas a pausa consumiu tempo de execução real, refletido na duração acima.
 - Mesma limitação do `gsd_run check tdd-red-evidence` já documentada em `05-01-SUMMARY.md`: a ferramenta espera saída TAP e não interpreta Surefire/Failsafe — RED foi capturado manualmente (comentando a wiring de produção, rodando o teste, confirmando falha pelo motivo certo, depois restaurando) e documentado nas mensagens de commit de teste.
 
 ## User Setup Required
@@ -265,5 +265,5 @@ None - nenhuma configuração de serviço externo nova (o `LOCALSTACK_AUTH_TOKEN
 ## Self-Check: PASSED
 
 - Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): `OutboxEvent.java`, `SagaCommandParser.java`, `ReservationCommandListener.java`, `V2__outbox_event.sql`, `ReservationCommandConsumptionIT.java`, `IdempotentReservationIT.java`, `SagaCommandParserTest.java`, `SagaQueues.java`, este SUMMARY.
-- Todos os 4 commits do plano confirmados em `git log --oneline --all`: `235fd8b`, `60319e2`, `0ba4d94`, `9ffc8af`.
+- Todos os 4 commits do plano confirmados em `git log --oneline --all`: `e2decb2`, `ebb6291`, `4314c15`, `f5d82a3`.
 - `./mvnw -B -pl inventory-service clean verify` re-executado após o commit final da Task 2: 48 testes, todos verdes.

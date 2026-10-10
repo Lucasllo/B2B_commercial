@@ -155,7 +155,7 @@ both `Advisor` beans from the `ApplicationContext` and assert
 `retryAdvisor.getOrder() < transactionAdvisor.getOrder()`), so a future dependency bump that
 changes either default breaks the build loudly instead of silently.
 
-**RESOLVED 2026-09-20 (commit `4b5d486`):** Independently re-verified the byte-level claim by
+**RESOLVED 2026-09-20 (commit `3b820dc`):** Independently re-verified the byte-level claim by
 decompiling `spring-retry-2.0.13.jar` (`EnableRetry.order()` default `2147483646`) and
 `spring-tx-6.2.19.jar` (`EnableTransactionManagement.order()` default `2147483647`) from this
 project's own `~/.m2` cache — confirmed correct. Applied Option B: `@EnableRetry(order =

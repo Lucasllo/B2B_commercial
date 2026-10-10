@@ -123,8 +123,8 @@ coverage:
 duration: 70min
 completed: 2026-10-03
 status: complete
-plan_head_before: 3d6e45c92b14b94b94bb4470390d09ed86215a2e
-plan_head_after: 0fa9215
+plan_head_before: 6a8c288f3eb997de30333b5d2bc6f5755b5b14da
+plan_head_after: 3d3b3cc
 ---
 
 # Phase 07 Plan 08: OpenAPI do order-service e do inventory-service Summary
@@ -147,9 +147,9 @@ plan_head_after: 0fa9215
 
 ## Task Commits
 
-1. **Task 1 (tracer): spec do order-service com enum de status, erros reais e server /api** - `2e6242a` (feat)
-2. **Task 2: decisão do vendedor e expedição/entrega documentadas, 7 operações travadas** - `65be29a` (feat)
-3. **Task 3: spec do inventory-service com 4 operações, erros reais e server /api** - `0fa9215` (feat)
+1. **Task 1 (tracer): spec do order-service com enum de status, erros reais e server /api** - `bc697a9` (feat)
+2. **Task 2: decisão do vendedor e expedição/entrega documentadas, 7 operações travadas** - `07144e1` (feat)
+3. **Task 3: spec do inventory-service com 4 operações, erros reais e server /api** - `3d3b3cc` (feat)
 
 ## Classes de teste novas ou ampliadas (insumo da matriz de 07-10)
 
@@ -190,6 +190,6 @@ None.
 
 - FOUND: order-service/src/main/java/com/orderflow/order/config/ErrorResponse.java
 - FOUND: inventory-service/src/main/java/com/orderflow/inventory/config/ErrorResponse.java
-- FOUND: 2e6242a
-- FOUND: 65be29a
-- FOUND: 0fa9215
+- FOUND: bc697a9
+- FOUND: 07144e1
+- FOUND: 3d3b3cc

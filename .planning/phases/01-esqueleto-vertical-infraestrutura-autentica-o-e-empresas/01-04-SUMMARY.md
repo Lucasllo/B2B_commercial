@@ -21,7 +21,7 @@ actuals:
   tokens: 10086
   tasks: 2
   commits: 2
-  plan_head_before: f8ac6f885111dcceec7e8bd5f55bfc05e2ce01f1
+  plan_head_before: 9f0bab6de2402aa9f1a308f43292868d59b48a03
 
 tech-stack:
   added:
@@ -179,8 +179,8 @@ status: complete
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1: Criação de empresa compradora com usuário BUYER vinculado** - `5254d44` (feat, TDD: RED confirmado via falha de compilação com o pacote `company`/`GlobalExceptionHandler` temporariamente movidos para fora do classpath, depois GREEN)
-2. **Task 2: O BUYER criado se autentica e o JWT carrega o ID da sua empresa** - `8b610e7` (test — `TokenService` já emitia o claim corretamente desde o plano 01-02; nenhuma mudança de produção necessária, apenas prova)
+1. **Task 1: Criação de empresa compradora com usuário BUYER vinculado** - `8e9e948` (feat, TDD: RED confirmado via falha de compilação com o pacote `company`/`GlobalExceptionHandler` temporariamente movidos para fora do classpath, depois GREEN)
+2. **Task 2: O BUYER criado se autentica e o JWT carrega o ID da sua empresa** - `861d94f` (test — `TokenService` já emitia o claim corretamente desde o plano 01-02; nenhuma mudança de produção necessária, apenas prova)
 
 ## Files Created/Modified
 - `auth-service/.../company/{Company,CompanyRepository,CompanyService,CompanyController,EmailAlreadyUsedException}.java` - domínio de empresa compradora
@@ -207,21 +207,21 @@ Cada task foi commitada atomicamente:
 - **Issue:** A entidade `User` (criada no plano 01-02) só expunha `@Getter` e um construtor sem argumentos `protected` — não havia forma programática de construir um novo `User` com email/hash/papel/companyId a partir de outro pacote.
 - **Fix:** Adicionado um construtor público `User(String email, String passwordHash, Role role, UUID companyId)`, mantendo o construtor sem argumentos `protected` para o Hibernate. O papel é sempre passado explicitamente pelo chamador (nunca a partir de payload de cliente).
 - **Files modified:** `auth-service/src/main/java/com/orderflow/auth/user/User.java`
-- **Commit:** `5254d44`
+- **Commit:** `8e9e948`
 
 **2. [Rule 1 - Bug] `User.createdAt` sem `insertable=false` violava o NOT NULL da coluna ao persistir um BUYER via JPA**
 - **Found during:** Task 1, primeira execução de `CompanyControllerIT`
 - **Issue:** A coluna `users.created_at` é `NOT NULL DEFAULT now()`. O mapeamento original do campo `createdAt` não tinha `insertable=false`, então o Hibernate incluía a coluna no INSERT com valor `NULL` (nenhum construtor da aplicação a preenchia), violando a constraint. Isso nunca havia sido exercitado porque o único usuário existente (SELLER_ADMIN) é semeado via INSERT SQL direto na migração V2, nunca via JPA.
 - **Fix:** Adicionado `insertable = false, updatable = false` à anotação `@Column(name = "created_at")`, deixando o valor default do Postgres assumir — mesmo padrão já usado em `Company.createdAt`.
 - **Files modified:** `auth-service/src/main/java/com/orderflow/auth/user/User.java`
-- **Commit:** `5254d44`
+- **Commit:** `8e9e948`
 
 **3. [Rule 1 - Bug] `AbstractIntegrationTest` quebrava ao ganhar uma segunda classe `*IT`**
 - **Found during:** Task 1, primeira execução de `./mvnw -B -pl auth-service verify` (suíte completa com `AuthControllerIT` + `CompanyControllerIT`)
 - **Issue:** `AbstractIntegrationTest` usava `@Testcontainers` + `@Container static PostgreSQLContainer` — um padrão que, com um único `*IT` (só `AuthControllerIT`, no plano 01-02), funcionava sem problema. Ao herdar o mesmo campo `static` em uma SEGUNDA classe (`CompanyControllerIT`), a extensão JUnit 5 `@Testcontainers` chamava `stop()` no container compartilhado ao final de `AuthControllerIT` (`afterAll`), e ao iniciar `CompanyControllerIT` recriava um container **novo** (ID e porta diferentes), enquanto o pool de conexões Hikari da aplicação ainda apontava para a porta antiga — produzindo `Connection refused`, `CannotCreateTransactionException` e `401` aleatórios em qualquer teste que dependesse de login, incluindo em `AuthControllerIT` isoladamente quando rodado depois. Reproduzido de forma consistente em duas execuções completas da suíte.
 - **Fix:** Trocado o padrão para "singleton container" (documentado pelo próprio Testcontainers): removidas as anotações `@Testcontainers`/`@Container`; o container agora é `static final` e chama `.start()` dentro de um bloco `static` — iniciado uma única vez por JVM, nunca interrompido entre classes de teste. A limpeza fica a cargo do Ryuk/encerramento da JVM, como já acontecia antes para o `testcontainers/ryuk`.
 - **Files modified:** `auth-service/src/test/java/com/orderflow/auth/AbstractIntegrationTest.java`
-- **Commit:** `5254d44`
+- **Commit:** `8e9e948`
 
 ---
 
@@ -255,5 +255,5 @@ None - nenhuma configuração de serviço externo é necessária para este plano
 - FOUND: auth-service/src/test/java/com/orderflow/auth/AuthControllerIT.java
 - FOUND: auth-service/src/test/java/com/orderflow/auth/AbstractIntegrationTest.java
 - FOUND: auth-service/src/main/java/com/orderflow/auth/user/User.java
-- FOUND commit: 5254d44
-- FOUND commit: 8b610e7
+- FOUND commit: 8e9e948
+- FOUND commit: 861d94f

@@ -22,7 +22,7 @@ actuals:
   tokens: 16874
   tasks: 3
   commits: 3
-plan_head_before: f745318180ca16f8f2b639bdfae4bc934d937c0e
+plan_head_before: 5180889dbf4a1129117692b7a8220aa5acb7cc8c
 
 # Tech tracking
 tech-stack:
@@ -256,9 +256,9 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — produto repetido recusado inteiro antes de qualquer chamada ao catálogo** - `fc028c9` (feat) — commitada em sessão anterior
-2. **Task 2: Vizinho fora do ar, lento ou quebrado falha fechado com 503, e tokens ruins são barrados** - `607a703` (feat) — RED (compilação falhou, `DownstreamClientsTest` e os novos métodos do stub não existiam) → GREEN (26 testes em `OrderCreationEdgeCasesIT`, 2 em `DownstreamClientsTest`)
-3. **Task 3: Limites de entrada, total fora da faixa, snapshot congelado e regra de crédito em teste unitário** - `c46593e` (feat) — RED (compilação falhou, `OrderTotalOutOfRangeException` e os dois testes unitários não existiam) → GREEN (42 testes no módulo inteiro)
+1. **Task 1: Tracer — produto repetido recusado inteiro antes de qualquer chamada ao catálogo** - `0311ef9` (feat) — commitada em sessão anterior
+2. **Task 2: Vizinho fora do ar, lento ou quebrado falha fechado com 503, e tokens ruins são barrados** - `1d28e01` (feat) — RED (compilação falhou, `DownstreamClientsTest` e os novos métodos do stub não existiam) → GREEN (26 testes em `OrderCreationEdgeCasesIT`, 2 em `DownstreamClientsTest`)
+3. **Task 3: Limites de entrada, total fora da faixa, snapshot congelado e regra de crédito em teste unitário** - `10cea85` (feat) — RED (compilação falhou, `OrderTotalOutOfRangeException` e os dois testes unitários não existiam) → GREEN (42 testes no módulo inteiro)
 
 **Plan metadata:** commit de documentação a ser criado logo após este SUMMARY.
 
@@ -296,7 +296,7 @@ _Nota: as três tasks carregavam `tdd="true"`; `workflow.tdd_mode` está desativ
 - **Fix:** Bean `AuthenticationEntryPoint` em `SecurityConfig` que escreve diretamente o corpo JSON `{"error":"unauthorized","message":"Authentication is required"}` com status 401, plugado em `oauth2ResourceServer(...).authenticationEntryPoint(...)`.
 - **Files modified:** `order-service/src/main/java/com/orderflow/order/config/SecurityConfig.java`
 - **Verification:** `tokenSignedByDifferentKeyReturns401Unauthorized`, `tokenWithExpirationInThePastReturns401Unauthorized`, `tokenWithDifferentIssuerReturns401Unauthorized` — todos verificam `$.error` igual a `unauthorized`.
-- **Committed in:** `607a703` (Task 2 commit)
+- **Committed in:** `1d28e01` (Task 2 commit)
 
 ---
 
@@ -322,4 +322,4 @@ None - nenhuma configuração de serviço externo é necessária.
 
 ## Self-Check: PASSED
 
-All key files verified present on disk (`DuplicateOrderItemsException.java`, `OrderTotalOutOfRangeException.java`, `DownstreamClientsTest.java`, `OrderDomainTest.java`, `OrderCreationServiceTest.java`, `SecurityConfig.java`, `OrderCreationEdgeCasesIT.java`). All three task commits (`fc028c9`, `607a703`, `c46593e`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across `OrderCreationEdgeCasesIT` 26/26, `DownstreamClientsTest` 2/2, `OrderDomainTest` 6/6, `OrderCreationServiceTest` 4/4, `OrderControllerIT` 3/3, `CreditLockAndExposureIT` 5/5, `CreditLimitBoundaryConcurrencyIT` 3/3). The plan-level `<verification>` combined command (`test -Dtest=DownstreamClientsTest,OrderDomainTest,OrderCreationServiceTest`) re-run and passing. Source gate re-checked: no log statement in `order-service/src/main` references `bearerToken`/`getTokenValue`/`AUTHORIZATION`.
+All key files verified present on disk (`DuplicateOrderItemsException.java`, `OrderTotalOutOfRangeException.java`, `DownstreamClientsTest.java`, `OrderDomainTest.java`, `OrderCreationServiceTest.java`, `SecurityConfig.java`, `OrderCreationEdgeCasesIT.java`). All three task commits (`0311ef9`, `1d28e01`, `10cea85`) verified present in `git log --oneline --all`. Full module suite re-verified green (`./mvnw -pl order-service verify` — `BUILD SUCCESS`, 0 failures/errors across `OrderCreationEdgeCasesIT` 26/26, `DownstreamClientsTest` 2/2, `OrderDomainTest` 6/6, `OrderCreationServiceTest` 4/4, `OrderControllerIT` 3/3, `CreditLockAndExposureIT` 5/5, `CreditLimitBoundaryConcurrencyIT` 3/3). The plan-level `<verification>` combined command (`test -Dtest=DownstreamClientsTest,OrderDomainTest,OrderCreationServiceTest`) re-run and passing. Source gate re-checked: no log statement in `order-service/src/main` references `bearerToken`/`getTokenValue`/`AUTHORIZATION`.

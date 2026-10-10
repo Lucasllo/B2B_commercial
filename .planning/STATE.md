@@ -7,7 +7,7 @@ stopped_at: Completed 07-11-PLAN.md
 last_updated: "2026-10-03T17:05:19.924Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 07 execution started
-state_head: 7e0c812ff5703be774e089bc85c448a9da95bc9d
+state_head: f91149fa5ec64014fa468aeaffb58050bcac9fb4
 progress:
   total_phases: 7
   completed_phases: 6
@@ -195,9 +195,9 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260920-g6c | Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service para visualizacao e teste rapido dos endpoints no navegador | 2026-09-20 | 8d3018b | [260920-g6c-adicionar-springdoc-openapi-swagger-ui-e](./quick/260920-g6c-adicionar-springdoc-openapi-swagger-ui-e/) |
-| 260923-tj9 | Validar issuer (iss) do JWT nos resource servers notification/catalog/inventory — fecha T-03-02 / WR-07; testes passam a usar o decoder de produção | 2026-09-24 | 619e239 | [260923-tj9-validar-issuer-do-jwt-nos-resource-serve](./quick/260923-tj9-validar-issuer-do-jwt-nos-resource-serve/) |
-| 3 | README.md: incluir a porta 8085 (order-service) na lista de portas ligadas a 127.0.0.1 | 2026-09-26 | 2ca2c22 | — |
+| 260920-g6c | Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service para visualizacao e teste rapido dos endpoints no navegador | 2026-09-20 | 94792e6 | [260920-g6c-adicionar-springdoc-openapi-swagger-ui-e](./quick/260920-g6c-adicionar-springdoc-openapi-swagger-ui-e/) |
+| 260923-tj9 | Validar issuer (iss) do JWT nos resource servers notification/catalog/inventory — fecha T-03-02 / WR-07; testes passam a usar o decoder de produção | 2026-09-24 | eac39a8 | [260923-tj9-validar-issuer-do-jwt-nos-resource-serve](./quick/260923-tj9-validar-issuer-do-jwt-nos-resource-serve/) |
+| 3 | README.md: incluir a porta 8085 (order-service) na lista de portas ligadas a 127.0.0.1 | 2026-09-26 | 4a9cff1 | — |
 
 ## Deferred Items
 

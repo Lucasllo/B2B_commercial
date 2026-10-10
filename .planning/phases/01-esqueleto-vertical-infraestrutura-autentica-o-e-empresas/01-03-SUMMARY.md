@@ -21,7 +21,7 @@ actuals:
   tokens: 1703
   tasks: 2
   commits: 2
-  plan_head_before: f8ac6f885111dcceec7e8bd5f55bfc05e2ce01f1
+  plan_head_before: 9f0bab6de2402aa9f1a308f43292868d59b48a03
 
 tech-stack:
   added:
@@ -136,8 +136,8 @@ status: complete
 
 Cada task foi commitada atomicamente:
 
-1. **Task 1: Stack completa no docker-compose com rotas estáticas do Gateway** - `368db4e` (feat)
-2. **Task 2: README de setup em um passo, com a credencial de demonstração declarada** - `b9d5d4c` (docs)
+1. **Task 1: Stack completa no docker-compose com rotas estáticas do Gateway** - `c48f6ff` (feat)
+2. **Task 2: README de setup em um passo, com a credencial de demonstração declarada** - `996fe56` (docs)
 
 ## Files Created
 
@@ -182,5 +182,5 @@ None para este plano — o `LOCALSTACK_AUTH_TOKEN` e o `POSTGRES_PASSWORD` já h
 - FOUND: .env.example
 - FOUND: gateway/src/main/resources/application.yml
 - FOUND: README.md
-- FOUND commit: 368db4e
-- FOUND commit: b9d5d4c
+- FOUND commit: c48f6ff
+- FOUND commit: 996fe56

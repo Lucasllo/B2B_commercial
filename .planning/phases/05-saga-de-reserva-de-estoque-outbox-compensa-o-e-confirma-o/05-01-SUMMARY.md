@@ -20,7 +20,7 @@ actuals:
   tokens: 28027
   tasks: 2
   commits: 4
-  plan_head_before: 57b8d93682435a476a3ef8d115a61e5d38f5b697
+  plan_head_before: 632647a44b3f14b9166ed0d8da07966bba1291d1
 
 tech-stack:
   added: [spring-cloud-aws-starter-sqs (order-service), testcontainers-localstack (order-service, test), awaitility (order-service, test)]
@@ -150,7 +150,7 @@ status: complete
 ## Performance
 
 - **Duration:** ~33 min
-- **Started:** 2026-09-26T10:30:00-03:00 (aprox., commit anterior 57b8d93)
+- **Started:** 2026-09-26T10:30:00-03:00 (aprox., commit anterior 632647a)
 - **Completed:** 2026-09-26T11:03:34-03:00
 - **Tasks:** 2
 - **Files modified:** 32 (17 criados, 15 modificados)
@@ -167,10 +167,10 @@ status: complete
 
 Cada task seguiu o ciclo RED → GREEN (TDD):
 
-1. **Task 1 RED** — `dcb9028` (test): testes com falha intencional (3/5 casos do tracer falham no assert de status RESERVING) + todo o scaffolding de produção necessário para compilar, sem o wiring em `OrderService`.
-2. **Task 1 GREEN** — `50fef0b` (feat): `OrderService.createWithCreditCheck` chama `sagaStarter.start` após aprovação automática — suíte inteira (53 ITs + 15 unitários) verde.
-3. **Task 2 RED** — `ece51c4` (test): testes de aprovação manual com falha intencional (2 casos falham no assert de status/contagem de outbox) + `OrderSagaMigrationIT`/`OutboxRelayTest` (já verdes, comportamento da Task 1) + compose atualizado.
-4. **Task 2 GREEN** — `a4d4b48` (feat): `OrderDecisionService.approve` chama `sagaStarter.start` após aprovação manual — suíte inteira (54 ITs + 19 unitários) verde.
+1. **Task 1 RED** — `7fa3b76` (test): testes com falha intencional (3/5 casos do tracer falham no assert de status RESERVING) + todo o scaffolding de produção necessário para compilar, sem o wiring em `OrderService`.
+2. **Task 1 GREEN** — `c527e9b` (feat): `OrderService.createWithCreditCheck` chama `sagaStarter.start` após aprovação automática — suíte inteira (53 ITs + 15 unitários) verde.
+3. **Task 2 RED** — `c6fa15b` (test): testes de aprovação manual com falha intencional (2 casos falham no assert de status/contagem de outbox) + `OrderSagaMigrationIT`/`OutboxRelayTest` (já verdes, comportamento da Task 1) + compose atualizado.
+4. **Task 2 GREEN** — `e217272` (feat): `OrderDecisionService.approve` chama `sagaStarter.start` após aprovação manual — suíte inteira (54 ITs + 19 unitários) verde.
 
 **Plan metadata:** commit deste SUMMARY (a seguir).
 
@@ -201,7 +201,7 @@ Cada task seguiu o ciclo RED → GREEN (TDD):
 - **Fix:** Asserção alterada para `RESERVING` (comentário explicando o motivo), mantendo intactas as três asserções genuinamente de aprovação manual (linhas originais 68, 84, 117).
 - **Files modified:** `order-service/src/test/java/com/orderflow/order/OrderApprovalIT.java`
 - **Verification:** `./mvnw -B -pl order-service verify` inteiro verde, incluindo `OrderApprovalIT`.
-- **Committed in:** `dcb9028` (Task 1 RED commit — parte do ajuste mecânico)
+- **Committed in:** `7fa3b76` (Task 1 RED commit — parte do ajuste mecânico)
 
 **2. [Rule 3 - Bloqueio] Correção de escape de aspas no init hook do LocalStack**
 - **Found during:** Task 1 (primeira tentativa do `ReservationCommandPublishingIT`, RedrivePolicy)
@@ -209,7 +209,7 @@ Cada task seguiu o ciclo RED → GREEN (TDD):
 - **Fix:** Construção do JSON interno sem escape, seguida de um `sed 's/"/\\"/g'` explícito para escapar as aspas antes de montar o atributo `--attributes`.
 - **Files modified:** `localstack-init/ready.d/02-create-order-saga-resources.sh`
 - **Verification:** `ReservationCommandPublishingIT` (RedrivePolicy/DLQ) e o full `verify` passam contra o LocalStack real.
-- **Committed in:** `dcb9028` (Task 1 RED commit)
+- **Committed in:** `7fa3b76` (Task 1 RED commit)
 
 ---
 
@@ -238,5 +238,5 @@ None - nenhuma configuração de serviço externo nova (o `LOCALSTACK_AUTH_TOKEN
 ## Self-Check: PASSED
 
 - Todos os arquivos-chave criados confirmados em disco (`[ -f ]`): migração V2, `ReservationSagaStarter`, `OutboxRelay`, init hook da saga, `ReservationCommandPublishingIT`, `OrderSagaMigrationIT`, `OutboxRelayTest`, este SUMMARY.
-- Todos os 5 commits do plano confirmados em `git log --oneline --all`: `dcb9028`, `50fef0b`, `ece51c4`, `a4d4b48`, `d0c6b5f`.
+- Todos os 5 commits do plano confirmados em `git log --oneline --all`: `7fa3b76`, `c527e9b`, `c6fa15b`, `e217272`, `52a0243`.
 - `./mvnw -B -pl order-service clean verify` re-executado após o commit final: 19 testes unitários + 54 testes de integração, todos verdes.

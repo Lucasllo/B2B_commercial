@@ -21,7 +21,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 32dedd1
+plan_head_before: 07f6fc6
 
 # Tech tracking
 tech-stack:
@@ -128,8 +128,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Tracer — catalogo e estoque alcancaveis pelo Gateway, com todo o sistema subindo em um comando** - `42088d0` (wip) — codigo recuperado de sessao anterior interrompida; verificacao completa (automated + human-check) executada pelo orquestrador diretamente no host, fora deste worktree (ver Deviations)
-2. **Task 2: A prova de que a reserva nunca vende acima do estoque, sob concorrencia HTTP real** - `cf874fa` (test) — RED confirmado antes do ajuste de producao (10-thread scenario esgotava retries) → ajuste de `maxAttempts`/backoff → GREEN (6/6 nos dois `*IT` novos, estavel em duas execucoes consecutivas)
+1. **Task 1: Tracer — catalogo e estoque alcancaveis pelo Gateway, com todo o sistema subindo em um comando** - `790cf05` (wip) — codigo recuperado de sessao anterior interrompida; verificacao completa (automated + human-check) executada pelo orquestrador diretamente no host, fora deste worktree (ver Deviations)
+2. **Task 2: A prova de que a reserva nunca vende acima do estoque, sob concorrencia HTTP real** - `60ec74e` (test) — RED confirmado antes do ajuste de producao (10-thread scenario esgotava retries) → ajuste de `maxAttempts`/backoff → GREEN (6/6 nos dois `*IT` novos, estavel em duas execucoes consecutivas)
 
 **Plan metadata:** commit de documentacao final a ser criado logo apos este SUMMARY.
 
@@ -160,7 +160,7 @@ Each task was committed atomically:
 - **Fix:** `maxAttempts` elevado para 10 nos tres metodos retryable (`setStock`, `reserve`, `release`), com `@Backoff(delay=20, multiplier=2, maxDelay=200)` — o teto evita que o crescimento exponencial deixasse o pior caso lento demais (sem teto, a decima tentativa esperaria mais de 12 segundos). Nao relaxa nenhuma asserção de teste: o conjunto de respostas aceito pelos testes de concorrencia ja incluia a disputa esgotada (D-21) como recusa legitima; o ajuste so reduz a frequencia dela no caso em que a matematica do cenario diz que todo mundo deveria caber.
 - **Files modified:** `inventory-service/src/main/java/com/orderflow/inventory/stock/InventoryService.java`
 - **Verification:** `InventoryRetryContentionIT` (3/3) e `StockReservationConcurrencyIT` (3/3) verdes apos o ajuste, reexecutados duas vezes seguidas sem instabilidade; `catalog-service`+`inventory-service` (27/27) e `auth-service` (46/46) sem regressao.
-- **Commit:** `cf874fa`
+- **Commit:** `60ec74e`
 
 ### Documented Deviations (not auto-fixed, no code impact)
 

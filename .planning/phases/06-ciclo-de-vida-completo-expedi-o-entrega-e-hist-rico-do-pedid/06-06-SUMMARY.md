@@ -19,7 +19,7 @@ actuals:
   tasks: 2
   commits: 3
 
-plan_head_before: f31997a3a5b3094f0f26aff3f2c907783e92a602
+plan_head_before: 4721a1feb8273c125355d1e2191ef42c3055cc6e
 
 tech-stack:
   added: []
@@ -122,9 +122,9 @@ O LocalStack init hook (ramo de recriacao da tabela antiga) e o novo healthcheck
 
 ## Task Commits
 
-1. **Task 1 (tracer): smoke-order-lifecycle.sh** - `c136b16` (feat)
-2. **Task 2: OrderShipmentE2EIT** - `503ef26` (test)
-3. **Correcao Rule 1: E2eContextsSmokeIT** - `3d19a3d` (fix)
+1. **Task 1 (tracer): smoke-order-lifecycle.sh** - `b0edef9` (feat)
+2. **Task 2: OrderShipmentE2EIT** - `9743c79` (test)
+3. **Correcao Rule 1: E2eContextsSmokeIT** - `023cb18` (fix)
 
 **Plan metadata:** commit docs(06-06) a seguir.
 
@@ -138,7 +138,7 @@ O LocalStack init hook (ramo de recriacao da tabela antiga) e o novo healthcheck
 - **Fix:** asserções atualizadas para `("1","2","3")` (order) e `("1","2","3","4")` (inventory); metodos renomeados para `...ThreeMigrations...` e `...FourMigrations...`.
 - **Files modified:** `e2e-tests/src/test/java/com/orderflow/e2e/E2eContextsSmokeIT.java`
 - **Verification:** segundo `./mvnw -B verify` completo: BUILD SUCCESS, e2e-tests 17 testes, 0 falhas.
-- **Commit:** `3d19a3d`
+- **Commit:** `023cb18`
 
 **2. [Nota de execucao] Comando do E2E isolado**
 - O comando de verificacao do plano foi rodado com `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` adicionais para evitar reexecutar os testes unitarios dos modulos `-am`; relatorio do Failsafe do `e2e-tests` mostra `Tests run: 5` (nao 0).
@@ -160,5 +160,5 @@ None. O smoke so imprime ids, status e tipos de evento (T-06-23); 403 do BUYER e
 ## Self-Check: PASSED
 
 - `scripts/smoke-order-lifecycle.sh` e `OrderShipmentE2EIT.java` existem; `git ls-files -s` do smoke comeca com `100755`.
-- Commits `c136b16`, `503ef26` e `3d19a3d` existem em `master`.
+- Commits `b0edef9`, `9743c79` e `023cb18` existem em `master`.
 - O script contem `/api/notifications/orders/`, `/ship`, `/deliver`, `invalid_order_transition`, `order_not_found` e `uniq`; `OrderShipmentE2EIT` contem `/ship` (via `postAction`), `/deliver`, `inventory-commands-queue` e nenhuma instrucao SQL de escrita.

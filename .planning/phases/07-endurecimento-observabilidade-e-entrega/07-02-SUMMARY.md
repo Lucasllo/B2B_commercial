@@ -105,8 +105,8 @@ coverage:
 duration: 66min
 completed: 2026-10-02
 status: complete
-plan_head_before: c5864f292526d281c516fed5173b9f9f05c947d0
-plan_head_after: a64d881cb671f703648d3088a9b878b43fb6535e
+plan_head_before: 5c96357c47dc22cfcba2e3fffa7a4dff24db40aa
+plan_head_after: ee6b0c3315db9bdea3ec9236fef012100c7729cc
 ---
 
 # Phase 07 Plan 02: Correlation-ID no order-service Summary
@@ -130,12 +130,12 @@ plan_head_after: a64d881cb671f703648d3088a9b878b43fb6535e
 
 ## Task Commits
 
-1. **Task 1 RED: testes do filtro, da outbox e do IT de propagação** - `bb32c34` (test)
-2. **Task 1 GREEN: filtro, V4, writer e relay** - `07dd9fe` (feat)
-3. **Task 2 RED: testes do caminho de volta da saga e do timeout** - `502c48c` (test)
-4. **Task 2 GREEN: listener, saga e recordCorrelationId** - `685709d` (feat)
-5. **Task 3 RED: testes do header de saída** - `220d63e` (test)
-6. **Task 3 GREEN: interceptor RestClient** - `a64d881` (feat)
+1. **Task 1 RED: testes do filtro, da outbox e do IT de propagação** - `0c932fb` (test)
+2. **Task 1 GREEN: filtro, V4, writer e relay** - `b6a33d7` (feat)
+3. **Task 2 RED: testes do caminho de volta da saga e do timeout** - `fceb249` (test)
+4. **Task 2 GREEN: listener, saga e recordCorrelationId** - `a66ba60` (feat)
+5. **Task 3 RED: testes do header de saída** - `90801a7` (test)
+6. **Task 3 GREEN: interceptor RestClient** - `ee6b0c3` (feat)
 
 ## Decisions Made
 
@@ -149,9 +149,9 @@ plan_head_after: a64d881cb671f703648d3088a9b878b43fb6535e
 
 | Task | RED | GREEN | REFACTOR |
 | ---- | --- | ----- | -------- |
-| 1    | bb32c34 | 07dd9fe | — |
-| 2    | 502c48c | 685709d | — |
-| 3    | 220d63e | a64d881 | — |
+| 1    | 0c932fb | b6a33d7 | — |
+| 2    | fceb249 | a66ba60 | — |
+| 3    | 90801a7 | ee6b0c3 | — |
 
 Cada RED falhou na asserção nomeada (`CorrelationIdFilterTest`, `recordCorrelationIdStoresTheCreationIdAndIgnoresALaterValue`, `clientsSendTheMdcCorrelationIdToCatalogAndAuth`) e `gsd-tools check tdd-red-evidence` devolveu `RED_EVIDENCE_OK` antes do GREEN. Não houve commit de refactor.
 
@@ -184,9 +184,9 @@ None.
 - FOUND: order-service/src/main/java/com/orderflow/order/observability/CorrelationIdFilter.java
 - FOUND: order-service/src/main/resources/db/migration/V4__correlation_id.sql
 - FOUND: order-service/src/test/java/com/orderflow/order/CorrelationIdPropagationIT.java
-- FOUND: bb32c34
-- FOUND: 07dd9fe
-- FOUND: 502c48c
-- FOUND: 685709d
-- FOUND: 220d63e
-- FOUND: a64d881
+- FOUND: 0c932fb
+- FOUND: b6a33d7
+- FOUND: fceb249
+- FOUND: a66ba60
+- FOUND: 90801a7
+- FOUND: ee6b0c3

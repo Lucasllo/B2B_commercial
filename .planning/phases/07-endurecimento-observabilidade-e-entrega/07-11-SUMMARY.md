@@ -16,7 +16,7 @@ provides:
   - estudos/29-github-actions-ci.md
 affects: [fim da fase 07 — UAT humano do CI e do Try it out]
 
-plan_head_before: 646c5816b1cb0540fee3283652a51c2df85b2159
+plan_head_before: 36c229d8a04b3014999ba395846762e768fc1c72
 actuals:
   tokens: 13000
   tasks: 3
@@ -76,9 +76,9 @@ completed: 2026-10-03
 
 ## Task Commits
 
-1. **Task 1: smoke de Correlation-ID** — `8f07561`
-2. **Task 2: pipeline de CI, guardas, resumo, estudo 29 e pom** — `9e2d8ef`
-3. **Task 3: README Para avaliadores e docs** — `7e0c812`
+1. **Task 1: smoke de Correlation-ID** — `261ceba`
+2. **Task 2: pipeline de CI, guardas, resumo, estudo 29 e pom** — `2679cfa`
+3. **Task 3: README Para avaliadores e docs** — `f91149f`
 
 ## Decisions Made
 
@@ -122,4 +122,4 @@ Nenhum — o workflow usa só `push`/`pull_request`, `permissions: contents: rea
 ## Self-Check: PASSED
 
 - Arquivos: `scripts/smoke-correlation-id.sh`, `scripts/check-no-skipped-tests.sh`, `scripts/ci-summary.sh`, `.github/workflows/ci.yml`, `estudos/29-github-actions-ci.md` existem; os três scripts são `100755` no git.
-- Commits `8f07561`, `9e2d8ef`, `7e0c812` existem; `git rev-list --count 646c581..HEAD` = 3.
+- Commits `261ceba`, `2679cfa`, `f91149f` existem; `git rev-list --count 36c229d..HEAD` = 3.

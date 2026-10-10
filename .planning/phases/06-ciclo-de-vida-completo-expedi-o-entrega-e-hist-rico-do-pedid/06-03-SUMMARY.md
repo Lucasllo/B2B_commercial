@@ -23,7 +23,7 @@ actuals:
   tasks: 2
   commits: 2
 
-plan_head_before: 20877b6782db877645d3b71c121f9c99fefe7b04
+plan_head_before: caafcd0d4ee071797ab8ae76a19e349ce278558e
 
 tech-stack:
   added: []
@@ -151,8 +151,8 @@ RELEASE_AFTER_SHIP=ignored
 
 ## Task Commits
 
-1. **Task 1 (tracer): ShipStock baixa on_hand e reserved e marca o livro** - `2a2d520` (feat)
-2. **Task 2: idempotencia pelo livro, anomalias e guardas em release/releaseAll** - `12f5e54` (feat)
+1. **Task 1 (tracer): ShipStock baixa on_hand e reserved e marca o livro** - `9a89c0b` (feat)
+2. **Task 2: idempotencia pelo livro, anomalias e guardas em release/releaseAll** - `55ba6b2` (feat)
 
 ## Deviations from Plan
 
@@ -186,4 +186,4 @@ Pronto para 06-04. Lado order-service e inventory-service da expedicao completos
 ## Self-Check: PASSED
 
 - Arquivos criados presentes: V4__stock_reservation_shipped.sql, ShipStockCommand.java, ShipStockConsumptionIT.java.
-- Commits `2a2d520` e `12f5e54` existem em `git log`.
+- Commits `9a89c0b` e `55ba6b2` existem em `git log`.
