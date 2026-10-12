@@ -1,164 +1,172 @@
-# Estudos — OrderFlow
+# Estudos do OrderFlow
 
-Notas de estudo pessoal para entender, elemento por elemento, como o projeto OrderFlow
-funciona. Cada arquivo explica uma parte do projeto em nível iniciante, com analogias e
-sem pressupor conhecimento prévio.
+Material de estudo em português para entender, peça por peça, como o OrderFlow funciona.
+Cada nota explica uma parte do projeto em nível iniciante, com analogias e sem pressupor
+conhecimento prévio, e depois mostra como ela aparece no código real, com caminhos de
+arquivo e trechos copiados dos fontes.
 
-Diferente de [`docs/`](../docs/), que é documentação voltada a terceiros/portfólio, esta
+Diferente de [`docs/`](../docs/), que é documentação para terceiros e avaliadores, esta
 pasta é para consulta própria durante o aprendizado.
 
-## Índice
+## Para quem é e como usar
 
-1. [Docker Compose](01-docker-compose.md) — os serviços que sobem juntos localmente
-   (Postgres, LocalStack, auth, catalog, inventory, notification, order e gateway), como
-   eles dependem uns dos outros e o healthcheck do LocalStack que só fica saudável com as
-   filas e a tabela de notificações no formato atual
-2. [Spring Boot e Spring Cloud](02-spring-boot-e-spring-cloud.md) — quais versões o
-   projeto usa e por que essas escolhas foram feitas
-3. [Dockerfile](03-dockerfile.md) — como cada microsserviço é empacotado em uma imagem
-   Docker, do código-fonte até o container rodando
-4. [Maven Wrapper (mvnw / mvnw.cmd)](04-maven-wrapper.md) — como o projeto compila sem
-   exigir que o Maven esteja instalado na máquina
-5. [SecurityConfig](05-security-config.md) — como o `auth-service` decide quem pode
-   acessar o quê
-6. [JWKS](06-jwks.md) — como os outros serviços confirmam que um token de login é
-   autêntico, sem perguntar ao `auth-service` toda vez (já implementado nos quatro
-   resource servers)
-7. [Pasta target](07-pasta-target.md) — a pasta de saída gerada pelo Maven a cada build,
-   por que ela não é versionada e por que pode ser apagada sem medo
-8. [Flyway e Migrations](08-flyway-migrations.md) — como o banco de dados evolui de
-   forma controlada e versionada, e como isso funciona em produção
-9. [GlobalExceptionHandler](09-global-exception-handler.md) — como o `auth-service`
-   padroniza e protege as respostas de erro em toda a aplicação (em detalhe), e os
-   mapeamentos específicos do handler de cada um dos outros serviços
-10. [application.yml do gateway](10-gateway-application-yml.md) — como o roteamento de
-    requisições para os outros serviços é configurado
-11. [CompanyGuard](11-companyguard.md) — como o projeto impede que uma empresa veja ou
-    altere dados de outra empresa
-12. [Records e suas anotações](12-records-e-anotacoes.md) — o que é um `record` em Java,
-    todas as anotações de validação/serialização usadas nos DTOs do projeto e os `records`
-    que aparecem fora dos DTOs (`ReservationOutcome`, `CarrierAssignment`, `ClientProperties`)
-13. [springdoc-openapi (Swagger UI)](13-springdoc-openapi.md) — o que cada serviço põe no
-    seu spec OpenAPI no nível "contratos + erros" (`@Tag`, `@Operation`, `@ApiResponse`,
-    `@Schema` com exemplos, o enum `OrderStatus` real), o `server` `/api` que faz o "Try it
-    out" passar pelo Gateway, o `ErrorResponse` que existe só para a documentação, o login
-    público e o JWKS fora do spec, e o `OpenApiDocsIT` que percorre o contrato inteiro
-14. [Spring Retry (@Retryable, @Recover, @EnableRetry)](14-spring-retry.md) — como o
-    `inventory-service` reexecuta automaticamente operações de estoque (REST e comandos da
-    saga) que colidem por conflito de versão, por que a ordem entre o aspecto de retry e o
-    de transação importa, o `@Recover` extra para a anomalia técnica e o atributo
-    `recover = "..."` que escolhe o plano B pelo nome (WR-02)
-15. [Pasta de testes e Testcontainers](15-testes.md) — a convenção `*Test.java` vs
-    `*IT.java`, os testes unitários das regras centrais sem Docker, as dependências de teste
-    de cada módulo, como o Testcontainers sobe Postgres e LocalStack reais, o módulo
-    `e2e-tests` com dois serviços reais na mesma JVM, o `OrderStatusDiagramConsistencyTest`
-    que confere o diagrama da documentação, o `OpenApiDocsIT` e a guarda contra teste
-    desligado
-16. [SQS, Outbox e mensageria entre serviços](16-sqs-outbox-mensageria.md) — as três filas
-    e quem publica/consome cada uma, o problema de dual-write e como o Transactional Outbox o
-    fecha (inclusive para o `STOCK_ADJUSTED`, desde o 05-04), o roteamento do relay por
-    `eventType` (comandos da saga, respostas, `STOCK_ADJUSTED` e `ORDER_*`), o
-    Correlation-ID como atributo da mensagem, o conversor sem `JavaType`, o limite de tempo
-    do cliente SQS (WR-03), o limite de tamanho do corpo (WR-02) e o consumo idempotente
-17. [DynamoDB](17-dynamodb.md) — o banco NoSQL do `notification-service`, a partição
-    genérica `entityId` (produto ou pedido) e a sort key da tabela `notification-history`,
-    por que o init hook recria a tabela com a chave antiga, `@DynamoDbBean`/Enhanced Client,
-    a ordenação `occurredAt` → ciclo de vida → `sortKey`, e a comparação com o Postgres/JPA
-18. [OIDC e a claim `iss`](18-oidc-claim-iss.md) — o que é a claim `iss` de um JWT, o que é
-    OIDC e por que o projeto não usa descoberta automática, e a correção (T-03-02/WR-07)
-    que passou a rejeitar tokens com emissor errado ou ausente nos quatro resource servers
-    (catalog, inventory, notification, order)
-19. [`@SqsListener` — como os serviços recebem mensagens](19-sqslistener-consumo.md) — o
-    container ouvinte em segundo plano, long polling, por que o parâmetro é `String`, o
-    atributo `correlationId` restaurado no MDC, como o retorno (ou exceção) decide se a
-    mensagem é confirmada, o WARN sanitizado de evento `ORDER_*` descartado (WR-03), e os
-    listeners da saga (`ReserveStock`/`ReleaseStock`/`ShipStock`, falha de negócio vs.
-    técnica, DLQ, `ShipStock` inválido → DLQ (WR-01), `poll-timeout: 0s`)
-20. [`@ConfigurationProperties` — o `ClientProperties`](20-configuration-properties.md) —
-    como o `order-service` lê do `application.yml` os endereços e timeouts dos serviços que
-    chama, por que `URI`/`Duration` e `@Validated` fazem a aplicação falhar cedo na
-    inicialização, e como o `ClientConfig` transforma isso em `RestClient`
-21. [Crédito e trava por empresa (pasta `credit`)](21-credito-e-trava-por-empresa.md) — a
-    regra de limite de crédito (`CreditPolicy`), a condição de corrida entre pedidos
-    simultâneos da mesma empresa, e como a linha de trava com `SELECT ... FOR UPDATE` e
-    `Propagation.MANDATORY` faz os pedidos passarem pela checagem um de cada vez
-22. [Os services de pedido](22-services-de-pedido.md) — `OrderCreationService` (validação
-    "mais barato primeiro" e chamadas HTTP fora da transação), `OrderService` (gravação com
-    checagem de crédito, consulta com 404 para outras empresas e paginação com ordenação fixa),
-    `OrderDecisionService` (aprovação/rejeição manual com trava + `refresh`),
-    `OrderShipmentService` (expedição e entrega) e o `OrderTimelineEvents` que grava a linha
-    do tempo na mesma transação, e por que o `@Transactional` exige classes separadas
-23. [Anotações de repository](23-anotacoes-de-repository.md) — consultas derivadas pelo nome
-    do método, `@Query` (JPQL vs. SQL nativo) e `@Param`, `@Modifying` e a memória do JPA,
-    `@Lock` e os tipos de trava pessimista/otimista, e outras como `@Repository`,
-    `@EntityGraph` (problema N+1), `@QueryHints` e `@Procedure`
-24. [Pasta `scripts` — testes de fumaça e guardas](24-scripts-smoke.md) — o que é um smoke
-    test e como ele difere dos testes Java, o "modo rigoroso" do Bash, como os scripts rodam
-    `curl` dentro do container do Gateway, o que cada passo dos cinco smokes prova
-    (notificação, pedidos e crédito, saga, ciclo de vida completo e Correlation-ID) e o que
-    fazem as guardas `check-*.sh` e o `ci-summary.sh`
-25. [Visão geral da arquitetura](25-visao-geral-da-arquitetura.md) — o mapa do projeto: o que
-    cada um dos seis módulos faz, o que `BUYER` e `SELLER_ADMIN` podem fazer (inclusive
-    expedir e entregar), quem chama quem (HTTP ou SQS), em que momento e por qual endpoint ou
-    fila, a linha do tempo do pedido, o Correlation-ID e o Swagger no Gateway, e os estados do
-    pedido. Tem [versão com diagramas](https://claude.ai/code/artifact/28ba7064-135a-4a8e-bb53-df77ba32c987)
-    (desenhada antes das Fases 6 e 7)
-26. [A saga de reserva de estoque](26-saga-de-reserva-de-estoque.md) — como um pedido
-    aprovado vira `RESERVING` e termina `CONFIRMED` ou `CANCELLED`: `ReservationSagaStarter`,
-    a tabela `outbox_event` e o relay com `FOR UPDATE SKIP LOCKED`, as filas com DLQ, a
-    reserva tudo-ou-nada do `inventory-service`, a idempotência pelo estado do pedido, a
-    compensação com `ReleaseStock`, o job de tempo limite (`SagaTimeoutJob`), a devolução
-    idempotente (`releaseAll`) e a lápide que resolve a corrida numa fila SQS sem ordem
-27. [Correlation-ID e MDC](27-correlation-id-e-mdc.md) — o identificador que nasce no
-    Gateway, por que o MDC do SLF4J é por thread e precisa ser limpo, por que o valor do
-    cliente é validado antes de entrar no log, como cada um dos seis módulos recebe e repassa
-    o ID (filtro HTTP, `RestClient`, coluna do outbox, atributo SQS, listener que restaura o
-    MDC) e como o `smoke-correlation-id.sh` prova o mesmo ID nos seis logs
-28. [OpenAPI agregado no Gateway](28-openapi-agregado-no-gateway.md) — por que o avaliador
-    abre uma Swagger UI só, como o dropdown busca cada spec em `/docs/<svc>/v3/api-docs` na
-    mesma origem, por que esse prefixo não é `/api`, e por que o "Try it out" passa pelo
-    Gateway com `server` `/api`
-29. [GitHub Actions e a integração contínua](29-github-actions-ci.md) — o que é CI e como um
-    workflow se organiza (gatilhos, jobs, matriz, `needs`, secrets), por que os módulos com
-    LocalStack rodam um de cada vez (sessão única do token Hobby), por que o CI falha de
-    forma visível sem o token em vez de pular testes, por que PR de fork não recebe secret e
-    onde ver os relatórios de teste (artifact e resumo do run)
-30. [Ciclo de vida do pedido: expedição e entrega](30-ciclo-de-vida-expedicao-e-entrega.md)
-    — a tabela única de 9 transições em `OrderStatus` e o único ponto que muda o status
-    (`moveTo`), o 409 `invalid_order_transition`, a transportadora simulada e o código de
-    rastreio S10 determinístico (SHA-256 do pedido), os endpoints `ship`/`deliver`, a baixa
-    física do estoque pelo comando `ShipStock` (uma vez por reserva) e os três testes que
-    travam tabela, API e diagrama da documentação
-31. [A linha do tempo do pedido](31-linha-do-tempo-do-pedido.md) — como cada transição do
-    pedido grava um dos oito eventos `ORDER_*` no outbox na mesma transação, como o relay os
-    leva à `notification-events-queue`, como o `notification-service` valida cada tipo e monta
-    a frase no servidor, a ordenação por ciclo de vida e o `GET /notifications/orders/{orderId}`
-    com a regra `SELLER_ADMIN`/`BUYER` e o 404 idêntico que impede enumerar pedidos alheios
-32. [ADRs — o diário das decisões de arquitetura](32-adrs.md) — o que é um ADR, o formato
-    MADR em português usado em `docs/adr/`, por que toda decisão precisa de uma alternativa
-    rejeitada, os 11 ADRs do projeto em uma linha cada e o que o `check-adrs.sh` confere
-33. [A matriz regra → teste](33-matriz-regra-teste.md) — por que "sem lacunas" é medido por
-    uma tabela regra → teste e não por porcentagem de linhas, o formato do `07-COVERAGE.md`,
-    o que significa `LACUNA`, como o `check-coverage-matrix.sh` confere a matriz (modo
-    estrito e `--report`) e roda no CI, e quais lacunas foram fechadas com testes unitários
-    novos
-34. [Lock otimista, reexecução automática e relay](34-lock-otimista-e-relay.md) — explicação
-    para iniciantes, com analogias (a planilha disputada por dois vendedores, a caixa de
-    saída e o carteiro), de como o campo `@Version` impede que uma gravação apague a outra,
-    como o `@Retryable` relê e tenta de novo, e como o relay leva os avisos do outbox até a
-    fila SQS sem perder nenhum
-35. [Variáveis de ambiente e valor padrão](35-variaveis-de-ambiente-e-valor-padrao.md) — o
-    que significa `${NOME:valor}` no `application.yml`, usando o `jwk-set-uri` como exemplo:
-    por que o endereço vem de uma variável de ambiente com `localhost` como plano B, por que
-    `localhost` aponta para o próprio container no Docker Compose, e como o *relaxed binding*
-    transforma `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI` na propriedade do Spring
-36. [BOM, trem de releases e outros termos de versão](36-bom-trem-de-releases-e-outros-termos.md)
-    — explicação para iniciantes, com analogias, de BOM (o kit de peças testadas juntas),
-    bleeding-edge, trem de releases do Spring Cloud ("Northfields"), churn de versão e service
-    discovery (a recepção do hotel), e por que o projeto dispensa Eureka/Consul
-37. [Design patterns usados no projeto](37-design-patterns-do-projeto.md) — o mapa dos
-    padrões de arquitetura (gateway, banco por serviço), de mensageria (saga, outbox, relay,
-    compensação, idempotência, DLQ, lápide, Correlation-ID), de persistência (repository,
-    locks otimista e pessimista, `MANDATORY`) e de código (máquina de estados, strategy,
-    decorator, factory, builder...), com onde, em que fase e por que cada um entrou, e os
-    padrões rejeitados de propósito
+- Para quem está aprendendo Java/Spring, microsserviços, mensageria, bancos SQL e NoSQL,
+  testes e CI e quer um projeto completo como referência.
+- Para o próprio autor, como revisão do que foi construído e do porquê de cada decisão.
+- Leia com o código aberto ao lado. Quando a nota citar
+  `order-service/src/main/java/com/orderflow/order/order/OrderService.java`, abra o arquivo
+  e confira.
+- A maioria das notas segue o mesmo caminho: o assunto **em uma frase**, o **problema** que
+  ele resolve, o assunto **no código do projeto** (seções numeradas) e um fechamento
+  **com uma analogia** ou um resumo "em uma frase cada".
+
+## Estado do projeto
+
+As Fases 1 a 6 estão concluídas e a Fase 7 está em verificação:
+
+- **Fase 1:** tudo sobe com o `docker compose`, e um usuário se autentica pelo Gateway com
+  JWT (papel e empresa).
+- **Fase 2:** catálogo de produtos e estoque com reserva protegida contra concorrência.
+- **Fase 3:** primeiro evento no SQS virando histórico de notificação no DynamoDB.
+- **Fase 4:** criação de pedidos com aprovação por limite de crédito.
+- **Fase 5:** a saga de reserva de estoque com Transactional Outbox e compensação.
+- **Fase 6:** expedição, entrega e a linha do tempo completa do pedido.
+- **Fase 7:** OpenAPI, Correlation-ID nos logs, testes completos, CI e ADRs.
+
+A posição atual fica em [STATE.md](../.planning/STATE.md) e o plano completo em
+[ROADMAP.md](../.planning/ROADMAP.md).
+
+## Comece por aqui
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 25 | [Visão geral da arquitetura](25-visao-geral-da-arquitetura.md) | O mapa do projeto: os seis módulos, o que `BUYER` e `SELLER_ADMIN` podem fazer, quem chama quem (HTTP ou SQS), o fluxo e os estados do pedido. Tem [versão com diagramas](https://claude.ai/code/artifact/28ba7064-135a-4a8e-bb53-df77ba32c987) (desenhada antes das Fases 6 e 7) |
+| 37 | [Design patterns do projeto](37-design-patterns-do-projeto.md) | Os padrões de arquitetura, mensageria, persistência e código: onde, em que fase e por que cada um entrou, e os padrões rejeitados de propósito |
+
+## Notas por tema
+
+### Infraestrutura, build e versões
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 01 | [Docker Compose](01-docker-compose.md) | Os 8 serviços que sobem juntos, as dependências entre eles e o healthcheck do LocalStack |
+| 02 | [Spring Boot e Spring Cloud](02-spring-boot-e-spring-cloud.md) | Quais versões o projeto usa e por que essas escolhas |
+| 03 | [Dockerfile](03-dockerfile.md) | Build multi-stage, JDK × JRE, cache de camadas, fat jar, `HEALTHCHECK` e usuário não-root |
+| 04 | [Maven Wrapper](04-maven-wrapper.md) | Como `mvnw`/`mvnw.cmd` compilam o projeto sem Maven instalado |
+| 07 | [Pasta `target`](07-pasta-target.md) | A saída do build, por que não é versionada e por que pode ser apagada |
+| 35 | [Variáveis de ambiente e valor padrão](35-variaveis-de-ambiente-e-valor-padrao.md) | O `${NOME:valor}` do `application.yml`, por que `localhost` não serve dentro do container e o *relaxed binding* |
+| 36 | [BOM, trem de releases e outros termos](36-bom-trem-de-releases-e-outros-termos.md) | BOM, bleeding-edge, trem de releases ("Northfields"), churn e service discovery |
+
+### Segurança e multiempresa
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 05 | [SecurityConfig](05-security-config.md) | Como o `auth-service` guarda senhas, verifica login e decide quem acessa o quê |
+| 06 | [JWKS](06-jwks.md) | Como os outros serviços confirmam que um token é autêntico sem perguntar ao `auth-service` toda vez |
+| 18 | [OIDC e a claim `iss`](18-oidc-claim-iss.md) | O que é a claim `iss`, por que o projeto não usa descoberta OIDC e a correção que rejeita emissor errado ou ausente |
+| 10 | [`application.yml` do Gateway](10-gateway-application-yml.md) | As rotas estáticas para cada serviço e o Gateway sem Spring Security |
+| 11 | [CompanyGuard](11-companyguard.md) | Como uma empresa é impedida de ver ou alterar dados de outra |
+
+### API, validação e erros
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 12 | [Records e suas anotações](12-records-e-anotacoes.md) | O que é um `record`, as anotações de validação/serialização dos DTOs e os records fora dos DTOs |
+| 09 | [GlobalExceptionHandler](09-global-exception-handler.md) | Como as respostas de erro são padronizadas e protegidas, e o handler de cada serviço |
+| 20 | [`@ConfigurationProperties`](20-configuration-properties.md) | O `ClientProperties` do `order-service`, `URI`/`Duration`, `@Validated` (falhar cedo) e o `RestClient` |
+| 13 | [springdoc-openapi (Swagger UI)](13-springdoc-openapi.md) | O spec de cada serviço no nível "contratos + erros", o `server` `/api`, o `ErrorResponse` e o `OpenApiDocsIT` |
+| 28 | [OpenAPI agregado no Gateway](28-openapi-agregado-no-gateway.md) | Uma Swagger UI só, o dropdown em `/docs/<svc>/v3/api-docs` e por que o "Try it out" passa pelo Gateway |
+
+### Persistência e concorrência
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 08 | [Flyway e migrations](08-flyway-migrations.md) | Como o banco evolui de forma versionada e a regra de ouro das migrations aplicadas |
+| 23 | [Anotações de repository](23-anotacoes-de-repository.md) | Consultas derivadas, `@Query`, `@Param`, `@Modifying`, `@Lock`, `@EntityGraph` e outras |
+| 34 | [Lock otimista, reexecução e relay](34-lock-otimista-e-relay.md) | Introdução com analogias a `@Version`, `@Retryable` e ao relay do outbox |
+| 14 | [Spring Retry](14-spring-retry.md) | `@Retryable`, `@Recover` e `@EnableRetry` no `inventory-service`, a ordem entre retry e transação e o `recover = "..."` |
+| 21 | [Crédito e trava por empresa](21-credito-e-trava-por-empresa.md) | A regra `CreditPolicy`, a corrida entre pedidos simultâneos e a trava com `SELECT ... FOR UPDATE` e `MANDATORY` |
+| 17 | [DynamoDB](17-dynamodb.md) | O banco NoSQL do `notification-service`, as chaves da tabela, `@DynamoDbBean` e a comparação com Postgres/JPA |
+
+### Pedido e saga
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 22 | [Os services de pedido](22-services-de-pedido.md) | Criação, gravação com crédito, decisão manual, expedição e entrega, e por que o `@Transactional` exige classes separadas |
+| 16 | [SQS, Outbox e mensageria](16-sqs-outbox-mensageria.md) | As filas, o problema de dual-write, o Transactional Outbox, o roteamento do relay e o consumo idempotente |
+| 19 | [`@SqsListener`](19-sqslistener-consumo.md) | Como os serviços recebem mensagens, o Correlation-ID restaurado no MDC, confirmação × reentrega e DLQ |
+| 26 | [A saga de reserva de estoque](26-saga-de-reserva-de-estoque.md) | `RESERVING` → `CONFIRMED`/`CANCELLED`, outbox com `SKIP LOCKED`, compensação, tempo limite e a lápide |
+| 30 | [Expedição e entrega](30-ciclo-de-vida-expedicao-e-entrega.md) | A tabela de transições, `moveTo`, a transportadora simulada, o rastreio S10 e a baixa física com `ShipStock` |
+| 31 | [A linha do tempo do pedido](31-linha-do-tempo-do-pedido.md) | Os oito eventos `ORDER_*`, como viram frases no `notification-service` e quem pode ver o histórico |
+
+### Observabilidade, testes e entrega
+
+| Nº | Nota | O que você aprende |
+| --- | --- | --- |
+| 27 | [Correlation-ID e MDC](27-correlation-id-e-mdc.md) | O ID que nasce no Gateway e atravessa HTTP, outbox e SQS até os seis logs |
+| 15 | [Testes e Testcontainers](15-testes.md) | `*Test` × `*IT`, unitários sem Docker, Postgres e LocalStack reais, o módulo `e2e-tests` e a guarda contra teste desligado |
+| 33 | [A matriz regra → teste](33-matriz-regra-teste.md) | Por que "sem lacunas" é medido por regra e não por porcentagem, e o `check-coverage-matrix.sh` |
+| 24 | [Scripts de smoke e guardas](24-scripts-smoke.md) | O que é um smoke test, o que cada um dos cinco smokes prova e o que fazem as guardas `check-*.sh` |
+| 29 | [GitHub Actions e CI](29-github-actions-ci.md) | Gatilhos, jobs e matriz, os módulos com LocalStack em série, falha visível sem token e onde ver relatórios |
+| 32 | [ADRs](32-adrs.md) | O que é um ADR, o formato MADR em português, os 11 ADRs e o `check-adrs.sh` |
+
+## Trilhas de leitura
+
+- **Estou começando:** 25 → 37, antes de qualquer trilha.
+- **Quero subir o projeto:** 01 → 02 → 36 → 03 → 04 → 07 → 35.
+- **Quero entender a segurança:** 05 → 06 → 18 → 10 → 11.
+- **Quero entender a API:** 12 → 09 → 20 → 13 → 28.
+- **Quero entender o pedido e a saga (Core Value):** 22 → 21 → 34 → 14 → 16 → 19 → 26 → 30 → 31.
+- **Quero entender a persistência:** 08 → 23 → 34 → 14 → 21 → 17.
+- **Quero entender a entrega para avaliadores:** 27 → 15 → 33 → 24 → 29 → 32.
+
+## Convenções deste material
+
+- Caminhos em crase são relativos à raiz do repositório, por exemplo
+  `order-service/pom.xml`. Links clicáveis são relativos a esta pasta (`../docs/`).
+- Trechos de código são copiados dos arquivos. Partes omitidas aparecem como `// ...` ou
+  `# ...`.
+- Códigos como `D-90`, `WR-02` ou `T-03-02` são as decisões e correções registradas nos
+  planos em `.planning/phases/`. "Plano 07-11" é o plano 11 da Fase 7.
+- A numeração das notas segue a ordem em que foram escritas, não a ordem de leitura. Use
+  as tabelas e trilhas acima para escolher por onde ir.
+
+## Glossário rápido
+
+- **Microsserviço:** aplicação pequena e independente, com seu próprio banco, que conversa
+  com as outras pela rede. O OrderFlow tem cinco, mais o Gateway.
+- **API Gateway:** a porta de entrada única que encaminha cada requisição para o serviço
+  certo.
+- **JWT:** token assinado que diz quem é o usuário, seu papel e sua empresa.
+- **JWKS:** a lista pública de chaves usada para conferir a assinatura de um JWT.
+- **`BUYER` / `SELLER_ADMIN`:** o comprador, que cria pedidos, e o administrador da
+  empresa vendedora, que mantém catálogo e estoque e aprova, expede e entrega pedidos.
+- **Bean:** objeto criado e guardado pelo Spring e entregue (injetado) a quem o pede.
+- **Record:** tipo do Java para carregar dados imutáveis, com construtor, leitura,
+  `equals` e `hashCode` gerados.
+- **DTO:** objeto que só carrega dados de entrada ou saída da API.
+- **Transação:** pacote de operações no banco que vale "tudo ou nada".
+- **Migration:** script versionado que muda a estrutura do banco; aplicada uma vez só.
+- **Lock otimista / pessimista:** detectar o conflito na hora de gravar (`@Version`) /
+  trancar a linha antes de ler (`FOR UPDATE`).
+- **SQS / fila:** serviço de filas da AWS; um serviço deixa a mensagem e outro a busca
+  depois.
+- **DLQ:** fila para onde vão as mensagens que falharam várias vezes, para alguém olhar.
+- **Dual-write:** gravar no banco e publicar na fila como duas operações separadas, que
+  podem dar certo uma e errado a outra.
+- **Transactional Outbox / relay:** gravar o evento numa tabela na mesma transação do dado
+  / o processo que leva esses eventos da tabela até a fila.
+- **Saga / compensação:** uma operação dividida em passos entre serviços / o passo que
+  desfaz o anterior quando algo dá errado.
+- **Idempotente:** repetir a operação não muda o resultado.
+- **Correlation-ID / MDC:** o número de protocolo que acompanha a requisição em todos os
+  logs / onde o SLF4J guarda esse número para a thread atual.
+- **LocalStack:** simulador local da AWS (aqui, SQS e DynamoDB).
+- **DynamoDB:** banco NoSQL da AWS, consultado só pela chave definida na tabela.
+- **IT:** teste de integração (classes `*IT`), que sobe a aplicação contra serviços reais.
+- **Testcontainers:** biblioteca que sobe containers Docker de verdade durante os testes.
+- **Smoke test:** teste rápido de ponta a ponta com o sistema inteiro ligado.
+- **CI:** compilar e testar automaticamente a cada mudança enviada ao repositório.
+- **ADR:** registro curto de uma decisão de arquitetura, com as alternativas rejeitadas.
+- **OpenAPI / Swagger UI:** o contrato da API em JSON / a página que o mostra e permite
+  testar.

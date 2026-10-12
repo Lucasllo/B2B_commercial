@@ -61,6 +61,5 @@ roteamento.
   orientada a eventos, não malabarismo de upgrade.
 - **Gateway estático sem service discovery** (Eureka/Consul): com um número pequeno e
   conhecido de serviços via docker-compose (6 módulos hoje, com o gateway roteando para
-os outros 5), service
-  discovery seria complexidade desnecessária — rotas estáticas em `application.yml`
-  bastam.
+  os outros 5), service discovery seria complexidade desnecessária — rotas estáticas em
+  `application.yml` bastam.
