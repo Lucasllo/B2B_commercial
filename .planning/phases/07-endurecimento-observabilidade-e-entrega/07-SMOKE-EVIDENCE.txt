@@ -1,0 +1,17 @@
+# Smoke real - 2026-11-05T23:56:40Z - commit 99b5047
+1/8 vendedor autenticado (admin@orderflow.local)
+2/8 empresa 7a51b82d-fa8f-4e66-a543-0b9e81ee9385 criada (limite 1000.00), comprador autenticado
+3/8 produto 05cde383-44b9-4369-b3b4-8f2f96cc5a60 a 10.00 com estoque 10
+4/8 pedido eb0fd32c-f46d-4511-a1e5-55c4ee7af9ca criado com X-Correlation-Id smoke-cid-1793923010-22968; o Gateway devolveu um unico header com o mesmo valor
+5/8 pedido eb0fd32c-f46d-4511-a1e5-55c4ee7af9ca CONFIRMED e ORDER_CONFIRMED na linha do tempo
+    [smoke-cid-1793923010-22968] encontrado nos logs de gateway
+    [smoke-cid-1793923010-22968] encontrado nos logs de order-service
+    [smoke-cid-1793923010-22968] encontrado nos logs de inventory-service
+    [smoke-cid-1793923010-22968] encontrado nos logs de notification-service
+    [smoke-cid-1793923010-22968] encontrado nos logs de catalog-service
+    [smoke-cid-1793923010-22968] encontrado nos logs de auth-service
+6/8 o mesmo Correlation-ID aparece nos logs dos 6 servicos
+7/8 ID invalido trocado pelo Gateway por 262d1383-a1ec-4f83-a29b-6788430b53e4
+8/8 o valor invalido nao aparece cru em nenhum log
+SMOKE OK correlation-id smoke-cid-1793923010-22968
+exit=0
