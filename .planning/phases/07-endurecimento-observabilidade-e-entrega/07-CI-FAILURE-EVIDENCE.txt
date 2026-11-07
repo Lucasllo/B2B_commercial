@@ -1,0 +1,29 @@
+# Evidencia UAT Fase 7 - Teste 2: Prova de falha visivel do CI
+# Coletado em: 2026-11-07T23:52:24Z
+
+Branch descartavel: ci/prova-falha-visivel (apagada apos a prova)
+Commit da prova:    3a66a2b1629b1cae00786e0bb946706f10114c33 (pai: 561b129)
+Alteracao:          gateway/.../CorrelationIdFilterTest.java:51
+                    assertThat(id).matches(UUID_PATTERN) -> assertThat(id).doesNotMatch(UUID_PATTERN)
+Run do GitHub Actions: https://github.com/Lucasllo/B2B_commercial/actions/runs/42426572364
+Conclusao do run:   failure
+
+## Jobs
+com-localstack (notification-service): success
+sem-localstack (auth-service): success
+sem-localstack (gateway): failure
+com-localstack (order-service): success
+guardas: success
+sem-localstack (catalog-service): success
+com-localstack (inventory-service): success
+e2e: skipped
+
+## Trecho do log do job com falha (sem-localstack (gateway))
+2026-11-07T23:44:16.2336221Z [INFO] Running com.orderflow.gateway.CorrelationIdFilterTest
+2026-11-07T23:44:16.5039594Z [ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.236 s <<< FAILURE! -- in com.orderflow.gateway.CorrelationIdFilterTest
+2026-11-07T23:44:16.5064314Z [ERROR] com.orderflow.gateway.CorrelationIdFilterTest.missingHeaderGeneratesOneUuidOnTheResponseTheForwardedRequestAndTheMdc -- Time elapsed: 0.012 s <<< FAILURE!
+2026-11-07T23:44:16.5082806Z 	at com.orderflow.gateway.CorrelationIdFilterTest.missingHeaderGeneratesOneUuidOnTheResponseTheForwardedRequestAndTheMdc(CorrelationIdFilterTest.java:51)
+2026-11-07T23:44:16.6361337Z [ERROR]   CorrelationIdFilterTest.missingHeaderGeneratesOneUuidOnTheResponseTheForwardedRequestAndTheMdc:51 
+2026-11-07T23:44:16.6366512Z [ERROR] Tests run: 14, Failures: 1, Errors: 0, Skipped: 0
+2026-11-07T23:44:16.6448412Z [INFO] gateway ............................................ FAILURE [  4.509 s]
+2026-11-07T23:44:16.6450638Z [INFO] BUILD FAILURE
