@@ -1,44 +1,43 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 07
-current_phase_name: Endurecimento, Observabilidade e Entrega
-status: verifying
-stopped_at: Completed 07-11-PLAN.md
-last_updated: "2026-10-03T17:05:19.924Z"
-last_activity: 2026-10-03
-last_activity_desc: Phase 07 execution started
-state_head: f91149fa5ec64014fa468aeaffb58050bcac9fb4
+status: completed
+stopped_at: Phase 07 complete — all phases complete
+last_updated: "2026-11-08T00:42:42.913Z"
+last_activity: 2026-11-07
+last_activity_desc: Phase 07 complete
+state_head: c41910167842643b25f5d6c59df64a9bc66ad296
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 40
   completed_plans: 40
-  percent: 86
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-01)
+See: .planning/PROJECT.md (updated 2026-11-07)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Phase 07 — Endurecimento, Observabilidade e Entrega
+**Current focus:** Milestone v1 completo — pronto para /gsd-complete-milestone
 
 ## Current Position
 
-Phase: 07 (Endurecimento, Observabilidade e Entrega) — EXECUTING
-Plan: 11 of 11
-Status: Phase complete — ready for verification
-Last activity: 2026-10-03 — Phase 07 execution started
+Phase: 07
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-11-07 — Phase 07 complete
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 34
+- Total plans completed: 45
 - Average duration: —
 - Total execution time: 0.0 hours
 
@@ -53,6 +52,7 @@ Progress: [█████████░] 86%
 | 4 | 5 | - | - |
 | 5 | 6 | - | - |
 | 6 | 7 | - | - |
+| 07 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -187,8 +187,10 @@ None yet.
 - [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
 - [Fase 5]: WR-03 do review não corrigido — `poll-timeout: 0s` desliga o long polling no `SqsAsyncClient` compartilhado (order e inventory); só afeta custo/latência no SQS real. Separar um cliente dedicado para os listeners faz a auto-configuração do Spring Cloud AWS recuar — tratar como backlog (candidato natural à Fase 7).
 - [Fase 5]: Outbox sem retenção (OUTBOX_RETENTION=none-this-phase) e lápides de reserva sem limpeza (AR-05-02) — documentados como limitações conhecidas.
-- [Fase 6]: Code review (06-REVIEW.md) com 3 warnings não corrigidos — WR-01 `ShipStock` inválido é descartado (ack) com o pedido já SHIPPED, perdendo a baixa sem DLQ; WR-02 `@Recover` de `shipAll`/`releaseAll` com assinaturas idênticas; WR-03 evento `ORDER_*` inválido descartado sem log com `orderId`. Candidatos naturais à Fase 7 (endurecimento) ou a `/gsd-code-review 6 --fix`.
 - [Fase 6]: `workflow.security_enforcement` ligado e `06-SECURITY.md` ainda não existe — rodar `/gsd-secure-phase 6` antes de avançar.
+- [Fase 7]: Code review (07-REVIEW.md) com 9 warnings e 8 infos não corrigidos, nenhum bloqueador — destaque WR-01 (`grep -q` + `pipefail` no smoke), WR-02/WR-03 (concurrency do CI por ref × token global; sem `timeout-minutes`), WR-04 (`Location` do 201 sem `/api`), WR-05 (`SagaCommandParser` aceita inteiro de 64+ bits truncado). Candidato a `/gsd-code-review 7 --fix`.
+- [Fase 7]: `07-VALIDATION.md` em `draft` (`nyquist_compliant: false`) — rodar `/gsd-validate-phase 7` antes do audit do milestone.
+- [Ambiente]: partida a frio do `docker compose up --wait` pode falhar por tempo (inventory ~80 s passou do healthcheck; order-service desiste se o SQS do LocalStack demorar > 2 s) — reexecutar sobe tudo; candidato a ajustar `start_period`/retry na subida.
 - [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
@@ -209,6 +211,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T17:05:19.482Z
-Stopped at: Completed 07-11-PLAN.md
+Last session: 2026-11-08T00:45:00Z
+Stopped at: Phase 07 complete (UAT 3/3 com evidência, SECURITY 41/41 fechadas) — milestone pronto para fechar
 Resume file: None

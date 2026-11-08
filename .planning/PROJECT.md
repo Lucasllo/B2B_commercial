@@ -12,26 +12,27 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Autenticação com papéis (BUYER, SELLER_ADMIN) via JWT — Fase 1
+- ✓ Empresa compradora é uma entidade própria (nome, limite de crédito) com usuários vinculados — não é só um atributo do usuário — Fase 1
+- ✓ Vendedor gerencia catálogo de produtos (criar/atualizar produtos e preços) — Fase 2
+- ✓ Vendedor gerencia níveis de estoque por produto — Fase 2
+- ✓ Empresa compradora cria pedido selecionando produtos do catálogo — *entregue na Fase 4 (order-service, itens validados e precificados pelo catalog-service, snapshot gravado)* — Fase 4
+- ✓ Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação — *regra de exposição acumulada entregue na Fase 4; na Fase 5 a aprovação (automática ou manual) entra na saga e termina em CONFIRMED ou CANCELLED* — Fase 4/5
+- ✓ Vendedor aprova ou rejeita pedidos pendentes de aprovação — *entregue na Fase 4 (decidedBy/decidedAt/reason, 409 fora de PENDING_APPROVAL)* — Fase 4
+- ✓ Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos — *entregue na Fase 4 (escopo por `company_id` do JWT, 404 idêntico para pedido de outra empresa)* — Fase 4
+- ✓ Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação) — *entregue na Fase 5 (RESERVING + `ReserveStock` no outbox na mesma transação, relay `SKIP LOCKED`, inventory responde pelo próprio outbox; idempotente por reentrega; E2E com os dois serviços reais)* — Fase 5
+- ✓ Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade — *entregue na Fase 5 (CANCELLED com `cancellationCode` e motivo legível; timeout cancela e compensa com `ReleaseStock`; nenhum pedido fica preso em RESERVING)* — Fase 5
+- ✓ Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada) — *entregue na Fase 6 (transportadora simulada atrás de `CarrierGateway` e rastreio S10 com dígito verificador, gravados na mesma transação do CONFIRMED)* — Fase 6
+- ✓ Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) — *na Fase 5 o estado intermediário RESERVING foi adicionado entre APPROVED e CONFIRMED/CANCELLED; na Fase 6 SHIPPED/DELIVERED entraram via `POST /orders/{id}/ship` e `/deliver` (só SELLER_ADMIN), com tabela única de 9 transições em `OrderStatus`, 409 `invalid_order_transition` e diagrama travado por teste* — Fases 5–6
+- ✓ Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; na Fase 5 o `STOCK_ADJUSTED` passou a sair pelo outbox; na Fase 6 os oito eventos `ORDER_*` saem pelo outbox do order-service e formam a linha do tempo em `GET /notifications/orders/{orderId}` (BUYER só da própria empresa)* — Fases 3–6
+- ✓ Todo o sistema sobe localmente via docker-compose (microsserviços + Postgres + LocalStack) — Fase 1
+- ✓ Pipeline de CI/CD (GitHub Actions) builda e testa cada serviço a cada push — *workflow `ci.yml` em ubuntu-24.04, guardas + jobs por serviço + E2E; prova de falha visível no run 42426572364* — Fase 7
+- ✓ Decisões arquiteturais documentadas como ADRs em português — *11 ADRs MADR em `docs/adr/`, verificados por `scripts/check-adrs.sh` no CI* — Fase 7
+- ✓ Observabilidade: Correlation-ID ponta a ponta (Gateway → serviços → outbox → SQS) nos logs dos 6 serviços e OpenAPI/Swagger UI por serviço agregado no Gateway — Fase 7
 
 ### Active
 
-- [ ] Autenticação com papéis (BUYER, SELLER_ADMIN) via JWT
-- [ ] Empresa compradora é uma entidade própria (nome, limite de crédito) com usuários vinculados — não é só um atributo do usuário
-- [ ] Vendedor gerencia catálogo de produtos (criar/atualizar produtos e preços)
-- [ ] Vendedor gerencia níveis de estoque por produto
-- [ ] Empresa compradora cria pedido selecionando produtos do catálogo — *entregue na Fase 4 (order-service, itens validados e precificados pelo catalog-service, snapshot gravado)*
-- [ ] Pedido acima do limite de crédito da empresa compradora entra em aprovação manual (PENDING_APPROVAL); abaixo do limite segue direto para confirmação — *regra de exposição acumulada entregue na Fase 4; na Fase 5 a aprovação (automática ou manual) entra na saga e termina em CONFIRMED ou CANCELLED*
-- [ ] Vendedor aprova ou rejeita pedidos pendentes de aprovação — *entregue na Fase 4 (decidedBy/decidedAt/reason, 409 fora de PENDING_APPROVAL)*
-- [ ] Comprador lista e visualiza detalhe dos próprios pedidos; vendedor lista e visualiza detalhe de todos os pedidos — *entregue na Fase 4 (escopo por `company_id` do JWT, 404 idêntico para pedido de outra empresa)*
-- [ ] Order-service reserva estoque no inventory-service via evento assíncrono ao confirmar pedido (saga), publicando o evento através do padrão Transactional Outbox (grava o evento na mesma transação do banco, evitando inconsistência entre escrita e publicação) — *entregue na Fase 5 (RESERVING + `ReserveStock` no outbox na mesma transação, relay `SKIP LOCKED`, inventory responde pelo próprio outbox; idempotente por reentrega; E2E com os dois serviços reais)*
-- [ ] Pedido falha/é cancelado se a reserva de estoque falhar por falta de disponibilidade — *entregue na Fase 5 (CANCELLED com `cancellationCode` e motivo legível; timeout cancela e compensa com `ReleaseStock`; nenhum pedido fica preso em RESERVING)*
-- [ ] Pedido inclui atribuição de transportadora e código de rastreio (integração externa simulada) — *entregue na Fase 6 (transportadora simulada atrás de `CarrierGateway` e rastreio S10 com dígito verificador, gravados na mesma transação do CONFIRMED)*
-- [ ] Fluxo de status do pedido: CREATED → PENDING_APPROVAL (condicional) → APPROVED/REJECTED → CONFIRMED → SHIPPED → DELIVERED (ou CANCELLED) — *na Fase 5 o estado intermediário RESERVING foi adicionado entre APPROVED e CONFIRMED/CANCELLED; na Fase 6 SHIPPED/DELIVERED entraram via `POST /orders/{id}/ship` e `/deliver` (só SELLER_ADMIN), com tabela única de 9 transições em `OrderStatus`, 409 `invalid_order_transition` e diagrama travado por teste*
-- [ ] Notification-service registra histórico de notificações (pedido criado, aprovado, enviado, entregue) em NoSQL (DynamoDB via LocalStack), consumindo eventos via SQS — *encanamento SQS → DynamoDB → consulta provado na Fase 3 com o evento `STOCK_ADJUSTED`; na Fase 5 o `STOCK_ADJUSTED` passou a sair pelo outbox; na Fase 6 os oito eventos `ORDER_*` saem pelo outbox do order-service e formam a linha do tempo em `GET /notifications/orders/{orderId}` (BUYER só da própria empresa)*
-- [ ] Todo o sistema sobe localmente via docker-compose (microsserviços + Postgres + LocalStack)
-- [ ] Pipeline de CI/CD (GitHub Actions) builda e testa cada serviço a cada push
-- [ ] Decisões arquiteturais documentadas como ADRs em português
+(Nenhum — todos os requisitos do v1 entregues; próximos requisitos virão do próximo milestone)
 
 ### Out of Scope
 
@@ -93,6 +94,10 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 | Tabela única de 9 transições em `OrderStatus`, consultada pelo domínio, pela saga e pelos testes do diagrama (D-83) | Uma fonte só para API, saga e documentação; o diagrama Mermaid não consegue divergir do código | ✓ Good — Fase 6 (`OrderStatusDiagramConsistencyTest` + `OrderLifecycleTransitionsIT`) |
 | `ShipStock` pelo outbox; inventory baixa estoque pela quantidade do livro de reservas, idempotente por `stock_reservations.shipped` (D-75) | O livro é a fonte da verdade da quantidade; reentrega não baixa duas vezes | ✓ Good — Fase 6 (`ShipStockConsumptionIT`, `OrderShipmentE2EIT`) |
 | Partição genérica `entityId` na tabela de notificações, compartilhada por histórico de produto e linha do tempo do pedido | Uma tabela para os dois agregados, mantendo a chave determinística da Fase 3 | ✓ Good — Fase 6 (init hook recria a tabela com key-schema antigo) |
+| Correlation-ID `X-Correlation-Id` validado por `[A-Za-z0-9-]{1,64}` nas duas fronteiras (HTTP e atributo SQS), com código duplicado por serviço em vez de lib compartilhada | Fecha log injection sem acoplar os serviços a um módulo comum; o ID atravessa o outbox numa coluna própria | ✓ Good — Fase 7 (smoke na stack real com o mesmo ID nos 6 serviços) |
+| Swagger UI único no Gateway agregando as specs por `/docs/<svc>/v3/api-docs`, com `servers: /api` | Um ponto de entrada para o avaliador testar o fluxo pelo Try it out, sem CORS e sem abrir as portas dos serviços | ✓ Good — Fase 7 (UAT: login + POST /orders 201 pelo Gateway) |
+| CI com guardas baratas antes dos jobs, LocalStack em sequência (`max-parallel: 1`) e falha explícita sem o secret | Token Hobby é uma sessão por vez; nenhum teste pode ser pulado em silêncio | ✓ Good — Fase 7 (run vermelho provado com asserção invertida) |
+| Matriz regra → teste (`07-COVERAGE.md`) verificada por script no CI | Impede a documentação de afirmar cobertura que não existe | ✓ Good — Fase 7 |
 
 ## Evolution
 
@@ -112,4 +117,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-10-01 após a Fase 6*
+*Última atualização: 2026-11-07 após a Fase 7*

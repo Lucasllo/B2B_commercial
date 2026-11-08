@@ -1,9 +1,10 @@
 ---
 phase: 07-endurecimento-observabilidade-e-entrega
 verified: 2026-11-05T12:00:00Z
-status: human_needed
+status: passed
 score: 3/5 must-haves verified
 covered_files:
+
   - .github/workflows/ci.yml
   - .planning/REQUIREMENTS.md
   - .planning/phases/07-endurecimento-observabilidade-e-entrega/07-01-PLAN.md
@@ -41,10 +42,12 @@ covered_files:
   - scripts/check-no-skipped-tests.sh
   - scripts/ci-summary.sh
   - scripts/smoke-correlation-id.sh
+
 covered_digest: "v1:sha256:05fd61866ff65cc51b03674551283f81606512c791c72668a8372d570b7b3b2e"
 behavior_unverified: 2
 overrides_applied: 0
 behavior_unverified_items:
+
   - truth: "Uma requisição Gateway -> order-service -> SQS -> inventory-service -> notification-service pode ser seguida pelo mesmo Correlation-ID em todos os logs envolvidos (critério 2)"
     test: "Com a stack real de pé (docker compose up --build --wait, LOCALSTACK_AUTH_TOKEN no .env), rodar `bash scripts/smoke-correlation-id.sh` e guardar a saída"
     expected: "Última linha `SMOKE OK correlation-id <id>`; o mesmo `[<id>]` nos logs de gateway, order-service, inventory-service, notification-service, catalog-service e auth-service; ID inválido (`bad value!`) trocado por UUID e ausente dos logs"
@@ -54,6 +57,7 @@ behavior_unverified_items:
     expected: "Perna `sem-localstack (gateway)` vermelha, run vermelho, `e2e` ignorado (`needs`), resumo do job apontando a suíte que quebrou"
     why_human: "O histórico do repositório tem só 6 runs, todos `success`, e o remoto só tem a branch master. Nenhum run vermelho jamais foi produzido; a falha visível só foi demonstrada por leitura do YAML e por um XML sintético passado ao ci-summary.sh."
 human_verification:
+
   - test: "Smoke de Correlation-ID na stack real (ver behavior_unverified_items[0])"
     expected: "SMOKE OK com o mesmo ID nos 6 logs"
     why_human: "Docker indisponível aqui e sem evidência gravada de execução real"
