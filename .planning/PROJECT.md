@@ -8,6 +8,16 @@ OrderFlow é uma plataforma de gerenciamento de pedidos B2B/atacado: uma empresa
 
 O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga). Se isso não funcionar de forma confiável, o projeto não cumpre seu propósito de demonstrar arquitetura de microsserviços orientada a eventos.
 
+## Current State
+
+**v1 MVP entregue em 2026-11-07** (7 fases, 40 planos, 52 dias). Seis serviços Spring Boot 3.5 / Java 21 (gateway, auth, catalog, inventory, order, notification) sobem com `docker compose up` junto de PostgreSQL e LocalStack (SQS + DynamoDB). O Core Value está provado ponta a ponta: pedido → aprovação por crédito → saga de reserva com Transactional Outbox → CONFIRMED/CANCELLED → SHIPPED → DELIVERED, com E2E entre serviços reais, smoke na stack real, CI no GitHub Actions, OpenAPI agregado no Gateway, Correlation-ID nos seis serviços e 11 ADRs. Código: ~10,2 mil linhas Java de produção e ~21,1 mil de teste.
+
+Dívida conhecida (ver `milestones/v1-MILESTONE-AUDIT.md`): sem testes de contrato, hop do notification-service sem E2E, rota de reserva REST paralela à saga, ~28 warnings de code review abertos, gates de segurança/Nyquist incompletos nas fases 1, 4 e 6.
+
+## Next Milestone Goals
+
+A definir em `/gsd-new-milestone`. Pontos de partida naturais: fechar a dívida da auditoria do v1 (contratos, E2E do notification, rota de reserva paralela) e/ou os itens v2 (DLQ, tracing distribuído, rate limiting, desconto por empresa, deploy AWS sob demanda).
+
 ## Requirements
 
 ### Validated
@@ -32,7 +42,14 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 
 ### Active
 
-(Nenhum — todos os requisitos do v1 entregues; próximos requisitos virão do próximo milestone)
+Nenhum requisito ativo — o v1 entregou todos os 30. Candidatos para o próximo milestone (a confirmar em `/gsd-new-milestone`):
+
+- [ ] DLQ-01 — dead-letter queue para eventos que falham repetidamente
+- [ ] TRACE-01 — distributed tracing (Zipkin/Jaeger) entre os serviços
+- [ ] PRICE-01 — desconto percentual simples por empresa compradora
+- [ ] GATE-01 — rate limiting no API Gateway
+- [ ] CLOUD-01 — deploy real na AWS sob demanda
+- [ ] Testes de contrato entre serviços (Spring Cloud Contract) e E2E cobrindo o notification-service — lacunas da auditoria do v1
 
 ### Out of Scope
 
@@ -42,6 +59,11 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 - Modelo marketplace multi-vendedor — mantido um único vendedor com vários compradores, para não inflar a complexidade sem agregar ao objetivo do portfólio
 - Estados intermediários de trânsito (ex: AWAITING_PICKUP, IN_TRANSIT) — fluxo de status do pedido mantido simples (SHIPPED → DELIVERED)
 - Shipping-service dedicado — dados de transportadora ficam como atributos do pedido dentro do order-service
+- Aprovação de crédito multi-nível — um único limite por empresa já demonstra o padrão
+- Integração com ERP/CRM/contabilidade — não há sistema externo real para integrar
+- Preços customizados/tiered por empresa — preço único de catálogo basta para o fluxo de pedidos
+- Fluxo de cotação (RFQ) — o gate de aprovação por crédito já cobre a narrativa
+- Múltiplos armazéns / alocação multi-nó de estoque — um pool por produto basta para a lição de arquitetura
 
 ## Context
 
@@ -57,13 +79,13 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 
 ## Constraints
 
-- **Stack**: Java 17+, Spring Boot — exigido pela vaga-alvo de Desenvolvedor Java Pleno
+- **Stack**: Java 17+, Spring Boot — exigido pela vaga-alvo de Desenvolvedor Java Pleno (v1 usa Java 21 + Spring Boot 3.5)
 - **Persistência**: PostgreSQL para dados transacionais dos serviços; DynamoDB via LocalStack para o histórico de notificações (NoSQL) — demonstra SQL e NoSQL lado a lado
 - **Mensageria**: SQS via LocalStack para comunicação assíncrona entre order-service, inventory-service e notification-service (padrão saga)
 - **Containerização**: Docker + docker-compose — todo o sistema deve subir localmente sem custo de nuvem
 - **Cloud**: AWS demonstrada via LocalStack (S3, SQS, DynamoDB simulados) — sem exigência de deploy real ativo continuamente
 - **CI/CD**: pipeline automatizado (GitHub Actions) validando build e testes a cada push
-- **Testes**: unitários (JUnit + Mockito), integração (Testcontainers), contrato/E2E entre microsserviços
+- **Testes**: unitários (JUnit + Mockito), integração (Testcontainers), contrato/E2E entre microsserviços (v1 entregou E2E; testes de contrato ainda não existem)
 - **Confiabilidade de eventos**: padrão Transactional Outbox em order-service e inventory-service — evita o problema de dual-write (gravar no banco e publicar no SQS como operações separadas e não atômicas)
 - **Processo**: desenvolvimento incremental, fase a fase; nenhuma tecnologia implementada sem explicação prévia do motivo de seu uso
 
@@ -71,14 +93,14 @@ O fluxo de pedido — criação, aprovação condicional por limite de crédito,
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Domínio B2B/atacado: um vendedor, vários compradores | Mais simples que um marketplace, mas ainda rico o suficiente para justificar aprovação de pedido, limite de crédito e controle de estoque | — Pending |
-| Decomposição em 5 microsserviços (auth, catalog, inventory, order, notification) + API Gateway | Cobre autenticação, domínio de catálogo/estoque, orquestração de pedido via saga e mensageria/NoSQL, sem inflar demais o escopo do portfólio | — Pending |
-| Aprovação de pedido disparada por limite de valor/crédito da empresa compradora | Regra de negócio realista de B2B e motor natural para o fluxo PENDING_APPROVAL | — Pending |
-| Pagamento simplificado/mockado | Foco do projeto é a arquitetura de pedidos, não faturamento | — Pending |
-| Logística como atributos do order-service, com transportadora simulada via mock | Evita inflar em outro microsserviço, mas ainda demonstra integração externa simulada | — Pending |
-| AWS demonstrada via LocalStack, sem deploy real contínuo | Evita custo de nuvem constante, mas ainda demonstra uso de serviços AWS (S3, SQS, DynamoDB) | — Pending |
-| Documentação em português, código em inglês | Alinhado às convenções da comunidade Java/Spring e ao objetivo de portfólio para uma vaga no Brasil | — Pending |
-| Empresa compradora como entidade própria com limite de crédito | A regra de aprovação por limite de crédito não tem contra o que checar sem isso; achado da pesquisa de domínio | — Pending |
+| Domínio B2B/atacado: um vendedor, vários compradores | Mais simples que um marketplace, mas ainda rico o suficiente para justificar aprovação de pedido, limite de crédito e controle de estoque | ✓ Good — v1 (sustentou crédito, aprovação, saga e ciclo de vida sem inflar escopo) |
+| Decomposição em 5 microsserviços (auth, catalog, inventory, order, notification) + API Gateway | Cobre autenticação, domínio de catálogo/estoque, orquestração de pedido via saga e mensageria/NoSQL, sem inflar demais o escopo do portfólio | ✓ Good — v1 (13/13 links entre serviços conectados na auditoria) |
+| Aprovação de pedido disparada por limite de valor/crédito da empresa compradora | Regra de negócio realista de B2B e motor natural para o fluxo PENDING_APPROVAL | ✓ Good — v1 (exposição acumulada serializada por empresa) |
+| Pagamento simplificado/mockado | Foco do projeto é a arquitetura de pedidos, não faturamento | ✓ Good — v1 (pagamento ficou fora; nenhum requisito sentiu falta) |
+| Logística como atributos do order-service, com transportadora simulada via mock | Evita inflar em outro microsserviço, mas ainda demonstra integração externa simulada | ✓ Good — v1 (`CarrierGateway` + rastreio S10, Fase 6) |
+| AWS demonstrada via LocalStack, sem deploy real contínuo | Evita custo de nuvem constante, mas ainda demonstra uso de serviços AWS (S3, SQS, DynamoDB) | ✓ Good — v1 (SQS + DynamoDB; S3 não foi necessário). Custo: token Hobby obrigatório e sessão única por token |
+| Documentação em português, código em inglês | Alinhado às convenções da comunidade Java/Spring e ao objetivo de portfólio para uma vaga no Brasil | ✓ Good — v1 |
+| Empresa compradora como entidade própria com limite de crédito | A regra de aprovação por limite de crédito não tem contra o que checar sem isso; achado da pesquisa de domínio | ✓ Good — v1 |
 | Padrão Transactional Outbox em vez de publicação direta (dual-write) | Evita divergência entre o estado salvo no banco e o evento publicado no SQS; achado de risco crítico da pesquisa de arquitetura/pitfalls | ✓ Good — Fase 5 (outbox nos dois serviços; relay é o único caminho de envio SQS) |
 | Fase 3 publica direto (dual-write) do inventory-service, após o commit, e adia o Outbox para a Fase 5 (D-29/D-30) | Isola o encanamento SQS/DynamoDB antes da saga; a perda de evento fica observável em log ERROR e declarada no README | ✓ Resolvido na Fase 5 — `STOCK_ADJUSTED` passou a sair pelo outbox do inventory-service |
 | Idempotência do histórico pela chave `productId` + `STOCK_ADJUSTED#<eventId>` com `putItem` sem condição | Reentrega do SQS sobrescreve em vez de duplicar, sem precisar de tabela de deduplicação | ✓ Good — Fase 3 (IT + smoke na stack real) |
@@ -117,4 +139,4 @@ Este documento evolui a cada transição de fase e a cada marco (milestone) do p
 4. Atualizar Context com o estado atual
 
 ---
-*Última atualização: 2026-11-07 após a Fase 7*
+*Última atualização: 2026-11-07 após o milestone v1*

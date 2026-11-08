@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 07
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 07 complete — all phases complete
-last_updated: "2026-11-08T00:42:42.913Z"
+last_updated: "2026-11-08T01:54:09.879Z"
 last_activity: 2026-11-07
-last_activity_desc: Phase 07 complete
-state_head: c41910167842643b25f5d6c59df64a9bc66ad296
+last_activity_desc: Milestone v1 completed and archived
+state_head: d293240ba68cb451ab0a950076c2b1c7132bca63
 progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 40
   completed_plans: 40
   percent: 100
+current_phase: 07
 ---
 
 # Project State
@@ -22,16 +22,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-07)
 
 **Core value:** O fluxo de pedido — criação, aprovação condicional por limite de crédito, reserva de estoque e confirmação — funcionando de ponta a ponta entre microsserviços via orquestração por eventos (padrão saga).
-**Current focus:** Milestone v1 completo — pronto para /gsd-complete-milestone
+**Current focus:** Planejando o próximo milestone (v1 MVP entregue em 2026-11-07)
 
 ## Current Position
 
-Phase: 07
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-11-07 — Phase 07 complete
-
-Progress: [██████████] 100%
+Phase: Milestone v1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-07 — Milestone v1 completed and archived
 
 ## Performance Metrics
 
@@ -183,23 +181,19 @@ None yet.
 
 [Issues that affect future work]
 
-- [Fase 1]: LocalStack exige `LOCALSTACK_AUTH_TOKEN` (tier Hobby gratuito) desde 2026.03.0 — precisa estar no docker-compose e no CI desde o primeiro dia.
-- [Fase 1]: Fixar versões das imagens Docker (LocalStack, Postgres) — `latest` causa divergência silenciosa de comportamento (PITFALLS.md #6).
-- [Fase 5]: WR-03 do review não corrigido — `poll-timeout: 0s` desliga o long polling no `SqsAsyncClient` compartilhado (order e inventory); só afeta custo/latência no SQS real. Separar um cliente dedicado para os listeners faz a auto-configuração do Spring Cloud AWS recuar — tratar como backlog (candidato natural à Fase 7).
+- [v1 fechado como override_closeout]: fases 1–6 com `verification_status: stale` (digest mudou após edições de fases posteriores); dívida técnica completa em `milestones/v1-MILESTONE-AUDIT.md`.
+- [Integração]: hop do notification-service sem E2E; sem testes de contrato entre serviços; rota `POST /inventory/{id}/reservations` paralela à saga — candidatos ao próximo milestone.
+- [Fase 5]: WR-03 do review não corrigido — `poll-timeout: 0s` desliga o long polling no `SqsAsyncClient` compartilhado (order e inventory); só afeta custo/latência no SQS real. Separar um cliente dedicado para os listeners faz a auto-configuração do Spring Cloud AWS recuar — backlog.
 - [Fase 5]: Outbox sem retenção (OUTBOX_RETENTION=none-this-phase) e lápides de reserva sem limpeza (AR-05-02) — documentados como limitações conhecidas.
-- [Fase 6]: `workflow.security_enforcement` ligado e `06-SECURITY.md` ainda não existe — rodar `/gsd-secure-phase 6` antes de avançar.
-- [Fase 7]: Code review (07-REVIEW.md) com 9 warnings e 8 infos não corrigidos, nenhum bloqueador — destaque WR-01 (`grep -q` + `pipefail` no smoke), WR-02/WR-03 (concurrency do CI por ref × token global; sem `timeout-minutes`), WR-04 (`Location` do 201 sem `/api`), WR-05 (`SagaCommandParser` aceita inteiro de 64+ bits truncado). Candidato a `/gsd-code-review 7 --fix`.
-- [Fase 7]: `07-VALIDATION.md` em `draft` (`nyquist_compliant: false`) — rodar `/gsd-validate-phase 7` antes do audit do milestone.
-- [Ambiente]: partida a frio do `docker compose up --wait` pode falhar por tempo (inventory ~80 s passou do healthcheck; order-service desiste se o SQS do LocalStack demorar > 2 s) — reexecutar sobe tudo; candidato a ajustar `start_period`/retry na subida.
+- [Fase 6]: `workflow.security_enforcement` ligado e `06-SECURITY.md` nunca foi gerado (fase agora em `milestones/v1-phases/`) — aceito no fechamento do v1.
+- [Nyquist]: fases 1 e 6 com VALIDATION em `draft`, fase 4 `nyquist_compliant: false` — aceito no fechamento do v1.
+- [Fase 7]: Code review (07-REVIEW.md) com 9 warnings e 8 infos não corrigidos, nenhum bloqueador — destaque WR-01 (`grep -q` + `pipefail` no smoke), WR-02/WR-03 (concurrency do CI por ref × token global; sem `timeout-minutes`), WR-04 (`Location` do 201 sem `/api`), WR-05 (`SagaCommandParser` aceita inteiro de 64+ bits truncado). Candidato a `/gsd-code-review 7 --fix`.- [Ambiente]: partida a frio do `docker compose up --wait` pode falhar por tempo (inventory ~80 s passou do healthcheck; order-service desiste se o SQS do LocalStack demorar > 2 s) — reexecutar sobe tudo; candidato a ajustar `start_period`/retry na subida.
 - [Ambiente]: sessão LocalStack Hobby é única por token — Testcontainers falha (exit 126) com a stack do compose de pé; derrubar o compose antes de `./mvnw verify`.
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260920-g6c | Adicionar springdoc-openapi (Swagger UI) em auth-service, catalog-service e inventory-service para visualizacao e teste rapido dos endpoints no navegador | 2026-09-20 | 94792e6 | [260920-g6c-adicionar-springdoc-openapi-swagger-ui-e](./quick/260920-g6c-adicionar-springdoc-openapi-swagger-ui-e/) |
-| 260923-tj9 | Validar issuer (iss) do JWT nos resource servers notification/catalog/inventory — fecha T-03-02 / WR-07; testes passam a usar o decoder de produção | 2026-09-24 | eac39a8 | [260923-tj9-validar-issuer-do-jwt-nos-resource-serve](./quick/260923-tj9-validar-issuer-do-jwt-nos-resource-serve/) |
-| 3 | README.md: incluir a porta 8085 (order-service) na lista de portas ligadas a 127.0.0.1 | 2026-09-26 | 4a9cff1 | — |
 
 ## Deferred Items
 
@@ -212,5 +206,9 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-11-08T00:45:00Z
-Stopped at: Phase 07 complete (UAT 3/3 com evidência, SECURITY 41/41 fechadas) — milestone pronto para fechar
+Stopped at: Milestone v1 MVP arquivado (override_closeout) — aguardando /gsd-new-milestone
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

@@ -1,1 +1,0 @@
-No external API integration: a Fase 7 documenta (OpenAPI), observa (Correlation-ID) e testa integrações já existentes (SQS e DynamoDB via LocalStack, Fases 3-6); o GitHub Actions é configuração de CI, não uma API consumida em runtime.
