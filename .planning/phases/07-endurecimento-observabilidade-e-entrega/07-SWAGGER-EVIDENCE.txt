@@ -1,0 +1,43 @@
+# Evidencia UAT Fase 7 - Teste 3: Try it out da Swagger UI pelo Gateway
+# Coletado em: 2026-11-08T00:02:20Z - stack docker compose completa, 8 containers healthy
+# Requisicoes feitas como o Try it out do navegador: same-origin http://localhost:8080, headers Origin/Referer da Swagger UI, server relativo /api
+
+## Swagger UI
+GET /swagger-ui.html -> 200 (final: http://localhost:8080/swagger-ui/index.html)
+swagger-config urls: [{'url': '/docs/auth/v3/api-docs', 'name': 'auth-service'}, {'url': '/docs/catalog/v3/api-docs', 'name': 'catalog-service'}, {'url': '/docs/inventory/v3/api-docs', 'name': 'inventory-service'}, {'url': '/docs/notification/v3/api-docs', 'name': 'notification-service'}, {'url': '/docs/order/v3/api-docs', 'name': 'order-service'}]
+auth-service servers:  [{'url': '/api', 'description': 'API Gateway'}]
+order-service servers: [{'url': '/api', 'description': 'API Gateway'}]
+
+## Fluxo login -> POST /orders (via /api)
+POST /api/auth/login (SELLER_ADMIN) -> accessToken recebido: sim
+POST /api/products -> id 4b99cd69-03ee-4552-9f96-f42d92d6a14a
+PUT /api/inventory/{id} -> 200
+POST /api/companies -> 201
+POST /api/auth/login (BUYER) -> accessToken recebido: sim
+
+### POST /api/orders (BUYER) - resposta completa com headers
+HTTP/1.1 201 
+X-Correlation-Id: f4792265-555f-4cf2-a5de-31618b5f903f
+cache-control: no-cache, no-store, max-age=0, must-revalidate
+date: Sun, 08 Nov 2026 00:02:32 GMT
+expires: 0
+location: /orders/1af29030-5a72-493f-97ec-56882599a3ec
+pragma: no-cache
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-xss-protection: 0
+Content-Type: application/json
+Transfer-Encoding: chunked
+
+{"id":"1af29030-5a72-493f-97ec-56882599a3ec","companyId":"0bb62f36-cc42-43a8-b9f3-ea5f4fb3fe32","status":"RESERVING","total":200.00,"createdBy":"09c5d507-c7db-4c7f-82d9-0b3ff7b364c0","createdAt":"2026-11-08T00:02:32.288278Z","decidedBy":"SYSTEM","decidedAt":"2026-11-08T00:02:32.288278Z","reason":"dentro do limite de crédito","cancellationCode":null,"cancellationReason":null,"confirmedAt":null,"cancelledAt":null,"carrier":null,"trackingCode":null,"shippedAt":null,"shippedBy":null,"deliveredAt":null,"deliveredBy":null,"items":[{"lineNumber":1,"productId":"4b99cd69-03ee-4552-9f96-f42d92d6a14a","sku":"UAT-SWAGGER-1794096140","name":"Produto UAT Swagger","unitPrice":100.00,"quantity":2,"subtotal":200.00}]}
+
+### Preflight CORS (OPTIONS) do mesmo origin
+HTTP/1.1 200 
+X-Correlation-Id: dd3b2502-713a-4bad-8390-1d34257b2452
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Allow: GET, HEAD, POST, PUT, DELETE, OPTIONS, TRACE, PATCH
+Content-Length: 0
+Date: Sun, 08 Nov 2026 00:02:32 GMT
+

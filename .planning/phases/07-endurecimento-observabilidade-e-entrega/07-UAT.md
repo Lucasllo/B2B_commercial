@@ -1,18 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 07-endurecimento-observabilidade-e-entrega
 source: [07-VERIFICATION.md]
 started: 2026-11-05T23:15:45Z
-updated: 2026-11-07T23:53:00Z
+updated: 2026-11-08T00:03:00Z
 ---
 
 ## Current Test
 
-number: 3
-name: Try it out da Swagger UI pelo Gateway
-expected: |
-  Em `http://localhost:8080/swagger-ui.html`, o fluxo de login seguido de `POST /orders` funciona pelo Try it out, sem erro de CORS e usando o server relativo `/api`.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -30,14 +26,16 @@ evidence: 07-CI-FAILURE-EVIDENCE.txt (run https://github.com/Lucasllo/B2B_commer
 
 ### 3. Try it out da Swagger UI pelo Gateway
 expected: Em `http://localhost:8080/swagger-ui.html`, o fluxo de login seguido de `POST /orders` funciona pelo Try it out, sem erro de CORS e usando o server relativo `/api`.
-result: [pending]
+result: pass
+source: automated
+evidence: 07-SWAGGER-EVIDENCE.txt (stack real; swagger-ui 200, servers `/api` em auth/order, login SELLER e BUYER + POST /api/orders 201 com headers Origin/Referer da Swagger UI, preflight OPTIONS 200 sem rejeição de CORS)
 
 ## Summary
 
 total: 3
-passed: 2
+passed: 3
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
